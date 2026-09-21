@@ -436,9 +436,9 @@ BEGIN
             // Had to remove © as it doesn't exist in old fonts
             VALUE "LegalCopyright", "2011-2025 Pete Batard (GPL v3)"
             VALUE "LegalTrademarks", "https://www.gnu.org/licenses/gpl-3.0.html"
-            VALUE "Changelog", "Update 1: Self-containability"
+            VALUE "Changelog", "Update 2: Cleanup and fixes"
             VALUE "ProductName", "Rufus-NT"
-            VALUE "ProductVersion", "Update 1"
+            VALUE "ProductVersion", "Update 2"
         END
     END
     BLOCK "VarFileInfo"
