@@ -95,6 +95,10 @@
     <UseDebugLibraries>true</UseDebugLibraries>
   </PropertyGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.props" />
+  <ImportGroup Label="ExtensionSettings">
+    <!-- MASM supplies x86 import aliases for functions unavailable on Windows 2000. (port) -->
+    <Import Project="$(VCTargetsPath)\BuildCustomizations\masm.props" />
+  </ImportGroup>
   <PropertyGroup>
     <_ProjectFileVersion>10.0.30319.1</_ProjectFileVersion>
     <OutDir Condition="'$(Configuration)|$(Platform)'=='Debug|ARM'">$(SolutionDir)arm\$(Configuration)\</OutDir>
@@ -121,7 +125,8 @@
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">
     <BuildLog />
     <ClCompile>
-      <PreprocessorDefinitions>_OFF_T_DEFINED;_off_t=__int64;off_t=_off_t;COBJMACROS;_CRTDBG_MAP_ALLOC;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <!-- Keep modern declarations available behind runtime version checks. (port) -->
+      <PreprocessorDefinitions>RUFUS_TARGET_WIN2K=1;_OFF_T_DEFINED;_off_t=__int64;off_t=_off_t;COBJMACROS;_CRTDBG_MAP_ALLOC;%(PreprocessorDefinitions)</PreprocessorDefinitions>
       <RuntimeLibrary>MultiThreadedDebug</RuntimeLibrary>
       <WarningLevel>Level3</WarningLevel>
       <AdditionalIncludeDirectories>..\src;..\src\msvc-missing;..\src\ms-sys\inc;..\src\syslinux\libinstaller;..\src\syslinux\libfat;..\src\syslinux\win;..\src\libcdio;..\src\getopt;..\res;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
@@ -137,9 +142,11 @@
       <UACExecutionLevel>RequireAdministrator</UACExecutionLevel>
       <GenerateDebugInformation>true</GenerateDebugInformation>
       <SubSystem>Windows</SubSystem>
+      <!-- Link as NT 5.1 before the post-build NT 5.0 header patch. (port) -->
+      <MinimumRequiredVersion>5.01</MinimumRequiredVersion>
       <TargetMachine>MachineX86</TargetMachine>
       <DelayLoadDLLs>advapi32.dll;comctl32.dll;crypt32.dll;gdi32.dll;ole32.dll;dwmapi.dll;setupapi.dll;shell32.dll;shlwapi.dll;version.dll;virtdisk.dll;wininet.dll;wintrust.dll;%(DelayLoadDLLs)</DelayLoadDLLs>
-      <AdditionalOptions>/BREPRO /DEPENDENTLOADFLAG:0x800 %(AdditionalOptions)</AdditionalOptions>
+      <AdditionalOptions>/BREPRO /DEPENDENTLOADFLAG:0x800 /SUBSYSTEM:WINDOWS,5.01 %(AdditionalOptions)</AdditionalOptions>
     </Link>
     <ResourceCompile>
       <PreprocessorDefinitions>_UNICODE;UNICODE;%(PreprocessorDefinitions)</PreprocessorDefinitions>
@@ -148,6 +155,11 @@
       <Command>type $(SolutionDir)res\loc\rufus.loc | findstr /v MSG_9 &gt; $(SolutionDir)res\loc\embedded.loc</Command>
       <Message>Generating 'embedded.loc' file</Message>
     </PreBuildEvent>
+    <PostBuildEvent>
+      <!-- Patch only the Windows 2000 Win32 output after linking. (port) -->
+      <Command>powershell.exe -NoProfile -ExecutionPolicy Bypass -File "$(ProjectDir)patch_pe_subsystem.ps1" "$(TargetPath)" 5 0</Command>
+      <Message>Setting Windows 2000 PE subsystem version</Message>
+    </PostBuildEvent>
   </ItemDefinitionGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Debug|ARM'">
     <BuildLog />
@@ -251,7 +263,8 @@
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">
     <BuildLog />
     <ClCompile>
-      <PreprocessorDefinitions>_OFF_T_DEFINED;_off_t=__int64;off_t=_off_t;COBJMACROS;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <!-- Select the Windows 2000 compatibility imports for Win32. (port) -->
+      <PreprocessorDefinitions>RUFUS_TARGET_WIN2K=1;_OFF_T_DEFINED;_off_t=__int64;off_t=_off_t;COBJMACROS;%(PreprocessorDefinitions)</PreprocessorDefinitions>
       <RuntimeLibrary>MultiThreaded</RuntimeLibrary>
       <WarningLevel>Level3</WarningLevel>
       <AdditionalIncludeDirectories>..\src;..\src\msvc-missing;..\src\ms-sys\inc;..\src\syslinux\libinstaller;..\src\syslinux\libfat;..\src\syslinux\win;..\src\libcdio;..\src\getopt;..\res;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
@@ -268,8 +281,10 @@
       <UACExecutionLevel>RequireAdministrator</UACExecutionLevel>
       <GenerateDebugInformation>false</GenerateDebugInformation>
       <SubSystem>Windows</SubSystem>
+      <!-- Link as NT 5.1 before the post-build NT 5.0 header patch. (port) -->
+      <MinimumRequiredVersion>5.01</MinimumRequiredVersion>
       <TargetMachine>MachineX86</TargetMachine>
-      <AdditionalOptions>/BREPRO /DEPENDENTLOADFLAG:0x800 %(AdditionalOptions)</AdditionalOptions>
+      <AdditionalOptions>/BREPRO /DEPENDENTLOADFLAG:0x800 /SUBSYSTEM:WINDOWS,5.01 %(AdditionalOptions)</AdditionalOptions>
       <DelayLoadDLLs>advapi32.dll;comctl32.dll;crypt32.dll;gdi32.dll;ole32.dll;dwmapi.dll;setupapi.dll;shell32.dll;shlwapi.dll;version.dll;virtdisk.dll;wininet.dll;wintrust.dll;%(DelayLoadDLLs)</DelayLoadDLLs>
     </Link>
     <ResourceCompile>
@@ -279,6 +294,11 @@
       <Command>type $(SolutionDir)res\loc\rufus.loc | findstr /v MSG_9 &gt; $(SolutionDir)res\loc\embedded.loc</Command>
       <Message>Generating 'embedded.loc' file</Message>
     </PreBuildEvent>
+    <PostBuildEvent>
+      <!-- Patch the Windows 2000 subsystem version before signing. (port) -->
+      <Command>powershell.exe -NoProfile -ExecutionPolicy Bypass -File "$(ProjectDir)patch_pe_subsystem.ps1" "$(TargetPath)" 5 0</Command>
+      <Message>Setting Windows 2000 PE subsystem version</Message>
+    </PostBuildEvent>
   </ItemDefinitionGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Release|ARM'">
     <BuildLog />
@@ -384,6 +404,12 @@
     </PreBuildEvent>
   </ItemDefinitionGroup>
   <ItemGroup>
+    <MASM Include="..\src\win2k_imports.asm">
+      <!-- Use the compatibility import table only for the Win32 target. (port) -->
+      <ExcludedFromBuild Condition="'$(Platform)'!='Win32'">true</ExcludedFromBuild>
+    </MASM>
+  </ItemGroup>
+  <ItemGroup>
     <ClCompile Include="..\src\badblocks.c" />
     <ClCompile Include="..\src\dos_locale.c" />
     <ClCompile Include="..\src\drive.c" />
@@ -409,6 +435,8 @@
     <ClCompile Include="..\src\dev.c" />
     <ClCompile Include="..\src\ui.c" />
     <ClCompile Include="..\src\vhd.c" />
+    <ClCompile Include="..\src\winxp.c" />
+    <ClCompile Include="..\src\win2k.c" />
     <ClCompile Include="..\src\wue.c" />
   </ItemGroup>
   <ItemGroup>
@@ -444,12 +472,15 @@
     <ClInclude Include="..\src\ui_data.h" />
     <ClInclude Include="..\src\vhd.h" />
     <ClInclude Include="..\src\winio.h" />
+    <ClInclude Include="..\src\win2k.h" />
+    <ClInclude Include="..\src\winxp.h" />
     <ClInclude Include="..\src\wue.h" />
   </ItemGroup>
   <ItemGroup>
     <Manifest Include="..\src\rufus.manifest" />
   </ItemGroup>
   <ItemGroup>
+    <None Include="patch_pe_subsystem.ps1" />
     <None Include="..\res\down.ico" />
     <None Include="..\res\rufus.ico" />
     <None Include="..\res\up.ico" />
@@ -491,5 +522,7 @@
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
   <ImportGroup Label="ExtensionTargets">
+    <!-- Enable the MASM compatibility import table. (port) -->
+    <Import Project="$(VCTargetsPath)\BuildCustomizations\masm.targets" />
   </ImportGroup>
 </Project>

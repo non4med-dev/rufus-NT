@@ -36,6 +36,7 @@
 #include <assert.h>
 
 #include "rufus.h"
+#include "winxp.h"
 #include "missing.h"
 #include "resource.h"
 #include "settings.h"
@@ -49,20 +50,43 @@ extern RUFUS_DRIVE rufus_drive[MAX_DRIVES];
 extern BOOL enable_HDDs, enable_VHDs, use_fake_units, enable_vmdk, usb_debug;
 extern BOOL list_non_usb_removable_drives, its_a_me_mario;
 
-/*
- * CfgMgr32.dll interface.
- * Note that, unlike what is the case with other DLLs, delay-loading of cfgmgr32
- * does *not* work with MinGW, so we have to go through direct hooking yet again...
- */
-PF_TYPE_DECL(WINAPI, CONFIGRET, CM_Get_Device_IDA, (DEVINST, CHAR*, ULONG, ULONG));
-PF_TYPE_DECL(WINAPI, CONFIGRET, CM_Get_Device_ID_List_SizeA, (PULONG, PCSTR, ULONG));
-PF_TYPE_DECL(WINAPI, CONFIGRET, CM_Get_Device_ID_ListA, (PCSTR, PCHAR, ULONG, ULONG));
-PF_TYPE_DECL(WINAPI, CONFIGRET, CM_Locate_DevNodeA, (PDEVINST, DEVINSTID_A, ULONG));
-PF_TYPE_DECL(WINAPI, CONFIGRET, CM_Get_Child, (PDEVINST, DEVINST, ULONG));
-PF_TYPE_DECL(WINAPI, CONFIGRET, CM_Get_Parent, (PDEVINST, DEVINST, ULONG));
-PF_TYPE_DECL(WINAPI, CONFIGRET, CM_Get_Sibling, (PDEVINST, DEVINST, ULONG));
-PF_TYPE_DECL(WINAPI, CONFIGRET, CM_Get_DevNode_Status, (PULONG, PULONG, DEVINST, ULONG));
-PF_TYPE_DECL(WINAPI, CONFIGRET, CM_Get_DevNode_Registry_PropertyA, (DEVINST, ULONG, PULONG, PVOID, PULONG, ULONG));
+static __inline void ToUpper(char* str);
+
+// Recover USB identifiers from disk devnode ancestor bc NT5 loses hub mapping (port)
+static BOOL GetXpUsbVidPid(DEVINST device_inst, uint32_t* vid, uint32_t* pid)
+{
+	char device_id[MAX_PATH], *end, *vid_marker, *pid_marker;
+	DEVINST current_inst = device_inst, parent_inst;
+	ULONG parsed_vid, parsed_pid;
+	int depth;
+
+	if ((vid == NULL) || (pid == NULL))
+		return FALSE;
+	for (depth = 0; depth < 5; depth++) {
+		if (CM_Get_Device_IDA(current_inst, device_id, ARRAYSIZE(device_id), 0) == CR_SUCCESS) {
+			ToUpper(device_id);
+			vid_marker = strstr(device_id, "VID_");
+			pid_marker = strstr(device_id, "PID_");
+			if ((vid_marker != NULL) && (pid_marker != NULL)) {
+				parsed_vid = strtoul(vid_marker + 4, &end, 16);
+				if (end != vid_marker + 8)
+					goto next_parent;
+				parsed_pid = strtoul(pid_marker + 4, &end, 16);
+				if (end != pid_marker + 8)
+					goto next_parent;
+				// Match x86 storage fields used by usb_device_props (port)
+				*vid = (uint32_t)parsed_vid;
+				*pid = (uint32_t)parsed_pid;
+				return ((*vid != 0) || (*pid != 0));
+			}
+		}
+next_parent:
+		if (CM_Get_Parent(&parent_inst, current_inst, 0) != CR_SUCCESS)
+			break;
+		current_inst = parent_inst;
+	}
+	return FALSE;
+}
 
 /*
  * Get the VID, PID and current device speed
@@ -80,10 +104,7 @@ static BOOL GetUSBProperties(char* parent_path, char* device_id, usb_device_prop
 	if ((parent_path == NULL) || (device_id == NULL) || (props == NULL))
 		goto out;
 
-	PF_INIT_OR_OUT(CM_Locate_DevNodeA, CfgMgr32);
-	PF_INIT_OR_OUT(CM_Get_DevNode_Registry_PropertyA, CfgMgr32);
-
-	cr = pfCM_Locate_DevNodeA(&device_inst, device_id, 0);
+	cr = CM_Locate_DevNodeA(&device_inst, device_id, 0);
 	if (cr != CR_SUCCESS) {
 		uprintf("Could not get device instance handle for '%s': CR error %d", device_id, cr);
 		goto out;
@@ -91,7 +112,7 @@ static BOOL GetUSBProperties(char* parent_path, char* device_id, usb_device_prop
 
 	props->port = 0;
 	size = sizeof(props->port);
-	cr = pfCM_Get_DevNode_Registry_PropertyA(device_inst, CM_DRP_ADDRESS, NULL, (PVOID)&props->port, &size, 0);
+	cr = CM_Get_DevNode_Registry_PropertyA(device_inst, CM_DRP_ADDRESS, NULL, (PVOID)&props->port, &size, 0);
 	if (cr != CR_SUCCESS) {
 		uprintf("Could not get port for '%s': CR error %d", device_id, cr);
 		goto out;
@@ -121,22 +142,24 @@ static BOOL GetUSBProperties(char* parent_path, char* device_id, usb_device_prop
 		r = TRUE;
 	}
 
-	// The USB speed report of modern Windows is a complete mess
-	size = sizeof(conn_info_v2);
-	memset(&conn_info_v2, 0, size);
-	conn_info_v2.ConnectionIndex = (ULONG)props->port;
-	conn_info_v2.Length = size;
-	conn_info_v2.SupportedUsbProtocols.Usb300 = 1;
-	if (!DeviceIoControl(handle, IOCTL_USB_GET_NODE_CONNECTION_INFORMATION_EX_V2, &conn_info_v2, size, &conn_info_v2, size, &size, NULL)) {
-		uprintf("Could not get node connection information (V2) for device '%s': %s", device_id, WindowsErrorString());
-	} else if (conn_info_v2.Flags.DeviceIsOperatingAtSuperSpeedPlusOrHigher) {
-		props->speed = USB_SPEED_SUPER_PLUS;
-	} else if (conn_info_v2.Flags.DeviceIsOperatingAtSuperSpeedOrHigher) {
-		props->speed = USB_SPEED_SUPER;
-	} else if (conn_info_v2.Flags.DeviceIsSuperSpeedPlusCapableOrHigher) {
-		props->lower_speed = 2;
-	} else if (conn_info_v2.Flags.DeviceIsSuperSpeedCapableOrHigher) {
-		props->lower_speed = 1;
+	// V2 USB speed query is Win8+ (port)
+	if (WindowsVersion.Version >= WINDOWS_8) {
+		size = sizeof(conn_info_v2);
+		memset(&conn_info_v2, 0, size);
+		conn_info_v2.ConnectionIndex = (ULONG)props->port;
+		conn_info_v2.Length = size;
+		conn_info_v2.SupportedUsbProtocols.Usb300 = 1;
+		if (!DeviceIoControl(handle, IOCTL_USB_GET_NODE_CONNECTION_INFORMATION_EX_V2, &conn_info_v2, size, &conn_info_v2, size, &size, NULL)) {
+			uprintf("Could not get node connection information (V2) for device '%s': %s", device_id, WindowsErrorString());
+		} else if (conn_info_v2.Flags.DeviceIsOperatingAtSuperSpeedPlusOrHigher) {
+			props->speed = USB_SPEED_SUPER_PLUS;
+		} else if (conn_info_v2.Flags.DeviceIsOperatingAtSuperSpeedOrHigher) {
+			props->speed = USB_SPEED_SUPER;
+		} else if (conn_info_v2.Flags.DeviceIsSuperSpeedPlusCapableOrHigher) {
+			props->lower_speed = 2;
+		} else if (conn_info_v2.Flags.DeviceIsSuperSpeedCapableOrHigher) {
+			props->lower_speed = 1;
+		}
 	}
 
 out:
@@ -214,8 +237,6 @@ int CycleDevice(int index)
 	if ((index < 0) || (safe_strlen(rufus_drive[index].id) < 8))
 		return ERROR_INVALID_PARAMETER;
 
-	PF_INIT_OR_OUT(CM_Get_DevNode_Status, CfgMgr32);
-
 	// Need DIGCF_ALLCLASSES else disabled devices won't be listed.
 	dev_info = SetupDiGetClassDevsA(&GUID_DEVINTERFACE_DISK, NULL, NULL, DIGCF_PRESENT | DIGCF_ALLCLASSES);
 	if (dev_info == INVALID_HANDLE_VALUE) {
@@ -238,7 +259,7 @@ int CycleDevice(int index)
 		found = TRUE;
 
 		// Detect if the device is already disabled
-		if (pfCM_Get_DevNode_Status(&dev_status, &problem_code, dev_info_data.DevInst, 0) == CR_SUCCESS)
+		if (CM_Get_DevNode_Status(&dev_status, &problem_code, dev_info_data.DevInst, 0) == CR_SUCCESS)
 			disabled = (dev_status & DN_HAS_PROBLEM) && (problem_code == CM_PROB_DISABLED);
 
 		// Disable the device
@@ -287,7 +308,7 @@ int CycleDevice(int index)
 		// successful, but leave the device in an actual disabled state... So we can end up
 		// with zombie devices, that are effectively disabled, but that Windows still sees
 		// as enabled... So we need to detect this.
-		if (pfCM_Get_DevNode_Status(&dev_status, &problem_code, dev_info_data.DevInst, 0) == CR_SUCCESS) {
+		if (CM_Get_DevNode_Status(&dev_status, &problem_code, dev_info_data.DevInst, 0) == CR_SUCCESS) {
 			disabled = (dev_status & DN_HAS_PROBLEM) && (problem_code == CM_PROB_DISABLED);
 			if (disabled)
 				ret = ERROR_DEVICE_REINITIALIZATION_NEEDED;
@@ -298,7 +319,6 @@ int CycleDevice(int index)
 	SetupDiDestroyDeviceInfoList(dev_info);
 	if (!found)
 		uprintf("Could not find a device to cycle!");
-out:
 	return ret;
 }
 
@@ -518,14 +538,6 @@ BOOL GetDevices(DWORD devnum)
 	uint64_t drive_size = 0;
 	usb_device_props props;
 
-	PF_INIT_OR_OUT(CM_Get_Child, CfgMgr32);
-	PF_INIT_OR_OUT(CM_Get_Parent, CfgMgr32);
-	PF_INIT_OR_OUT(CM_Get_Sibling, CfgMgr32);
-	PF_INIT_OR_OUT(CM_Get_Device_IDA, CfgMgr32);
-	PF_INIT_OR_OUT(CM_Get_Device_ID_ListA, CfgMgr32);
-	PF_INIT_OR_OUT(CM_Get_Device_ID_List_SizeA, CfgMgr32);
-	PF_INIT_OR_OUT(CM_Locate_DevNodeA, CfgMgr32);
-
 	IGNORE_RETVAL(ComboBox_ResetContent(hDeviceList));
 	ClearDrives();
 	StrArrayCreate(&dev_if_path, 128);
@@ -555,19 +567,19 @@ BOOL GetDevices(DWORD devnum)
 					if (SetupDiGetDeviceInterfaceDetailA(dev_info, &devint_data, devint_detail_data, size, &size, NULL)) {
 
 						// Find the Device IDs for all the children of this hub
-						if (pfCM_Get_Child(&device_inst, dev_info_data.DevInst, 0) == CR_SUCCESS) {
+						if (CM_Get_Child(&device_inst, dev_info_data.DevInst, 0) == CR_SUCCESS) {
 							device_id[0] = 0;
 							s = StrArrayAdd(&dev_if_path, devint_detail_data->DevicePath, TRUE);
 							uuprintf("  Hub[%d] = '%s'", s, devint_detail_data->DevicePath);
-							if ((s>= 0) && (pfCM_Get_Device_IDA(device_inst, device_id, MAX_PATH, 0) == CR_SUCCESS)) {
+							if ((s>= 0) && (CM_Get_Device_IDA(device_inst, device_id, MAX_PATH, 0) == CR_SUCCESS)) {
 								ToUpper(device_id);
 								if ((k = htab_hash(device_id, &htab_devid)) != 0) {
 									htab_devid.table[k].data = (void*)(uintptr_t)s;
 								}
 								uuprintf("  Found ID[%03d]: %s", k, device_id);
-								while (pfCM_Get_Sibling(&device_inst, device_inst, 0) == CR_SUCCESS) {
+								while (CM_Get_Sibling(&device_inst, device_inst, 0) == CR_SUCCESS) {
 									device_id[0] = 0;
-									if (pfCM_Get_Device_IDA(device_inst, device_id, MAX_PATH, 0) == CR_SUCCESS) {
+									if (CM_Get_Device_IDA(device_inst, device_id, MAX_PATH, 0) == CR_SUCCESS) {
 										ToUpper(device_id);
 										if ((k = htab_hash(device_id, &htab_devid)) != 0) {
 											htab_devid.table[k].data = (void*)(uintptr_t)s;
@@ -588,14 +600,17 @@ BOOL GetDevices(DWORD devnum)
 
 	// Build a single list of Device IDs from all the storage enumerators we know of
 	full_list_size = 0;
-	ulFlags = CM_GETIDLIST_FILTER_SERVICE | CM_GETIDLIST_FILTER_PRESENT;
+	ulFlags = CM_GETIDLIST_FILTER_SERVICE;
+	// Omit the "PRESENT" filter from NT5 storage device enumeration (port)
+	if (WindowsVersion.Version > WINDOWS_XP)
+		ulFlags |= CM_GETIDLIST_FILTER_PRESENT;
 	for (s=0; s<ARRAYSIZE(usbstor_name); s++) {
 		// Get a list of device IDs for all USB storage devices
 		// This will be used to find if a device is UASP
 		// Also compute the uasp_start index
 		if (strcmp(usbstor_name[s], "UASPSTOR") == 0)
 			uasp_start = s;
-		if (pfCM_Get_Device_ID_List_SizeA(&list_size[s], usbstor_name[s], ulFlags) != CR_SUCCESS)
+		if (CM_Get_Device_ID_List_SizeA(&list_size[s], usbstor_name[s], ulFlags) != CR_SUCCESS)
 			list_size[s] = 0;
 		if (list_size[s] != 0)
 			full_list_size += list_size[s]-1;	// remove extra NUL terminator
@@ -630,7 +645,7 @@ BOOL GetDevices(DWORD devnum)
 		for (s = 0, i = 0; s < ARRAYSIZE(usbstor_name); s++) {
 			list_start[s] = i;
 			if (list_size[s] > 1) {
-				if (pfCM_Get_Device_ID_ListA(usbstor_name[s], &devid_list[i], list_size[s], ulFlags) != CR_SUCCESS)
+				if (CM_Get_Device_ID_ListA(usbstor_name[s], &devid_list[i], list_size[s], ulFlags) != CR_SUCCESS)
 					continue;
 				if (usb_debug) {
 					uprintf("Processing IDs belonging to '%s':", usbstor_name[s]);
@@ -737,17 +752,17 @@ BOOL GetDevices(DWORD devnum)
 			// a lookup table, but there shouldn't be that many USB storage devices connected...
 			// NB: Each of these Device IDs should have a child, from which we get the Device Instance match.
 			for (device_id = devid_list; *device_id != 0; device_id += strlen(device_id) + 1) {
-				if (pfCM_Locate_DevNodeA(&parent_inst, device_id, 0) != CR_SUCCESS) {
+				if (CM_Locate_DevNodeA(&parent_inst, device_id, 0) != CR_SUCCESS) {
 					uuprintf("Could not locate device node for '%s'", device_id);
 					continue;
 				}
-				if (pfCM_Get_Child(&device_inst, parent_inst, 0) != CR_SUCCESS) {
+				if (CM_Get_Child(&device_inst, parent_inst, 0) != CR_SUCCESS) {
 					uuprintf("Could not get children of '%s'", device_id);
 					continue;
 				}
 				if (device_inst != dev_info_data.DevInst) {
 					// Try the siblings
-					while (pfCM_Get_Sibling(&device_inst, device_inst, 0) == CR_SUCCESS) {
+					while (CM_Get_Sibling(&device_inst, device_inst, 0) == CR_SUCCESS) {
 						if (device_inst == dev_info_data.DevInst) {
 							uuprintf("NOTE: Matched instance from sibling for '%s'", device_id);
 							break;
@@ -788,8 +803,8 @@ BOOL GetDevices(DWORD devnum)
 				// for UASP devices in ASUS "Turbo Mode" or "Apple Mobile Device USB Driver" for iPods)
 				// so try to see if we can match the grandparent.
 				if ( ((uintptr_t)htab_devid.table[j].data == 0)
-					&& (pfCM_Get_Parent(&grandparent_inst, parent_inst, 0) == CR_SUCCESS)
-					&& (pfCM_Get_Device_IDA(grandparent_inst, str, MAX_PATH, 0) == CR_SUCCESS) ) {
+					&& (CM_Get_Parent(&grandparent_inst, parent_inst, 0) == CR_SUCCESS)
+					&& (CM_Get_Device_IDA(grandparent_inst, str, MAX_PATH, 0) == CR_SUCCESS) ) {
 					device_id = str;
 					method_str = "[GP]";
 					ToUpper(device_id);
@@ -812,6 +827,11 @@ BOOL GetDevices(DWORD devnum)
 				break;
 			}
 		}
+		// Fallback to disk devnode ancestry for NT 5 (port)
+		if ((WindowsVersion.Version <= WINDOWS_XP) && props.is_USB &&
+			(props.vid == 0) && (props.pid == 0) &&
+			GetXpUsbVidPid(dev_info_data.DevInst, &props.vid, &props.pid))
+			method_str = "[XP ID]";
 		// Windows has the bad habit of appending "SCSI Disk Device" to the description
 		// of UAS devices, which of course screws up detection of device that actually
 		// describe themselves as SCSI-like disks, so replace that with "UAS Device".
@@ -906,8 +926,12 @@ BOOL GetDevices(DWORD devnum)
 				continue;
 			}
 
-			hDrive = CreateFileWithTimeout(devint_detail_data->DevicePath, GENERIC_READ|GENERIC_WRITE,
-				FILE_SHARE_READ|FILE_SHARE_WRITE, NULL, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, NULL, 3000);
+			// Avoid timeout on NT5 (port)
+			hDrive = (WindowsVersion.Version <= WINDOWS_XP) ?
+				CreateFileA(devint_detail_data->DevicePath, GENERIC_READ | GENERIC_WRITE,
+					FILE_SHARE_READ | FILE_SHARE_WRITE, NULL, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, NULL) :
+				CreateFileWithTimeout(devint_detail_data->DevicePath, GENERIC_READ | GENERIC_WRITE,
+					FILE_SHARE_READ | FILE_SHARE_WRITE, NULL, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, NULL, 3000);
 			if(hDrive == INVALID_HANDLE_VALUE) {
 				uprintf("Could not open '%s': %s", devint_detail_data->DevicePath, WindowsErrorString());
 				continue;

@@ -93,6 +93,12 @@
     <ClCompile Include="..\src\wue.c">
       <Filter>Source Files</Filter>
     </ClCompile>
+    <ClCompile Include="..\src\winxp.c">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="..\src\win2k.c">
+      <Filter>Source Files</Filter>
+    </ClCompile>
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="..\src\rufus.h">
@@ -194,8 +200,18 @@
     <ClInclude Include="..\src\efi.h">
       <Filter>Header Files</Filter>
     </ClInclude>
+    <ClInclude Include="..\src\winxp.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="..\src\win2k.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
+    <MASM Include="..\src\win2k_imports.asm">
+      <Filter>Source Files</Filter>
+    </MASM>
+    <None Include="patch_pe_subsystem.ps1" />
     <None Include="..\res\rufus.ico">
       <Filter>Resource Files</Filter>
     </None>

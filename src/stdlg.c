@@ -34,6 +34,7 @@
 #include <assert.h>
 
 #include "rufus.h"
+#include "winxp.h"
 #include "missing.h"
 #include "resource.h"
 #include "msapi_utf8.h"
@@ -46,12 +47,12 @@
 
 /* Globals */
 extern BOOL is_x86_64, appstore_version;
-extern char unattend_username[MAX_USERNAME_LENGTH], *sbat_level_txt;
+extern char unattend_username[MAX_USERNAME_LENGTH], * sbat_level_txt, * sb_active_txt, * sb_revoked_txt;
 extern HICON hSmallIcon, hBigIcon;
 static HICON hMessageIcon = (HICON)INVALID_HANDLE_VALUE;
 static char* szMessageText = NULL;
 static char* szMessageTitle = NULL;
-static char **szDialogItem;
+static char** szDialogItem;
 static int nDialogItems;
 static HWND hUpdatesDlg;
 static const SETTEXTEX friggin_microsoft_unicode_amateurs = { ST_DEFAULT, CP_UTF8 };
@@ -91,27 +92,154 @@ void SetDialogFocus(HWND hDlg, HWND hCtrl)
  * *EACH* thread you invoke FileDialog from, as GetDisplayName() will
  * return error 0x8001010E otherwise.
  */
+
+// Comctl32 fallback for XP, seems to be working on W2k
+static char* FileDialog_XP(BOOL save, char* path, const ext_t* ext, UINT* selected_ext)
+{
+	OPENFILENAMEW ofn = { 0 };
+	wchar_t selected_name[MAX_PATH] = { 0 };
+	wchar_t def_ext[8] = { 0 };
+	wchar_t *wpath = NULL, *filter_buf = NULL, *wfilename = NULL;
+	wchar_t *wdesc = NULL, *wext = NULL, *wall_files = NULL;
+	const char *first_ext = NULL, *p = NULL;
+	char* filepath = NULL;
+	size_t filter_len = 0, offset = 0;
+	size_t i;
+	DWORD err;
+	BOOL r;
+
+	if (ext->filename != NULL && ext->filename[0] != '\0') {
+		wfilename = utf8_to_wchar(ext->filename);
+		if (wfilename != NULL) {
+			wcsncpy_s(selected_name, MAX_PATH, wfilename, _TRUNCATE);
+			safe_free(wfilename);
+		}
+	}
+
+	if (path != NULL && path[0] != '\0') {
+		wpath = utf8_to_wchar(path);
+	}
+
+	for (i = 0; i < ext->count; i++) {
+		wdesc = utf8_to_wchar(ext->description[i]);
+		wext = utf8_to_wchar(ext->extension[i]);
+		if ((wdesc != NULL) && (wext != NULL)) {
+			filter_len += wcslen(wdesc) + 1 + wcslen(wext) + 1;
+		}
+		safe_free(wdesc);
+		safe_free(wext);
+	}
+
+	wall_files = utf8_to_wchar(lmprintf(MSG_107));
+	if (wall_files != NULL) {
+		filter_len += wcslen(wall_files) + 1 + wcslen(L"*.*") + 1;
+	}
+	filter_len += 1;
+
+	filter_buf = (wchar_t*)calloc(filter_len, sizeof(wchar_t));
+	if (filter_buf == NULL) {
+		safe_free(wpath);
+		safe_free(wall_files);
+		return NULL;
+	}
+
+	for (i = 0; i < ext->count; i++) {
+		wdesc = utf8_to_wchar(ext->description[i]);
+		wext = utf8_to_wchar(ext->extension[i]);
+		if ((wdesc != NULL) && (wext != NULL)) {
+			swprintf_s(&filter_buf[offset], filter_len - offset, L"%s", wdesc);
+			offset += wcslen(wdesc) + 1;
+			swprintf_s(&filter_buf[offset], filter_len - offset, L"%s", wext);
+			offset += wcslen(wext) + 1;
+		}
+		safe_free(wdesc);
+		safe_free(wext);
+	}
+
+	if (wall_files != NULL) {
+		swprintf_s(&filter_buf[offset], filter_len - offset, L"%s", wall_files);
+		offset += wcslen(wall_files) + 1;
+		swprintf_s(&filter_buf[offset], filter_len - offset, L"*.*");
+		offset += wcslen(L"*.*") + 1;
+		safe_free(wall_files);
+	}
+
+	ofn.lStructSize = sizeof(ofn);
+	ofn.hwndOwner = hMainDialog;
+	ofn.lpstrFile = selected_name;
+	ofn.nMaxFile = MAX_PATH;
+	ofn.lpstrFilter = filter_buf;
+	ofn.nFilterIndex = (selected_ext == NULL) ? 1 : *selected_ext;
+	ofn.lpstrInitialDir = wpath;
+	ofn.Flags = OFN_PATHMUSTEXIST | (save ? OFN_OVERWRITEPROMPT : OFN_FILEMUSTEXIST);
+
+	if (save && ext->count > 0) {
+		i = ((selected_ext != NULL) && (*selected_ext > 0) && (*selected_ext <= ext->count)) ?
+			*selected_ext - 1 : 0;
+		first_ext = ext->extension[i];
+		if (first_ext != NULL) {
+			p = strchr(first_ext, '.');
+			if (p)
+				p++;
+			else
+				p = first_ext;
+			MultiByteToWideChar(CP_ACP, 0, p, -1, def_ext, 8);
+			ofn.lpstrDefExt = def_ext;
+		}
+	}
+
+	if (save) {
+		r = GetSaveFileNameW(&ofn);
+	}
+	else {
+		r = GetOpenFileNameW(&ofn);
+	}
+
+	if (r) {
+		filepath = wchar_to_utf8(selected_name);
+		if ((selected_ext != NULL) && (ofn.nFilterIndex > 0))
+			*selected_ext = ofn.nFilterIndex;
+	}
+	else {
+		err = CommDlgExtendedError();
+		if (err != 0)
+			uprintf("Classic file dialog failed with error 0x%X", err);
+	}
+
+	safe_free(filter_buf);
+	safe_free(wpath);
+	return filepath;
+}
+
 char* FileDialog(BOOL save, char* path, const ext_t* ext, UINT* selected_ext)
 {
-	size_t i;
-	char* filepath = NULL;
-	HRESULT hr = FALSE;
-	IFileDialog *pfd = NULL;
-	IShellItem *psiResult;
+	HRESULT hr;
+	IFileDialog* pfd = NULL;
+	IShellItem* psiResult = NULL;
+	IShellItem* si_path = NULL;
 	COMDLG_FILTERSPEC* filter_spec = NULL;
 	wchar_t *wpath = NULL, *wfilename = NULL, *wext = NULL;
-	IShellItem *si_path = NULL;	// Automatically freed
+	char* filepath = NULL;
+	size_t i = 0;
 
 	if ((ext == NULL) || (ext->count == 0) || (ext->extension == NULL) || (ext->description == NULL))
 		return NULL;
 
-	filter_spec = (COMDLG_FILTERSPEC*)calloc(ext->count + 1, sizeof(COMDLG_FILTERSPEC));
-	if (filter_spec == NULL)
-		return NULL;
-
 	dialog_showing++;
 
-	// Setup the file extension filter table
+	hr = CoCreateInstance(save ? &CLSID_FileSaveDialog : &CLSID_FileOpenDialog,
+		NULL, CLSCTX_INPROC_SERVER,
+		&IID_IFileDialog, (void**)&pfd);
+
+	if (FAILED(hr) || pfd == NULL) {
+		filepath = FileDialog_XP(save, path, ext, selected_ext);
+		goto out;
+	}
+
+	filter_spec = (COMDLG_FILTERSPEC*)calloc(ext->count + 1, sizeof(COMDLG_FILTERSPEC));
+	if (filter_spec == NULL)
+		goto cleanup;
+
 	for (i = 0; i < ext->count; i++) {
 		filter_spec[i].pszSpec = utf8_to_wchar(ext->extension[i]);
 		filter_spec[i].pszName = utf8_to_wchar(ext->description[i]);
@@ -119,19 +247,7 @@ char* FileDialog(BOOL save, char* path, const ext_t* ext, UINT* selected_ext)
 	filter_spec[i].pszSpec = L"*.*";
 	filter_spec[i].pszName = utf8_to_wchar(lmprintf(MSG_107));
 
-	hr = CoCreateInstance(save ? &CLSID_FileSaveDialog : &CLSID_FileOpenDialog, NULL, CLSCTX_INPROC,
-		&IID_IFileDialog, (LPVOID)&pfd);
-	if (SUCCEEDED(hr) && (pfd == NULL))	// Never trust Microsoft APIs to do the right thing
-		hr = RUFUS_ERROR(ERROR_API_UNAVAILABLE);
-
-	if (FAILED(hr)) {
-		SetLastError(hr);
-		uprintf("CoCreateInstance for FileOpenDialog failed: %s", WindowsErrorString());
-		goto out;
-	}
-
-	// Set the file extension filters
-	IFileDialog_SetFileTypes(pfd, (UINT)ext->count + 1, filter_spec);
+	IFileDialog_SetFileTypes(pfd, (UINT)(ext->count + 1), filter_spec);
 
 	if (path == NULL) {
 		// Try to use the "Downloads" folder as the initial default directory
@@ -139,19 +255,23 @@ char* FileDialog(BOOL save, char* path, const ext_t* ext, UINT* selected_ext)
 			{ 0x374de290, 0x123f, 0x4565, { 0x91, 0x64, 0x39, 0xc4, 0x92, 0x5e, 0x46, 0x7b } };
 		hr = SHGetKnownFolderPath(&download_dir_guid, 0, 0, &wpath);
 		if (SUCCEEDED(hr)) {
-			hr = SHCreateItemFromParsingName(wpath, NULL, &IID_IShellItem, (LPVOID)&si_path);
+			hr = SHCreateItemFromParsingName(wpath, NULL, &IID_IShellItem, (void**)&si_path);
 			if (SUCCEEDED(hr)) {
 				IFileDialog_SetDefaultFolder(pfd, si_path);
+				IShellItem_Release(si_path);
 			}
 			CoTaskMemFree(wpath);
 		}
 	} else {
 		wpath = utf8_to_wchar(path);
-		hr = SHCreateItemFromParsingName(wpath, NULL, &IID_IShellItem, (LPVOID)&si_path);
-		if (SUCCEEDED(hr)) {
-			IFileDialog_SetFolder(pfd, si_path);
+		if (wpath != NULL) {
+			hr = SHCreateItemFromParsingName(wpath, NULL, &IID_IShellItem, (void**)&si_path);
+			if (SUCCEEDED(hr)) {
+				IFileDialog_SetFolder(pfd, si_path);
+				IShellItem_Release(si_path);
+			}
+			safe_free(wpath);
 		}
-		safe_free(wpath);
 	}
 
 	// Set the default filename
@@ -165,51 +285,54 @@ char* FileDialog(BOOL save, char* path, const ext_t* ext, UINT* selected_ext)
 	wext = utf8_to_wchar((ext->extension == NULL) ? "" : ext->extension[0]);
 	if (wext != NULL)
 		IFileDialog_SetDefaultExtension(pfd, wext);
-	// Set the current selected extension
-	IFileDialog_SetFileTypeIndex(pfd, selected_ext == NULL ? 0 : *selected_ext);
 
-	// Display the dialog and (optionally) get the selected extension index
+	IFileDialog_SetFileTypeIndex(pfd, (selected_ext == NULL) ? 0 : *selected_ext);
+
 	hr = IFileDialog_Show(pfd, hMainDialog);
 	if (selected_ext != NULL)
 		IFileDialog_GetFileTypeIndex(pfd, selected_ext);
 
-	// Cleanup
-	safe_free(wext);
-	safe_free(wfilename);
-	for (i = 0; i < ext->count; i++) {
-		safe_free(filter_spec[i].pszSpec);
-		safe_free(filter_spec[i].pszName);
-	}
-	safe_free(filter_spec[i].pszName);
-	safe_free(filter_spec);
-
 	if (SUCCEEDED(hr)) {
-		// Obtain the result of the user's interaction with the dialog.
 		hr = IFileDialog_GetResult(pfd, &psiResult);
 		if (SUCCEEDED(hr)) {
 			hr = IShellItem_GetDisplayName(psiResult, SIGDN_FILESYSPATH, &wpath);
 			if (SUCCEEDED(hr)) {
 				filepath = wchar_to_utf8(wpath);
 				CoTaskMemFree(wpath);
-			} else {
+			}
+			else {
 				SetLastError(hr);
-				uprintf("Unable to access file path: %s", WindowsErrorString());
+				uprintf("Unable to access selected path: %s", WindowsErrorString());
 			}
 			IShellItem_Release(psiResult);
 		}
-	} else if (HRESULT_CODE(hr) != ERROR_CANCELLED) {
-		// If it's not a user cancel, assume the dialog didn't show and fallback
+	}
+	else if ((hr & 0xFFFF) != ERROR_CANCELLED) {
 		SetLastError(hr);
-		uprintf("Could not show FileOpenDialog: %s", WindowsErrorString());
+		uprintf("Could not show IFileDialog: %s", WindowsErrorString());
+	}
+
+cleanup:
+	safe_free(wext);
+	safe_free(wfilename);
+	if (filter_spec != NULL) {
+		// Don't free L"*.*". Just don't. 
+		for (i = 0; i < ext->count; i++) {
+			safe_free(filter_spec[i].pszSpec);
+			safe_free(filter_spec[i].pszName);
+		}
+		safe_free(filter_spec[ext->count].pszName);
+		safe_free(filter_spec);
+	}
+	if (pfd != NULL) {
+		IFileDialog_Release(pfd);
 	}
 
 out:
-	safe_free(filter_spec);
-	if (pfd != NULL)
-		IFileDialog_Release(pfd);
 	dialog_showing--;
 	return filepath;
 }
+
 
 /*
  * Create the application status bar
@@ -388,10 +511,17 @@ INT_PTR CALLBACK AboutCallback(HWND hDlg, UINT message, WPARAM wParam, LPARAM lP
 		SetWindowPos(hCtrl, NULL, rc.left, rc.top - dy,
 			max(rc.right - rc.left, GetTextSize(hCtrl, NULL).cx + cbw), bh, SWP_NOZORDER);
 		ResizeButtonHeight(hDlg, IDOK);
-		static_sprintf(about_blurb, about_blurb_format, lmprintf(MSG_174|MSG_RTF),
-			lmprintf(MSG_175|MSG_RTF, rufus_version[0], rufus_version[1], rufus_version[2]),
-			"Copyright © 2011-2025 Pete Batard",
-			lmprintf(MSG_176|MSG_RTF), lmprintf(MSG_177|MSG_RTF), lmprintf(MSG_178|MSG_RTF));
+		static_sprintf(
+			about_blurb,
+			about_blurb_format,
+			"The Reliable USB Formatting Utility (For Windows NT)",
+			APPLICATION_NAME " (" UPDATE_LEVEL ")",
+			"Rufus-NT is not affiliated with or endorsed by the Rufus project",
+			"The original Rufus project can be found here",
+			"Copyright © 2011 - 2026 Pete Batard",
+			lmprintf(MSG_176 | MSG_RTF),
+			lmprintf(MSG_178 | MSG_RTF)
+		);
 		for (i = 0; i < ARRAYSIZE(hEdit); i++) {
 			hEdit[i] = GetDlgItem(hDlg, edit_id[i]);
 			SendMessage(hEdit[i], EM_AUTOURLDETECT, 1, 0);
@@ -415,20 +545,20 @@ INT_PTR CALLBACK AboutCallback(HWND hDlg, UINT message, WPARAM wParam, LPARAM lP
 				resized_already = TRUE;
 				GetWindowRect(GetDlgItem(hDlg, edit_id[0]), &rc);
 				dy = rc.bottom - rc.top;
-				rsz = (REQRESIZE *)lParam;
+				rsz = (REQRESIZE*)lParam;
 				dy -= rsz->rc.bottom - rsz->rc.top;
 				ResizeMoveCtrl(hDlg, GetDlgItem(hDlg, edit_id[0]), 0, 0, 0, -dy, 1.0f);
 				ResizeMoveCtrl(hDlg, GetDlgItem(hDlg, edit_id[1]), 0, -dy, 0, dy, 1.0f);
 			}
 			break;
 		case EN_LINK:
-			enl = (ENLINK*) lParam;
+			enl = (ENLINK*)lParam;
 			if (enl->msg == WM_LBUTTONUP) {
 				tr.lpstrText = wUrl;
 				tr.chrg.cpMin = enl->chrg.cpMin;
 				tr.chrg.cpMax = enl->chrg.cpMax;
 				SendMessageW(enl->nmhdr.hwndFrom, EM_GETTEXTRANGE, 0, (LPARAM)&tr);
-				wUrl[ARRAYSIZE(wUrl)-1] = 0;
+				wUrl[ARRAYSIZE(wUrl) - 1] = 0;
 				ShellExecuteW(hDlg, L"open", wUrl, NULL, NULL, SW_SHOWNORMAL);
 			}
 			break;
@@ -701,9 +831,23 @@ static INT_PTR CALLBACK CustomSelectionCallback(HWND hDlg, UINT message, WPARAM 
 			Button_SetStyle(GetDlgItem(hDlg, IDC_SELECTION_CHOICE1 + i), selection_dialog_style, TRUE);
 		// Get the system message box font. See http://stackoverflow.com/a/6057761
 		if (hDlgFont == NULL) {
-			ncm.cbSize = sizeof(ncm);
-			SystemParametersInfo(SPI_GETNONCLIENTMETRICS, ncm.cbSize, &ncm, 0);
-			hDlgFont = CreateFontIndirect(&ncm.lfMessageFont);
+			if (WindowsVersion.Version < WINDOWS_VISTA) {
+				// NT5 NONCLIENTMETRICS (port)
+				ncm.cbSize = sizeof(ncm);
+#if defined(_MSC_VER) && (_MSC_VER >= 1500) && (_WIN32_WINNT >= _WIN32_WINNT_VISTA)
+				ncm.cbSize -= sizeof(ncm.iPaddedBorderWidth);
+#endif
+				if (SystemParametersInfo(SPI_GETNONCLIENTMETRICS, ncm.cbSize, &ncm, 0))
+					hDlgFont = CreateFontIndirect(&ncm.lfMessageFont);
+				if (hDlgFont == NULL) {
+					// Fallback to system font (port)
+					hDlgFont = (HFONT)GetStockObject(DEFAULT_GUI_FONT);
+				}
+			} else {
+				ncm.cbSize = sizeof(ncm);
+				SystemParametersInfo(SPI_GETNONCLIENTMETRICS, ncm.cbSize, &ncm, 0);
+				hDlgFont = CreateFontIndirect(&ncm.lfMessageFont);
+			}
 		}
 		// Set the dialog to use the system message box font
 		SendMessage(hDlg, WM_SETFONT, (WPARAM)hDlgFont, MAKELPARAM(TRUE, 0));
@@ -814,7 +958,11 @@ static INT_PTR CALLBACK CustomSelectionCallback(HWND hDlg, UINT message, WPARAM 
 		}
 		return (INT_PTR)FALSE;
 	case WM_NCDESTROY:
-		safe_delete_object(hDlgFont);
+		if ((WindowsVersion.Version < WINDOWS_VISTA) && (hDlgFont == (HFONT)GetStockObject(DEFAULT_GUI_FONT))) {
+			hDlgFont = NULL;
+		} else {
+			safe_delete_object(hDlgFont);
+		}
 		break;
 	case WM_COMMAND:
 		switch (LOWORD(wParam)) {
@@ -1283,7 +1431,7 @@ INT_PTR CALLBACK UpdateCallback(HWND hDlg, UINT message, WPARAM wParam, LPARAM l
 	int i, dy;
 	RECT rect;
 	REQRESIZE* rsz;
-	HWND hPolicy;
+	HWND hPolicy, hWindowsToGoLabel;
 	static HWND hFrequency, hBeta;
 	int32_t freq;
 	char update_policy_text[4096];
@@ -1294,48 +1442,79 @@ INT_PTR CALLBACK UpdateCallback(HWND hDlg, UINT message, WPARAM wParam, LPARAM l
 		resized_already = FALSE;
 		hUpdatesDlg = hDlg;
 		apply_localization(IDD_UPDATE_POLICY, hDlg);
+		hFrequency = GetDlgItem(hDlg, IDC_UPDATE_FREQUENCY);
+		hBeta = GetDlgItem(hDlg, IDC_INCLUDE_BETAS);
+		// Reuse setting slots for GPT and WTG (port)
+		if (WindowsVersion.Version < WINDOWS_VISTA)
+			SetWindowTextU(GetDlgItem(hDlg, IDS_UPDATE_FREQUENCY_TXT), lmprintf(MSG_355));
+		if (WindowsVersion.Version < WINDOWS_8) {
+			hWindowsToGoLabel = GetDlgItem(hDlg, IDS_INCLUDE_BETAS_TXT);
+			SetWindowTextU(hWindowsToGoLabel, lmprintf(MSG_118));
+			// Fix left-allignment that I somehow fucked up
+			SetWindowLongPtr(hWindowsToGoLabel, GWL_STYLE,
+				(GetWindowLongPtr(hWindowsToGoLabel, GWL_STYLE) & ~SS_TYPEMASK) | SS_LEFT);
+			SetWindowPos(hWindowsToGoLabel, NULL, 0, 0, 0, 0,
+				SWP_NOMOVE | SWP_NOSIZE | SWP_NOZORDER | SWP_NOACTIVATE | SWP_FRAMECHANGED);
+		}
 		PositionControls(hDlg);
 		SetTitleBarIcon(hDlg);
 		CenterDialog(hDlg, NULL);
-		hFrequency = GetDlgItem(hDlg, IDC_UPDATE_FREQUENCY);
-		hBeta = GetDlgItem(hDlg, IDC_INCLUDE_BETAS);
-		IGNORE_RETVAL(ComboBox_SetItemData(hFrequency, ComboBox_AddStringU(hFrequency, lmprintf(MSG_013)), -1));
-		IGNORE_RETVAL(ComboBox_SetItemData(hFrequency, ComboBox_AddStringU(hFrequency, lmprintf(MSG_030, lmprintf(MSG_014))), 86400));
-		IGNORE_RETVAL(ComboBox_SetItemData(hFrequency, ComboBox_AddStringU(hFrequency, lmprintf(MSG_015)), 604800));
-		IGNORE_RETVAL(ComboBox_SetItemData(hFrequency, ComboBox_AddStringU(hFrequency, lmprintf(MSG_016)), 2629800));
 		freq = ReadSetting32(SETTING_UPDATE_INTERVAL);
-		EnableWindow(GetDlgItem(hDlg, IDC_CHECK_NOW), (freq != 0));
-		EnableWindow(hBeta, (freq >= 0) && is_x86_64);
-		switch(freq) {
-		case -1:
-			IGNORE_RETVAL(ComboBox_SetCurSel(hFrequency, 0));
-			break;
-		case 0:
-		case 86400:
-			IGNORE_RETVAL(ComboBox_SetCurSel(hFrequency, 1));
-			break;
-		case 604800:
-			IGNORE_RETVAL(ComboBox_SetCurSel(hFrequency, 2));
-			break;
-		case 2629800:
-			IGNORE_RETVAL(ComboBox_SetCurSel(hFrequency, 3));
-			break;
-		default:
-			IGNORE_RETVAL(ComboBox_SetItemData(hFrequency, ComboBox_AddStringU(hFrequency, lmprintf(MSG_017)), freq));
-			IGNORE_RETVAL(ComboBox_SetCurSel(hFrequency, 4));
-			break;
+		if (WindowsVersion.Version < WINDOWS_VISTA) {
+			IGNORE_RETVAL(ComboBox_AddStringU(hFrequency, lmprintf(MSG_008)));
+			IGNORE_RETVAL(ComboBox_AddStringU(hFrequency, lmprintf(MSG_009)));
+			IGNORE_RETVAL(ComboBox_SetCurSel(hFrequency,
+				ReadSettingBool(SETTING_EXPERIMENTAL_GPT) ? 0 : 1));
+			ShowWindow(GetDlgItem(hDlg, IDC_CHECK_NOW), SW_HIDE);
+		}
+		else {
+			IGNORE_RETVAL(ComboBox_SetItemData(hFrequency, ComboBox_AddStringU(hFrequency, lmprintf(MSG_013)), -1));
+			IGNORE_RETVAL(ComboBox_SetItemData(hFrequency, ComboBox_AddStringU(hFrequency, lmprintf(MSG_030, lmprintf(MSG_014))), 86400));
+			IGNORE_RETVAL(ComboBox_SetItemData(hFrequency, ComboBox_AddStringU(hFrequency, lmprintf(MSG_015)), 604800));
+			IGNORE_RETVAL(ComboBox_SetItemData(hFrequency, ComboBox_AddStringU(hFrequency, lmprintf(MSG_016)), 2629800));
+			EnableWindow(GetDlgItem(hDlg, IDC_CHECK_NOW), freq != 0);
+			switch (freq) {
+			case -1:
+				IGNORE_RETVAL(ComboBox_SetCurSel(hFrequency, 0));
+				break;
+			case 0:
+			case 86400:
+				IGNORE_RETVAL(ComboBox_SetCurSel(hFrequency, 1));
+				break;
+			case 604800:
+				IGNORE_RETVAL(ComboBox_SetCurSel(hFrequency, 2));
+				break;
+			case 2629800:
+				IGNORE_RETVAL(ComboBox_SetCurSel(hFrequency, 3));
+				break;
+			default:
+				IGNORE_RETVAL(ComboBox_SetItemData(hFrequency, ComboBox_AddStringU(hFrequency, lmprintf(MSG_017)), freq));
+				IGNORE_RETVAL(ComboBox_SetCurSel(hFrequency, 4));
+				break;
+			}
 		}
 		IGNORE_RETVAL(ComboBox_AddStringU(hBeta, lmprintf(MSG_008)));
 		IGNORE_RETVAL(ComboBox_AddStringU(hBeta, lmprintf(MSG_009)));
-		IGNORE_RETVAL(ComboBox_SetCurSel(hBeta, (ReadSettingBool(SETTING_INCLUDE_BETAS) && is_x86_64) ? 0 : 1));
+		if (WindowsVersion.Version < WINDOWS_8) {
+			enable_windows_to_go = (WindowsVersion.Version > WINDOWS_2000) &&
+				!ReadSettingBool(SETTING_DISABLE_WINDOWS_TO_GO);
+			IGNORE_RETVAL(ComboBox_SetCurSel(hBeta, enable_windows_to_go ? 0 : 1));
+			// Disable Windows To Go for W2k for now
+			EnableWindow(hBeta, WindowsVersion.Version > WINDOWS_2000);
+		}
+		else {
+			IGNORE_RETVAL(ComboBox_SetCurSel(hBeta,
+				(ReadSettingBool(SETTING_INCLUDE_BETAS) && is_x86_64) ? 0 : 1));
+			EnableWindow(hBeta, (freq >= 0) && is_x86_64);
+		}
 		hPolicy = GetDlgItem(hDlg, IDC_POLICY);
 		SendMessage(hPolicy, EM_AUTOURLDETECT, 1, 0);
-		static_sprintf(update_policy_text, update_policy, lmprintf(MSG_179|MSG_RTF),
-			lmprintf(MSG_180|MSG_RTF), lmprintf(MSG_181|MSG_RTF), lmprintf(MSG_182|MSG_RTF), lmprintf(MSG_183|MSG_RTF),
-			lmprintf(MSG_184|MSG_RTF), lmprintf(MSG_185|MSG_RTF), lmprintf(MSG_186|MSG_RTF));
+		static_sprintf(update_policy_text, update_policy, lmprintf(MSG_179 | MSG_RTF),
+			lmprintf(MSG_180 | MSG_RTF), lmprintf(MSG_181 | MSG_RTF), lmprintf(MSG_182 | MSG_RTF), lmprintf(MSG_183 | MSG_RTF),
+			lmprintf(MSG_184 | MSG_RTF), lmprintf(MSG_185 | MSG_RTF), lmprintf(MSG_186 | MSG_RTF));
 		SendMessageA(hPolicy, EM_SETTEXTEX, (WPARAM)&friggin_microsoft_unicode_amateurs, (LPARAM)update_policy_text);
 		SendMessage(hPolicy, EM_SETSEL, -1, -1);
-		SendMessage(hPolicy, EM_SETEVENTMASK, 0, ENM_LINK|ENM_REQUESTRESIZE);
+		SendMessage(hPolicy, EM_SETEVENTMASK, 0, ENM_LINK | ENM_REQUESTRESIZE);
 		SendMessageA(hPolicy, EM_SETBKGNDCOLOR, 0, (LPARAM)GetSysColor(COLOR_BTNFACE));
 		SendMessage(hPolicy, EM_REQUESTRESIZE, 0, 0);
 		break;
@@ -1353,6 +1532,7 @@ INT_PTR CALLBACK UpdateCallback(HWND hDlg, UINT message, WPARAM wParam, LPARAM l
 				ResizeMoveCtrl(hDlg, GetDlgItem(hDlg, update_settings_reposition_ids[i]), 0, -dy, 0, 0, 1.0f);
 		}
 		break;
+		// GPT and WTG options
 	case WM_COMMAND:
 		switch (LOWORD(wParam)) {
 		case IDCLOSE:
@@ -1362,19 +1542,35 @@ INT_PTR CALLBACK UpdateCallback(HWND hDlg, UINT message, WPARAM wParam, LPARAM l
 			hUpdatesDlg = NULL;
 			return (INT_PTR)TRUE;
 		case IDC_CHECK_NOW:
-			CheckForUpdates(TRUE);
+			if (WindowsVersion.Version >= WINDOWS_VISTA)
+				CheckForUpdates(TRUE);
 			return (INT_PTR)TRUE;
 		case IDC_UPDATE_FREQUENCY:
 			if (HIWORD(wParam) != CBN_SELCHANGE)
 				break;
+			if (WindowsVersion.Version < WINDOWS_VISTA) {
+				WriteSettingBool(SETTING_EXPERIMENTAL_GPT,
+					ComboBox_GetCurSel(hFrequency) == 0);
+				RefreshPartitionScheme();
+				return (INT_PTR)TRUE;
+			}
 			freq = (int32_t)ComboBox_GetCurItemData(hFrequency);
 			WriteSetting32(SETTING_UPDATE_INTERVAL, (DWORD)freq);
-			EnableWindow(hBeta, (freq >= 0) && is_x86_64);
+			EnableWindow(hBeta, (WindowsVersion.Version < WINDOWS_8) ? TRUE :
+				((freq >= 0) && is_x86_64));
 			return (INT_PTR)TRUE;
 		case IDC_INCLUDE_BETAS:
 			if (HIWORD(wParam) != CBN_SELCHANGE)
 				break;
-			WriteSettingBool(SETTING_INCLUDE_BETAS, ComboBox_GetCurSel(hBeta) == 0);
+			if (WindowsVersion.Version < WINDOWS_8) {
+				enable_windows_to_go = (WindowsVersion.Version > WINDOWS_2000) &&
+					(ComboBox_GetCurSel(hBeta) == 0);
+				WriteSettingBool(SETTING_DISABLE_WINDOWS_TO_GO, !enable_windows_to_go);
+				ToggleImageOptions();
+			}
+			else {
+				WriteSettingBool(SETTING_INCLUDE_BETAS, ComboBox_GetCurSel(hBeta) == 0);
+			}
 			return (INT_PTR)TRUE;
 		}
 		break;
@@ -1391,8 +1587,8 @@ static DWORD WINAPI CheckForFidoThread(LPVOID param)
 	static BOOL is_active = FALSE;
 	LONG_PTR style;
 	char* loc = NULL;
-	uint32_t i;
 	uint64_t len;
+	uint32_t i;
 	HWND hCtrl;
 
 	// Because a user may switch language before this thread has completed,
@@ -1404,16 +1600,38 @@ static DWORD WINAPI CheckForFidoThread(LPVOID param)
 	safe_free(fido_url);
 	safe_free(sbat_entries);
 	safe_free(sbat_level_txt);
+	safe_free(sb_active_certs);
+	safe_free(sb_active_txt);
+	safe_free(sb_revoked_certs);
+	safe_free(sb_revoked_txt);
 
 	// Get the latest sbat_level.txt data while we're poking the network for Fido.
 	len = DownloadToFileOrBuffer(RUFUS_URL "/sbat_level.txt", NULL, (BYTE**)&sbat_level_txt, NULL, FALSE);
-	if (len != 0 && len < 512) {
+	if (len != 0 && len < 1 * KB) {
 		sbat_entries = GetSbatEntries(sbat_level_txt);
-		if (sbat_entries != 0) {
+		if (sbat_entries != NULL) {
 			for (i = 0; sbat_entries[i].product != NULL; i++);
 			if (i > 0)
-				uprintf("Found %d additional UEFI revocation filters from remote SBAT", i);
+				uprintf("Found %u additional UEFI revocation filters from remote SBAT", (unsigned)i);
 		}
+	}
+
+	// Get the active Secure Boot certificate thumbprints
+	len = DownloadToFileOrBuffer(RUFUS_URL "/sb_active.txt", NULL, (BYTE**)&sb_active_txt, NULL, FALSE);
+	if (len != 0 && len < 1 * KB) {
+		sb_active_certs = GetThumbprintEntries(sb_active_txt);
+		if (sb_active_certs != NULL)
+			uprintf("Found %u active Secure Boot certificate entries from remote",
+				(unsigned)sb_active_certs->count);
+	}
+
+	// Get the revoked Secure Boot certificate thumbprints
+	len = DownloadToFileOrBuffer(RUFUS_URL "/sb_revoked.txt", NULL, (BYTE**)&sb_revoked_txt, NULL, FALSE);
+	if (len != 0 && len < 1 * KB) {
+		sb_revoked_certs = GetThumbprintEntries(sb_revoked_txt);
+		if (sb_revoked_certs != NULL)
+			uprintf("Found %u revoked Secure Boot certificate entries from remote",
+				(unsigned)sb_revoked_certs->count);
 	}
 
 	// Get the Fido URL from parsing a 'Fido.ver' on our server. This enables the use of different
@@ -1444,9 +1662,11 @@ out:
 	is_active = FALSE;
 	return 0;
 }
-
 void SetFidoCheck(void)
 {
+	// Disable FIDO checks on NT5 (port)
+	if (WindowsVersion.Version < WINDOWS_VISTA)
+		return;
 	// Detect if we can use Fido, which depends on:
 	// - Powershell being installed
 	// - Rufus running in AppStore mode or update check being enabled
@@ -1458,11 +1678,7 @@ void SetFidoCheck(void)
 		return;
 	}
 
-	if (!appstore_version && (ReadSetting32(SETTING_UPDATE_INTERVAL) <= 0)) {
-		ubprintf("Notice: The ISO download feature has been deactivated because "
-			"'Check for updates' is disabled in your settings.");
-		return;
-	}
+	// Check for Fido independently of update settings (port)
 
 	CreateThread(NULL, 0, CheckForFidoThread, NULL, 0, NULL);
 }
@@ -1470,12 +1686,18 @@ void SetFidoCheck(void)
 /*
  * Initial update check setup
  */
+
+/*
 BOOL SetUpdateCheck(void)
 {
 	BOOL enable_updates;
 	uint64_t commcheck = GetTickCount64();
 	char filename[MAX_PATH] = "", exename[] = APPLICATION_NAME ".exe";
 	size_t fn_len, exe_len;
+
+	// Disable update checks NT5 (port)
+	if (WindowsVersion.Version < WINDOWS_VISTA)
+		return FALSE;
 
 	// Test if we can read and write settings. If not, forget it.
 	WriteSetting64(SETTING_COMM_CHECK, commcheck);
@@ -1514,7 +1736,31 @@ BOOL SetUpdateCheck(void)
 	}
 	SetFidoCheck();
 	return TRUE;
+} */
+
+// Disable automatic updates (port)
+
+BOOL SetUpdateCheck(void)
+{
+	uint64_t commcheck = GetTickCount64();
+
+	// Networking remains unavailable on NT5. (port)
+	if (WindowsVersion.Version < WINDOWS_VISTA)
+		return FALSE;
+
+	// Test whether settings can be written and read.
+	WriteSetting64(SETTING_COMM_CHECK, commcheck);
+	if (ReadSetting64(SETTING_COMM_CHECK) != commcheck)
+		return FALSE;
+
+	// Disable automatic update checks by default while retaining manual checks. (port)
+	if (ReadSetting32(SETTING_UPDATE_INTERVAL) == 0)
+		WriteSetting32(SETTING_UPDATE_INTERVAL, -1);
+
+	SetFidoCheck();
+	return TRUE;
 }
+
 
 void CreateStaticFont(HDC hDC, HFONT* hFont, BOOL underlined)
 {
@@ -1744,11 +1990,16 @@ void SetTitleBarIcon(HWND hDlg)
 	}
 
 	// Create the title bar icon
+	// Fuck you too W2k (port)
 	if (hSmallIcon == NULL)
-		hSmallIcon = (HICON)LoadImage(hMainInstance, MAKEINTRESOURCE(IDI_ICON), IMAGE_ICON, s16, s16, 0);
+		hSmallIcon = (WindowsVersion.Version == WINDOWS_2000) ?
+			W2K_LoadIconResource(hMainInstance, IDI_ICON, s16, s16) :
+			(HICON)LoadImage(hMainInstance, MAKEINTRESOURCE(IDI_ICON), IMAGE_ICON, s16, s16, 0);
 	SendMessage(hDlg, WM_SETICON, ICON_SMALL, (LPARAM)hSmallIcon);
 	if (hBigIcon == NULL)
-		hBigIcon = (HICON)LoadImage(hMainInstance, MAKEINTRESOURCE(IDI_ICON), IMAGE_ICON, s32, s32, 0);
+		hBigIcon = (WindowsVersion.Version == WINDOWS_2000) ?
+			W2K_LoadIconResource(hMainInstance, IDI_ICON, s32, s32) :
+			(HICON)LoadImage(hMainInstance, MAKEINTRESOURCE(IDI_ICON), IMAGE_ICON, s32, s32, 0);
 	SendMessage(hDlg, WM_SETICON, ICON_BIG, (LPARAM)hBigIcon);
 }
 
@@ -1825,39 +2076,32 @@ LPCDLGTEMPLATE GetDialogTemplate(int Dialog_ID)
 	// 2. So that Thai displays properly on RTF controls as it won't work with regular
 	// 'Segoe UI'... but Cyrillic won't work with 'Segoe UI Symbol'
 
-	// If 'Segoe UI Symbol' is available, and we are using Thai, we're done here
-	if (IsFontAvailable("Segoe UI Symbol") && (selected_locale != NULL)
+	if ((WindowsVersion.Version != WINDOWS_2000) && IsFontAvailable("Segoe UI Symbol") && (selected_locale != NULL)
 		&& (safe_strcmp(selected_locale->txt[0], thai_id) == 0))
 		return rcTemplate;
 
-	// 'Segoe UI Symbol' cannot be used => Fall back to the best we have
 	wBuf = (WCHAR*)rcTemplate;
-	wBuf = &wBuf[14];	// Move to class name
-	// Skip class name and title
-	for (i = 0; i<2; i++) {
+	wBuf = &wBuf[14];
+	for (i = 0; i < 2; i++) {
 		if (*wBuf == 0xFFFF)
-			wBuf = &wBuf[2];	// Ordinal
+			wBuf = &wBuf[2];
 		else
-			wBuf = &wBuf[wcslen(wBuf) + 1]; // String
+			wBuf = &wBuf[wcslen(wBuf) + 1];
 	}
-	// NB: to change the font size to 9, you can use
+	// To change the font size to 9 use
 	// wBuf[0] = 0x0009;
 	wBuf = &wBuf[3];
-	// Make sure we are where we want to be and adjust the font
 	if (wcscmp(L"Segoe UI Symbol", wBuf) == 0) {
 		uintptr_t src, dst, start = (uintptr_t)rcTemplate;
-		// We can't simply zero the characters we don't want, as the size of the font
-		// string determines the next item lookup. So we must memmove the remaining of
-		// our buffer. Oh, and those items are DWORD aligned.
-		// 'Segoe UI Symbol' -> 'Segoe UI'
-		wBuf[8] = 0;
-		len = wcslen(wBuf);
-		wBuf[len + 1] = 0;
-		dst = (uintptr_t)&wBuf[len + 2];
-		dst &= ~3;
-		src = (uintptr_t)&wBuf[17];
-		src &= ~3;
+		// Use Tahoma on XP too, this should fix the wide-window issue
+		const WCHAR* fontName =
+			(WindowsVersion.Version <= WINDOWS_XP) ? L"Tahoma" : L"Segoe UI";
+		src = ((uintptr_t)&wBuf[wcslen(wBuf) + 1] + 3) & ~(uintptr_t)3;
+		len = wcslen(fontName);
+		dst = ((uintptr_t)&wBuf[len + 1] + 3) & ~(uintptr_t)3;
 		memmove((void*)dst, (void*)src, size - (src - start));
+		memcpy(wBuf, fontName, (len + 1) * sizeof(WCHAR));
+		memset(&wBuf[len + 1], 0, dst - (uintptr_t)&wBuf[len + 1]);
 	} else {
 		uprintf("Could not locate font for %s!", get_name_from_id(Dialog_ID));
 	}

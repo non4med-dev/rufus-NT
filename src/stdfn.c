@@ -30,6 +30,7 @@
 
 #include "re.h"
 #include "rufus.h"
+#include "winxp.h"
 #include "missing.h"
 #include "resource.h"
 #include "msapi_utf8.h"
@@ -409,6 +410,8 @@ void GetWindowsVersion(windows_version_t* windows_version)
 			ws = (vi.wProductType <= VER_NT_WORKSTATION);
 			windows_version->Version = vi.dwMajorVersion << 4 | vi.dwMinorVersion;
 			switch (windows_version->Version) {
+			case WINDOWS_2000: w = "2000";
+				break;
 			case WINDOWS_XP: w = "XP";
 				break;
 			case WINDOWS_2003: w = (ws ? "XP_64" : (!GetSystemMetrics(89) ? "Server 2003" : "Server 2003_R2"));
@@ -435,7 +438,8 @@ void GetWindowsVersion(windows_version_t* windows_version)
 			case WINDOWS_11: w = (ws ? "11" : "Server 2022");
 				break;
 			default:
-				if (windows_version->Version < WINDOWS_XP)
+				// Reject anything older than W2k (port)
+				if (windows_version->Version < WINDOWS_2000)
 					windows_version->Version = WINDOWS_UNDEFINED;
 				else
 					w = "12 or later";
@@ -1008,7 +1012,7 @@ DWORD WINAPI SetLGPThread(LPVOID param)
 	}
 
 	if ((!p->bRestore) || (*(p->bExistingKey))) {
-		val = (p->bRestore)?original_val:p->dwValue;
+		val = (p->bRestore) ? original_val : p->dwValue;
 		r = RegSetValueExA(policy_key, p->szPolicy, 0, REG_DWORD, (BYTE*)&val, sizeof(val));
 	} else {
 		r = RegDeleteValueA(policy_key, p->szPolicy);
@@ -1020,13 +1024,13 @@ DWORD WINAPI SetLGPThread(LPVOID param)
 	policy_key = NULL;
 
 	// Apply policy
-	hr = pLGPO->lpVtbl->Save(pLGPO, TRUE, (p->bRestore)?FALSE:TRUE, &ext_guid, &snap_guid);
+	hr = pLGPO->lpVtbl->Save(pLGPO, TRUE, (p->bRestore) ? FALSE : TRUE, &ext_guid, &snap_guid);
 	if (hr != S_OK) {
 		ubprintf("SetLGP: Unable to apply %s policy - error %lx", p->szPolicy, hr);
 		goto error;
 	} else {
 		if ((!p->bRestore) || (*(p->bExistingKey))) {
-			ubprintf("SetLGP: Successfully %s %s policy to 0x%08lX", (p->bRestore)?"restored":"set", p->szPolicy, val);
+			ubprintf("SetLGP: Successfully %s %s policy to 0x%08lX", (p->bRestore) ? "restored" : "set", p->szPolicy, val);
 		} else {
 			ubprintf("SetLGP: Successfully removed %s policy key", p->szPolicy);
 		}

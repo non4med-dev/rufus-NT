@@ -1921,6 +1921,26 @@ msgstr "Archív fájlok kibontása: %s"
 msgid "Use Rufus MBR"
 msgstr "Rufus MBR használata"
 
+#. • MSG_355
+msgid "Enable GPT"
+msgstr "GPT engedélyezése"
+
+#. • MSG_356
+msgid "Windows XP cannot access drives that use the GPT partition scheme.\n\nRufus can still create this drive for use on another computer. Continue only if you are creating EFI-bootable media and the target computer supports UEFI.\n\nDo you want to continue?"
+msgstr "A Windows XP nem tud hozzáférni a GPT partíciós sémát használó meghajtókhoz.\n\nA Rufus ettől függetlenül létre tudja hozni ezt a meghajtót egy másik számítógépen való használatra. Csak akkor folytassa, ha EFI rendszerindító adathordozót készít, és a célszámítógép támogatja az UEFI-t.\n\nFolytatja?"
+
+#. • MSG_357
+msgid "Rufus"
+msgstr "Rufus"
+
+#. • MSG_358
+msgid "Choose how Rufus should write this ISOHybrid image.\n\nYes - ISO mode (recommended)\nNo - EFI System Partition (ESP) mode"
+msgstr "Válassza ki, hogyan írja ki a Rufus ezt az ISOHybrid-lemezképet.\n\nIgen - ISO mód (ajánlott)\nNem - EFI rendszerpartíció (ESP) mód"
+
+#. • MSG_359
+msgid "Choose how Rufus should write this EFI image.\n\nYes - ISO mode (recommended)\nNo - EFI System Partition (ESP) mode"
+msgstr "Válassza ki, hogyan írja ki a Rufus ezt az EFI-lemezképet.\n\nIgen - ISO mód (ajánlott)\nNem - EFI rendszerpartíció (ESP) mód"
+
 #. • MSG_900
 #.
 #. The following messages are for the Windows Store listing only and are not used by the application

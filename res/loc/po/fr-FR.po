@@ -1944,6 +1944,26 @@ msgstr ""
 "\n"
 "Note : Ces fichiers seront téléchargés dans le répertoire de l'application et réutilisés automatiquement si ils sont présent."
 
+#. • MSG_355
+msgid "Enable GPT"
+msgstr "Activer GPT"
+
+#. • MSG_356
+msgid "Windows XP cannot access drives that use the GPT partition scheme.\n\nRufus can still create this drive for use on another computer. Continue only if you are creating EFI-bootable media and the target computer supports UEFI.\n\nDo you want to continue?"
+msgstr "Windows XP ne peut pas accéder aux lecteurs utilisant le schéma de partition GPT.\n\nRufus peut néanmoins créer ce lecteur afin de l’utiliser sur un autre ordinateur. Continuez uniquement si vous créez un support de démarrage EFI et si l’ordinateur cible prend en charge l’UEFI.\n\nVoulez-vous continuer ?"
+
+#. • MSG_357
+msgid "Rufus"
+msgstr "Rufus"
+
+#. • MSG_358
+msgid "Choose how Rufus should write this ISOHybrid image.\n\nYes - ISO mode (recommended)\nNo - EFI System Partition (ESP) mode"
+msgstr "Choisissez la manière dont Rufus doit écrire cette image ISOHybrid.\n\nOui - Mode ISO (recommandé)\nNon - Mode partition système EFI (ESP)"
+
+#. • MSG_359
+msgid "Choose how Rufus should write this EFI image.\n\nYes - ISO mode (recommended)\nNo - EFI System Partition (ESP) mode"
+msgstr "Choisissez la manière dont Rufus doit écrire cette image EFI.\n\nOui - Mode ISO (recommandé)\nNon - Mode partition système EFI (ESP)"
+
 #. • MSG_900
 #.
 #. The following messages are for the Windows Store listing only and are not used by the application

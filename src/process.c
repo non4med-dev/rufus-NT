@@ -31,6 +31,7 @@
 #include <assert.h>
 
 #include "rufus.h"
+#include "winxp.h"
 #include "drive.h"
 #include "process.h"
 #include "missing.h"
@@ -56,6 +57,11 @@ PF_TYPE_DECL(NTAPI, NTSTATUS, NtClose, (HANDLE));
 static PVOID PhHeapHandle = NULL;
 static HANDLE hSearchProcessThread = NULL;
 static BlockingProcess blocking_process = { 0 };
+
+// Vista support (port)
+typedef DWORD(WINAPI* pfnGetProcessImageFileNameW)(HANDLE, LPWSTR, DWORD);
+static pfnGetProcessImageFileNameW pfGetProcessImageFileNameW = NULL;
+static BOOL process_image_api_checked = FALSE;
 
 extern StrArray BlockingProcessList;
 
@@ -206,6 +212,58 @@ NTSTATUS PhEnumHandlesEx(PSYSTEM_HANDLE_INFORMATION_EX *Handles)
 	buffer = PhAllocate(bufferSize);
 	if (buffer == NULL)
 		return STATUS_NO_MEMORY;
+
+	// Convert the legacy NT5 handle table to the representation used by the scanner (port)
+	if (WindowsVersion.Version <= WINDOWS_XP) {
+		PSYSTEM_HANDLE_INFORMATION_XP xpHandles;
+		PSYSTEM_HANDLE_INFORMATION_EX convertedHandles;
+		SIZE_T convertedSize;
+		ULONG i;
+
+		while ((status = pfNtQuerySystemInformation(SystemHandleInformation,
+			buffer, bufferSize, NULL)) == STATUS_INFO_LENGTH_MISMATCH) {
+			PhFree(buffer);
+			bufferSize *= 2;
+			if (bufferSize > PH_LARGE_BUFFER_SIZE)
+				return STATUS_INSUFFICIENT_RESOURCES;
+			buffer = PhAllocate(bufferSize);
+			if (buffer == NULL)
+				return STATUS_NO_MEMORY;
+		}
+		if (!NT_SUCCESS(status)) {
+			PhFree(buffer);
+			return status;
+		}
+
+		xpHandles = (PSYSTEM_HANDLE_INFORMATION_XP)buffer;
+		if (xpHandles->NumberOfHandles >
+			(PH_LARGE_BUFFER_SIZE - FIELD_OFFSET(SYSTEM_HANDLE_INFORMATION_EX, Handles)) /
+			sizeof(SYSTEM_HANDLE_TABLE_ENTRY_INFO_EX)) {
+			PhFree(buffer);
+			return STATUS_INSUFFICIENT_RESOURCES;
+		}
+		convertedSize = FIELD_OFFSET(SYSTEM_HANDLE_INFORMATION_EX, Handles) +
+			xpHandles->NumberOfHandles * sizeof(SYSTEM_HANDLE_TABLE_ENTRY_INFO_EX);
+		convertedHandles = (PSYSTEM_HANDLE_INFORMATION_EX)PhAllocate(convertedSize);
+		if (convertedHandles == NULL) {
+			PhFree(buffer);
+			return STATUS_NO_MEMORY;
+		}
+		memset(convertedHandles, 0, convertedSize);
+		convertedHandles->NumberOfHandles = xpHandles->NumberOfHandles;
+		for (i = 0; i < xpHandles->NumberOfHandles; i++) {
+			convertedHandles->Handles[i].Object = xpHandles->Handles[i].Object;
+			convertedHandles->Handles[i].UniqueProcessId = xpHandles->Handles[i].UniqueProcessId;
+			convertedHandles->Handles[i].HandleValue = xpHandles->Handles[i].HandleValue;
+			convertedHandles->Handles[i].GrantedAccess = xpHandles->Handles[i].GrantedAccess;
+			convertedHandles->Handles[i].CreatorBackTraceIndex = xpHandles->Handles[i].CreatorBackTraceIndex;
+			convertedHandles->Handles[i].ObjectTypeIndex = xpHandles->Handles[i].ObjectTypeIndex;
+			convertedHandles->Handles[i].HandleAttributes = xpHandles->Handles[i].HandleAttributes;
+		}
+		PhFree(buffer);
+		*Handles = convertedHandles;
+		return STATUS_SUCCESS;
+	}
 
 	while ((status = pfNtQuerySystemInformation(SystemExtendedHandleInformation,
 		buffer, bufferSize, NULL)) == STATUS_INFO_LENGTH_MISMATCH) {
@@ -633,6 +691,9 @@ static DWORD WINAPI SearchProcessThread(LPVOID param)
 			if (pid[0] != pid[1]) {
 				status = PhOpenProcess(&processHandle, PROCESS_DUP_HANDLE | PROCESS_QUERY_INFORMATION | PROCESS_VM_READ,
 					(HANDLE)handleInfo->UniqueProcessId);
+				if (!NT_SUCCESS(status) && (WindowsVersion.Version <= WINDOWS_XP))
+					status = PhOpenProcess(&processHandle, PROCESS_DUP_HANDLE | PROCESS_QUERY_INFORMATION,
+						(HANDLE)handleInfo->UniqueProcessId);
 				// There exists some processes we can't access
 				if (!NT_SUCCESS(status)) {
 					processHandle = NULL;
@@ -715,7 +776,23 @@ static DWORD WINAPI SearchProcessThread(LPVOID param)
 			// Still nothing? Try GetProcessImageFileName. Note that GetProcessImageFileName uses
 			// '\Device\Harddisk#\Partition#\' instead drive letters
 			if (!bGotCmdLine) {
-				bGotCmdLine = (GetProcessImageFileNameW(processHandle, wexe_path, MAX_PATH) != 0);
+				// Either Vista or NT5 support, forgor (port)
+				if (!process_image_api_checked) {
+					HMODULE hK32 = GetModuleHandleA("kernel32.dll");
+					if (hK32 != NULL)
+						pfGetProcessImageFileNameW = (pfnGetProcessImageFileNameW)
+							GetProcAddress(hK32, "K32GetProcessImageFileNameW");
+					if (pfGetProcessImageFileNameW == NULL) {
+						HMODULE hPsapi = LoadLibraryA("psapi.dll");
+						if (hPsapi != NULL)
+							pfGetProcessImageFileNameW = (pfnGetProcessImageFileNameW)
+								GetProcAddress(hPsapi, "GetProcessImageFileNameW");
+					}
+					process_image_api_checked = TRUE;
+				}
+
+				bGotCmdLine = (pfGetProcessImageFileNameW != NULL) &&
+					(pfGetProcessImageFileNameW(processHandle, wexe_path, MAX_PATH) != 0);
 				if (bGotCmdLine)
 					wchar_to_utf8_no_alloc(wexe_path, cmdline, sizeof(cmdline));
 			}
@@ -777,6 +854,11 @@ BOOL StartProcessSearch(void)
 {
 	int i;
 
+	if (WindowsVersion.Version <= WINDOWS_XP) {
+		// Disable the advisory scanner because legacy handle snapshots can deadlock NT5 (port)
+		return TRUE;
+	}
+
 	if (hSearchProcessThread != NULL)
 		return TRUE;
 
@@ -785,7 +867,8 @@ BOOL StartProcessSearch(void)
 		uprintf("Failed to start process search thread: %s", WindowsErrorString());
 		return FALSE;
 	}
-	SetThreadPriority(SearchProcessThread, THREAD_PRIORITY_LOWEST);
+	// Apply the low priority to the newly created scanner thread (port)
+	SetThreadPriority(hSearchProcessThread, THREAD_PRIORITY_LOWEST);
 
 	// Wait until we have hLock
 	for (i = 0; (i < 50) && (blocking_process.hLock == NULL); i++)
@@ -807,6 +890,10 @@ BOOL StartProcessSearch(void)
  */
 void StopProcessSearch(void)
 {
+	if (WindowsVersion.Version <= WINDOWS_XP) {
+		// No scanner thread is created on NT 5 (port)
+		return;
+	}
 	if (hSearchProcessThread == NULL)
 		return;
 
@@ -834,6 +921,11 @@ BOOL SetProcessSearch(DWORD DeviceNum)
 	char drive_letter[27], drive_name[] = "?:";
 	uint32_t i, nHandles = 0;
 	wchar_t** wHandleName = NULL;
+
+	if (WindowsVersion.Version <= WINDOWS_XP) {
+		// Preserve caller flow while NT5 scanner is disabled (port)
+		return TRUE;
+	}
 
 	if (hSearchProcessThread == NULL) {
 		uprintf("Process search thread is not started!");
@@ -895,7 +987,9 @@ static BOOL IsProcessRunning(uint64_t pid)
 
 	PF_INIT_OR_OUT(NtClose, NtDll);
 
-	status = PhOpenProcess(&hProcess, PROCESS_QUERY_LIMITED_INFORMATION, (HANDLE)(uintptr_t)pid);
+	// Use the process access right available on NT5 (port)
+	status = PhOpenProcess(&hProcess, (WindowsVersion.Version <= WINDOWS_XP) ?
+		PROCESS_QUERY_INFORMATION : PROCESS_QUERY_LIMITED_INFORMATION, (HANDLE)(uintptr_t)pid);
 	if (!NT_SUCCESS(status) || (hProcess == NULL))
 		return FALSE;
 	if (GetExitCodeProcess(hProcess, &dwExitCode))
@@ -923,6 +1017,12 @@ BYTE GetProcessSearch(uint32_t timeout, uint8_t access_mask, BOOL bIgnoreStalePr
 	int i, j;
 	uint32_t elapsed = 0;
 	BYTE returned_mask = 0;
+
+	if (WindowsVersion.Version <= WINDOWS_XP) {
+		// Return an empty conflict list while the NT5 scanner is disabled (port)
+		StrArrayClear(&BlockingProcessList);
+		return 0;
+	}
 
 	StrArrayClear(&BlockingProcessList);
 	if (hSearchProcessThread == NULL) {

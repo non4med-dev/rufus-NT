@@ -35,6 +35,7 @@
 #include <math.h>
 
 #include "rufus.h"
+#include "winxp.h"
 #include "missing.h"
 #include "settings.h"
 #include "resource.h"
@@ -555,7 +556,7 @@ HANDLE CreateFileWithTimeout(LPCSTR lpFileName, DWORD dwDesiredAccess, DWORD dwS
 BOOL WriteFileWithRetry(HANDLE hFile, LPCVOID lpBuffer, DWORD nNumberOfBytesToWrite,
 	LPDWORD lpNumberOfBytesWritten, DWORD nNumRetries)
 {
-	DWORD nTry;
+	DWORD nTry, waited;
 	BOOL readFilePointer;
 	LARGE_INTEGER liFilePointer, liZero = { { 0,0 } };
 	DWORD NumberOfBytesWritten;
@@ -571,6 +572,13 @@ BOOL WriteFileWithRetry(HANDLE hFile, LPCVOID lpBuffer, DWORD nNumberOfBytesToWr
 	if (nNumRetries == 0)
 		nNumRetries = 1;
 	for (nTry = 1; nTry <= nNumRetries; nTry++) {
+		// Cancel NT5 storage operations between synchronous requests (port)
+		if ((WindowsVersion.Version <= WINDOWS_XP) && IS_ERROR(ErrorStatus) &&
+			(SCODE_CODE(ErrorStatus) == ERROR_CANCELLED)) {
+			LastWriteError = ErrorStatus;
+			SetLastError(ERROR_CANCELLED);
+			return FALSE;
+		}
 		// Need to rewind our file position on retry - if we can't even do that, just give up
 		if ((nTry > 1) && (!SetFilePointerEx(hFile, liFilePointer, NULL, FILE_BEGIN))) {
 			uprintf("Could not set file pointer - Aborting");
@@ -596,7 +604,19 @@ BOOL WriteFileWithRetry(HANDLE hFile, LPCVOID lpBuffer, DWORD nNumberOfBytesToWr
 		if (nTry < nNumRetries) {
 			uprintf("Retrying in %d seconds...", WRITE_TIMEOUT / 1000);
 			// TODO: Call GetProcessSearch() here?
-			Sleep(WRITE_TIMEOUT);
+			if (WindowsVersion.Version <= WINDOWS_XP) {
+				// Keep the NT5 retry delay cancellable (port)
+				for (waited = 0; waited < WRITE_TIMEOUT; waited += 100) {
+					if (IS_ERROR(ErrorStatus) && (SCODE_CODE(ErrorStatus) == ERROR_CANCELLED)) {
+						LastWriteError = ErrorStatus;
+						SetLastError(ERROR_CANCELLED);
+						return FALSE;
+					}
+					Sleep(MIN(100, WRITE_TIMEOUT - waited));
+				}
+			} else {
+				Sleep(WRITE_TIMEOUT);
+			}
 		}
 	}
 	if (SCODE_CODE(GetLastError()) == ERROR_SUCCESS)
@@ -656,12 +676,40 @@ HANDLE CreatePreallocatedFile(const char* lpFileName, DWORD dwDesiredAccess,
 	DWORD dwFlagsAndAttributes, LONGLONG fileSize)
 {
 	HANDLE fileHandle = INVALID_HANDLE_VALUE;
+	DWORD error;
+	LARGE_INTEGER position;
 	OBJECT_ATTRIBUTES objectAttributes;
 	IO_STATUS_BLOCK ioStatusBlock;
 	UNICODE_STRING ntPath;
 	ULONG fileAttributes, flags = 0;
 	LARGE_INTEGER allocationSize;
 	NTSTATUS status = STATUS_SUCCESS;
+
+	if (WindowsVersion.Version <= WINDOWS_XP) {
+		// Use write-through for NT5 GPT media (port)
+		if (partition_type == PARTITION_STYLE_GPT)
+			dwFlagsAndAttributes |= FILE_FLAG_WRITE_THROUGH;
+		fileHandle = CreateFileU(lpFileName, dwDesiredAccess, dwShareMode, lpSecurityAttributes,
+			dwCreationDisposition, dwFlagsAndAttributes, NULL);
+		if ((fileHandle == INVALID_HANDLE_VALUE) || (fileSize <= 0) ||
+			((dwDesiredAccess & (GENERIC_WRITE | GENERIC_ALL)) == 0))
+			return fileHandle;
+		position.QuadPart = fileSize;
+		if (!SetFilePointerEx(fileHandle, position, NULL, FILE_BEGIN) || !SetEndOfFile(fileHandle)) {
+			error = GetLastError();
+			CloseHandle(fileHandle);
+			SetLastError(error);
+			return INVALID_HANDLE_VALUE;
+		}
+		position.QuadPart = 0;
+		if (!SetFilePointerEx(fileHandle, position, NULL, FILE_BEGIN)) {
+			error = GetLastError();
+			CloseHandle(fileHandle);
+			SetLastError(error);
+			return INVALID_HANDLE_VALUE;
+		}
+		return fileHandle;
+	}
 
 	PF_INIT_OR_SET_STATUS(NtCreateFile, Ntdll);
 	PF_INIT_OR_SET_STATUS(RtlDosPathNameToNtPathNameW, Ntdll);

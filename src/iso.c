@@ -43,6 +43,7 @@
 #include <cdio/udf.h>
 
 #include "rufus.h"
+#include "winxp.h"
 #include "ui.h"
 #include "drive.h"
 #include "libfat.h"
@@ -692,7 +693,8 @@ static int udf_extract_files(udf_t *p_udf, udf_dirent_t *p_udf_dirent, const cha
 				while (file_length > 0) {
 					if (ErrorStatus)
 						goto out;
-					nb = (size_t)MIN(ISO_BUFFER_SIZE / UDF_BLOCKSIZE, (file_length + UDF_BLOCKSIZE - 1) / UDF_BLOCKSIZE);
+					nb = (size_t)MIN(ISO_BUFFER_SIZE / UDF_BLOCKSIZE,
+						(file_length + UDF_BLOCKSIZE - 1) / UDF_BLOCKSIZE);
 					read = udf_read_block(p_udf_dirent, buf, nb);
 					if (read < 0) {
 						uprintf("  Error reading UDF file %s", &psz_fullpath[strlen(psz_extract_dir)]);
@@ -883,6 +885,8 @@ static int iso_extract_files(iso9660_t* p_iso, const char *psz_path)
 			create_file = TRUE;
 			if (is_symlink) {
 				if (fs_type == FS_NTFS) {
+					BOOL link_created;
+
 					// Replicate symlinks if NTFS is being used
 					static_sprintf(target_path, "%s/%s", psz_path, p_statbuf->rr.psz_symlink);
 					iso9660_stat_t* p_statbuf2 = iso9660_ifs_stat_translate(p_iso, target_path);
@@ -891,13 +895,25 @@ static int iso_extract_files(iso9660_t* p_iso, const char *psz_path)
 						to_windows_path(p_statbuf->rr.psz_symlink);
 						uprintf("Symlinking: %s%s ➔ %s", psz_fullpath,
 							(p_statbuf2->type == _STAT_DIR) ? "\\" : "", p_statbuf->rr.psz_symlink);
-						if (!CreateSymbolicLinkU(psz_fullpath, p_statbuf->rr.psz_symlink,
-							(p_statbuf2->type == _STAT_DIR) ? SYMBOLIC_LINK_FLAG_DIRECTORY : 0))
+						link_created = CreateSymbolicLinkU(psz_fullpath, p_statbuf->rr.psz_symlink,
+							(p_statbuf2->type == _STAT_DIR) ? SYMBOLIC_LINK_FLAG_DIRECTORY : 0);
+						if (!link_created)
 							uprintf("  Could not create symlink: %s", WindowsErrorString());
 						to_unix_path(p_statbuf->rr.psz_symlink);
 						to_unix_path(psz_fullpath);
-						iso9660_stat_free(p_statbuf2);
-						create_file = FALSE;
+						if (!link_created && (WindowsVersion.Version <= WINDOWS_XP) &&
+							(p_statbuf2->type != _STAT_DIR)) {
+							p_statbuf = p_statbuf2;
+							free_p_statbuf = TRUE;
+							is_symlink = FALSE;
+							file_length = p_statbuf->total_size;
+							print_extracted_file(psz_fullpath, file_length);
+							duprintf("Duplicating Rock Ridge target '%s'", target_path);
+							create_file = TRUE;
+						} else {
+							iso9660_stat_free(p_statbuf2);
+							create_file = FALSE;
+						}
 					}
 				} else if (file_length == 0) {
 					if ((safe_stricmp(p_statbuf->filename, "syslinux") == 0) &&
@@ -957,7 +973,8 @@ static int iso_extract_files(iso9660_t* p_iso, const char *psz_path)
 						if (ErrorStatus)
 							goto out;
 						lsn = p_statbuf->lsn + (lsn_t)i;
-						nb = (size_t)MIN(ISO_BUFFER_SIZE / ISO_BLOCKSIZE, (file_length + ISO_BLOCKSIZE - 1) / ISO_BLOCKSIZE);
+						nb = (size_t)MIN(ISO_BUFFER_SIZE / ISO_BLOCKSIZE,
+							(file_length + ISO_BLOCKSIZE - 1) / ISO_BLOCKSIZE);
 						if (iso9660_iso_seek_read(p_iso, buf, lsn, (long)nb) != (nb * ISO_BLOCKSIZE)) {
 							uprintf("  Error reading ISO9660 file %s at LSN %lu",
 								psz_iso_name, (long unsigned int)lsn);
@@ -1455,17 +1472,31 @@ out:
 int64_t ExtractISOFile(const char* iso, const char* iso_file, const char* dest_file, DWORD attributes)
 {
 	size_t i;
+	size_t nb;
 	ssize_t read_size;
 	int64_t file_length, r = 0;
-	char buf[UDF_BLOCKSIZE];
+	uint8_t* buf = NULL;
 	DWORD buf_size, wr_size;
 	iso9660_t* p_iso = NULL;
 	udf_t* p_udf = NULL;
-	udf_dirent_t *p_udf_root = NULL, *p_udf_file = NULL;
-	iso9660_stat_t *p_statbuf = NULL;
+	udf_dirent_t* p_udf_root = NULL, * p_udf_file = NULL;
+	iso9660_stat_t* p_statbuf = NULL;
 	lsn_t lsn;
 	HANDLE file_handle = INVALID_HANDLE_VALUE;
 
+	/*
+	file_handle = CreateFileU(dest_file, GENERIC_READ | GENERIC_WRITE,
+		FILE_SHARE_READ, NULL, CREATE_ALWAYS, attributes, NULL);
+	if (file_handle == INVALID_HANDLE_VALUE) {
+		uprintf("  Could not create file %s: %s", dest_file, WindowsErrorString());
+		goto out;
+	}
+	*/
+
+	// Use the regular ISO buffer for Windows To Go (port)
+	buf = (uint8_t*)malloc(ISO_BUFFER_SIZE);
+	if (buf == NULL)
+		goto out;
 	file_handle = CreateFileU(dest_file, GENERIC_READ | GENERIC_WRITE,
 		FILE_SHARE_READ, NULL, CREATE_ALWAYS, attributes, NULL);
 	if (file_handle == INVALID_HANDLE_VALUE) {
@@ -1488,8 +1519,16 @@ int64_t ExtractISOFile(const char* iso, const char* iso_file, const char* dest_f
 		uprintf("Could not locate file %s in ISO image", iso_file);
 		goto out;
 	}
+
 	file_length = udf_get_file_length(p_udf_file);
 	while (file_length > 0) {
+		// Windows To Go; Stop WIM extraction and delete partial files
+		if (IS_ERROR(ErrorStatus) && SCODE_CODE(ErrorStatus) == ERROR_CANCELLED) {
+			r = 0;
+			goto out;
+		}
+		nb = (size_t)MIN(ISO_BUFFER_SIZE / UDF_BLOCKSIZE,
+			(file_length + UDF_BLOCKSIZE - 1) / UDF_BLOCKSIZE);
 		memset(buf, 0, UDF_BLOCKSIZE);
 		read_size = udf_read_block(p_udf_file, buf, 1);
 		if (read_size < 0) {
@@ -1505,6 +1544,7 @@ int64_t ExtractISOFile(const char* iso, const char* iso_file, const char* dest_f
 		r += buf_size;
 	}
 	goto out;
+
 
 try_iso:
 	// Make sure to enable extensions, else we may not match the name of the file we are looking
@@ -1523,6 +1563,14 @@ try_iso:
 
 	file_length = p_statbuf->total_size;
 	for (i = 0; file_length > 0; i++) {
+		// Windows To Go same shit for ISO9660
+		if (IS_ERROR(ErrorStatus) && SCODE_CODE(ErrorStatus) == ERROR_CANCELLED) {
+			r = 0;
+			goto out;
+		}
+		nb = (size_t)MIN(ISO_BUFFER_SIZE / ISO_BLOCKSIZE,
+			(file_length + ISO_BLOCKSIZE - 1) / ISO_BLOCKSIZE);
+		memset(buf, 0, ISO_BUFFER_SIZE);
 		memset(buf, 0, ISO_BLOCKSIZE);
 		lsn = p_statbuf->lsn + (lsn_t)i;
 		if (iso9660_iso_seek_read(p_iso, buf, lsn, 1) != ISO_BLOCKSIZE) {

@@ -1925,6 +1925,26 @@ msgstr "正在解压文件: %s"
 msgid "Use Rufus MBR"
 msgstr "使用 Rufus MBR"
 
+#. • MSG_355
+msgid "Enable GPT"
+msgstr "启用 GPT"
+
+#. • MSG_356
+msgid "Windows XP cannot access drives that use the GPT partition scheme.\n\nRufus can still create this drive for use on another computer. Continue only if you are creating EFI-bootable media and the target computer supports UEFI.\n\nDo you want to continue?"
+msgstr "Windows XP 无法访问使用 GPT 分区方案的驱动器。\n\nRufus 仍可创建此驱动器供其他计算机使用。仅当您要创建 EFI 可启动介质且目标计算机支持 UEFI 时才继续。\n\n是否继续？"
+
+#. • MSG_357
+msgid "Rufus"
+msgstr "Rufus"
+
+#. • MSG_358
+msgid "Choose how Rufus should write this ISOHybrid image.\n\nYes - ISO mode (recommended)\nNo - EFI System Partition (ESP) mode"
+msgstr "请选择 Rufus 写入此 ISOHybrid 镜像的方式。\n\n是 - ISO 模式（推荐）\n否 - EFI 系统分区 (ESP) 模式"
+
+#. • MSG_359
+msgid "Choose how Rufus should write this EFI image.\n\nYes - ISO mode (recommended)\nNo - EFI System Partition (ESP) mode"
+msgstr "请选择 Rufus 写入此 EFI 镜像的方式。\n\n是 - ISO 模式（推荐）\n否 - EFI 系统分区 (ESP) 模式"
+
 #. • MSG_900
 #.
 #. The following messages are for the Windows Store listing only and are not used by the application

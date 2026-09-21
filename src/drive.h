@@ -348,7 +348,9 @@ typedef struct _DRIVE_LAYOUT_INFORMATION_EX4 {
 } DRIVE_LAYOUT_INFORMATION_EX4, *PDRIVE_LAYOUT_INFORMATION_EX4;
 
 static __inline BOOL UnlockDrive(HANDLE hDrive) {
-	return DeviceIoControl(hDrive, FSCTL_UNLOCK_VOLUME, NULL, 0, NULL, 0, NULL, NULL);
+	DWORD size;
+	// NT5 requires a valid bytecount pointer for synchronous IOCTLs (port)
+	return DeviceIoControl(hDrive, FSCTL_UNLOCK_VOLUME, NULL, 0, NULL, 0, &size, NULL);
 }
 #define safe_unlockclose(h) do {if ((h != INVALID_HANDLE_VALUE) && (h != NULL)) {UnlockDrive(h); CloseHandle(h); h = INVALID_HANDLE_VALUE;}} while(0)
 
@@ -411,6 +413,7 @@ BOOL AltUnmountVolume(const char* drive_name, BOOL bSilent);
 char* AltMountVolume(DWORD DriveIndex, uint64_t PartitionOffset, BOOL bSilent);
 BOOL RemountVolume(char* drive_name, BOOL bSilent);
 BOOL CreatePartition(HANDLE hDrive, int partition_style, int file_system, BOOL mbr_uefi_marker, uint8_t extra_partitions);
+BOOL FinalizeXpGpt(HANDLE hDrive);
 BOOL InitializeDisk(HANDLE hDrive);
 BOOL RefreshDriveLayout(HANDLE hDrive);
 const char* GetMBRPartitionType(const uint8_t type);

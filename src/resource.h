@@ -211,6 +211,9 @@
 #define IDS_DRIVE_PROPERTIES_TXT        2016
 #define IDS_FORMAT_OPTIONS_TXT          2017
 #define IDS_STATUS_TXT                  2018
+// Up and Down icons for NT5
+#define IDI_UP                          2019
+#define IDI_DOWN                        2020
 #define MSG_000                         3000
 #define MSG_001                         3001
 #define MSG_002                         3002

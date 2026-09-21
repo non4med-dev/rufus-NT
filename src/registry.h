@@ -20,6 +20,7 @@
 #include <stdint.h>
 #include <assert.h>
 #include "rufus.h"
+#include "winxp.h"
 
 #pragma once
 

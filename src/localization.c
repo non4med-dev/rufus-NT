@@ -31,6 +31,7 @@
 #include <stddef.h>
 
 #include "rufus.h"
+#include "winxp.h"
 #include "resource.h"
 #include "msapi_utf8.h"
 #include "localization.h"
@@ -640,7 +641,10 @@ WORD get_language_id(loc_cmd* lcmd)
 {
 	int i;
 	wchar_t wlang[5];
-	LANGID lang_id = GetUserDefaultUILanguage();
+	DWORD version = GetVersion();
+	BOOL is_nt5 = (LOBYTE(LOWORD(version)) <= 5);
+	// Use the user locale on NT5 (port)
+	LANGID lang_id = is_nt5 ? GetUserDefaultLangID() : GetUserDefaultUILanguage();
 
 	if (lcmd == NULL)
 		return MAKELANGID(LANG_NEUTRAL, SUBLANG_DEFAULT);
@@ -649,7 +653,8 @@ WORD get_language_id(loc_cmd* lcmd)
 	for (i = 0; i<lcmd->unum_size; i++) {
 		if (lcmd->unum[i] == lang_id) {
 			ubprintf("Will use default UI locale 0x%04X", lang_id);
-			return MAKELANGID(lang_id, SUBLANG_DEFAULT);
+			// Preserve the complete LANGID including its sublanguage (port)
+			return (WORD)lang_id;
 		}
 	}
 
@@ -660,10 +665,12 @@ WORD get_language_id(loc_cmd* lcmd)
 		_snwprintf(wlang, ARRAYSIZE(wlang), L"%04X", lcmd->unum[i]);
 		// This callback enumeration from Microsoft is retarded. Now we need a global
 		// boolean to tell us that we found what we were after.
-		EnumUILanguages(EnumUILanguagesProc, 0x4, (LONG_PTR)wlang);	// 0x04 = MUI_LANGUAGE_ID
+		// NT5 doesn't require no shit for GetSystemDefaultLocaleName (port)
+		EnumUILanguages(EnumUILanguagesProc, is_nt5 ? 0 : 0x4, (LONG_PTR)wlang);
 		if (found_lang) {
 			ubprintf("Detected installed Windows Language Pack for 0x%04X (%s)", lcmd->unum[i], lcmd->txt[1]);
-			return MAKELANGID(lcmd->unum[i], SUBLANG_DEFAULT);
+			// Preserve the complete LANGID selected by the localization entry (port)
+			return (WORD)lcmd->unum[i];
 		}
 	}
 

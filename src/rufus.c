@@ -26,6 +26,7 @@
 #include <windowsx.h>
 #include <stdlib.h>
 #include <stdio.h>
+#include <errno.h>
 #include <string.h>
 #include <math.h>
 #include <time.h>
@@ -40,6 +41,7 @@
 #include <delayimp.h>
 
 #include "rufus.h"
+#include "winxp.h"
 #include "format.h"
 #include "missing.h"
 #include "resource.h"
@@ -127,6 +129,7 @@ BOOL is_x86_64, use_own_c32[NB_OLD_C32] = { FALSE, FALSE }, mbr_selected_by_user
 BOOL op_in_progress = TRUE, right_to_left_mode = FALSE, has_uefi_csm = FALSE, its_a_me_mario = FALSE;
 BOOL enable_HDDs = FALSE, enable_VHDs = TRUE, enable_ntfs_compression = FALSE, no_confirmation_on_cancel = FALSE;
 BOOL advanced_mode_device, advanced_mode_format, allow_dual_uefi_bios, detect_fakes, enable_vmdk, force_large_fat32;
+BOOL enable_windows_to_go = TRUE;
 BOOL usb_debug, use_fake_units, preserve_timestamps = FALSE, fast_zeroing = FALSE, app_changed_size = FALSE;
 BOOL zero_drive = FALSE, list_non_usb_removable_drives = FALSE, enable_file_indexing, large_drive = FALSE;
 BOOL write_as_image = FALSE, write_as_esp = FALSE, use_vds = FALSE, ignore_boot_marker = FALSE;
@@ -141,15 +144,16 @@ char app_data_dir[MAX_PATH], user_dir[MAX_PATH], cur_dir[MAX_PATH];
 char embedded_sl_version_str[2][12] = { "?.??", "?.??" };
 char embedded_sl_version_ext[2][32];
 char ClusterSizeLabel[MAX_CLUSTER_SIZES][64];
-char msgbox[1024], msgbox_title[32], *ini_file = NULL, *image_path = NULL, *short_image_path;
-char *archive_path = NULL, image_option_txt[128], *fido_url = NULL, *save_image_type = NULL;
-char* sbat_level_txt = NULL;
+char msgbox[1024], msgbox_title[32], * ini_file = NULL, *image_path = NULL, *short_image_path;
+char* archive_path = NULL, image_option_txt[128], *fido_url = NULL, *save_image_type = NULL;
+char* sbat_level_txt = NULL, *sb_active_txt = NULL, *sb_revoked_txt = NULL;
 StrArray BlockingProcessList, ImageList;
 // Number of steps for each FS for FCC_STRUCTURE_PROGRESS
 const int nb_steps[FS_MAX] = { 5, 5, 12, 1, 10, 1, 1, 1, 1 };
 const char* flash_type[BADLOCKS_PATTERN_TYPES] = { "SLC", "MLC", "TLC" };
 RUFUS_DRIVE rufus_drive[MAX_DRIVES] = { 0 };
 sbat_entry_t* sbat_entries = NULL;
+thumbprint_list_t* sb_active_certs = NULL, *sb_revoked_certs = NULL;
 
 // TODO: Remember to update copyright year in stdlg's AboutCallback() WM_INITDIALOG,
 // localization_data.sh and the .rc when the year changes!
@@ -249,6 +253,8 @@ static void SetBootOptions(void)
 	SetComboEntry(hBootType, selection_default);
 }
 
+static BOOL SetFileSystemAndClusterSize(char* fs_name);
+
 static void SetPartitionSchemeAndTargetSystem(BOOL only_target)
 {
 	//                                   MBR,  GPT,  SFD
@@ -315,6 +321,11 @@ static void SetPartitionSchemeAndTargetSystem(BOOL only_target)
 		break;
 	}
 
+	// NT5 GPT checks (port)
+	if ((WindowsVersion.Version < WINDOWS_VISTA) &&
+		(!ReadSettingBool(SETTING_EXPERIMENTAL_GPT) || (SelectedDrive.DiskSize > 2 * TB)))
+		allowed_partition_scheme[PARTITION_STYLE_GPT] = FALSE;
+
 	if (!only_target) {
 		// Override partition type selection to GPT for drives larger than 2TB
 		if (SelectedDrive.DiskSize > 2 * TB)
@@ -362,6 +373,12 @@ static void SetPartitionSchemeAndTargetSystem(BOOL only_target)
 	target_type = (int)ComboBox_GetCurItemData(hTargetSystem);
 	// Can't update a tooltip from a thread, so we send a message instead
 	SendMessage(hMainDialog, UM_UPDATE_CSM_TOOLTIP, 0, 0);
+}
+
+void RefreshPartitionScheme(void)
+{
+	SetPartitionSchemeAndTargetSystem(FALSE);
+	SetFileSystemAndClusterSize(NULL);
 }
 
 // Populate the Allocation unit size field
@@ -537,18 +554,24 @@ static BOOL SetFileSystemAndClusterSize(char* fs_name)
 			}
 		}
 
-		// exFAT
-		SelectedDrive.ClusterSize[FS_EXFAT].Allowed = 0x03FFFE00;
-		if (SelectedDrive.DiskSize < 256 * MB)	// < 256 MB
-			SelectedDrive.ClusterSize[FS_EXFAT].Default = 4 * KB;
-		else if (SelectedDrive.DiskSize < 32 * GB)	// < 32 GB
-			SelectedDrive.ClusterSize[FS_EXFAT].Default = 32 * KB;
-		else
-			SelectedDrive.ClusterSize[FS_EXFAT].Default = 128 * KB;
+		// exFAT requires optional FS updates on NT5 (port)
+		if (WindowsVersion.Version > WINDOWS_XP) {
+			// exFAT
+			SelectedDrive.ClusterSize[FS_EXFAT].Allowed = 0x03FFFE00;
+			if (SelectedDrive.DiskSize < 256 * MB)	// < 256 MB
+				SelectedDrive.ClusterSize[FS_EXFAT].Default = 4 * KB;
+			else if (SelectedDrive.DiskSize < 32 * GB)	// < 32 GB
+				SelectedDrive.ClusterSize[FS_EXFAT].Default = 32 * KB;
+			else
+				SelectedDrive.ClusterSize[FS_EXFAT].Default = 128 * KB;
+		}
 
-		// UDF
-		SelectedDrive.ClusterSize[FS_UDF].Allowed = SINGLE_CLUSTERSIZE_DEFAULT;
-		SelectedDrive.ClusterSize[FS_UDF].Default = 1;
+		// UDF is Vista+ (port)
+		if (WindowsVersion.Version >= WINDOWS_VISTA) {
+			// UDF
+			SelectedDrive.ClusterSize[FS_UDF].Allowed = SINGLE_CLUSTERSIZE_DEFAULT;
+			SelectedDrive.ClusterSize[FS_UDF].Default = 1;
+		}
 
 		// ext2/ext3/ext4
 		if (advanced_mode_format && (SelectedDrive.DiskSize >= MIN_EXT_SIZE)) {
@@ -965,8 +988,10 @@ BOOL CALLBACK LogCallback(HWND hDlg, UINT message, WPARAM wParam, LPARAM lParam)
 			hDC = GetDC(NULL);
 			lfHeight = -MulDiv(9, GetDeviceCaps(hDC, LOGPIXELSY), 72);
 			safe_release_dc(NULL, hDC);
+			// Use Lucida Console as fallback on NT5 (port)
 			hf = CreateFontA(lfHeight, 0, 0, 0, FW_NORMAL, FALSE, FALSE, FALSE,
-				DEFAULT_CHARSET, 0, 0, PROOF_QUALITY, 0, "Consolas");
+				DEFAULT_CHARSET, 0, 0, PROOF_QUALITY, 0,
+				(WindowsVersion.Version == WINDOWS_2000) ? "Lucida Console" : "Consolas");
 		}
 		SendDlgItemMessageA(hDlg, IDC_LOG_EDIT, WM_SETFONT, (WPARAM)hf, TRUE);
 		// Set 'Close Log' as the selected button
@@ -1266,6 +1291,9 @@ DWORD WINAPI ImageScanThread(LPVOID param)
 	// produces DBT_DEVNODES_CHANGED messages that lead to unwanted device
 	// refreshes. So make sure to ignore DBT_DEVNODES_CHANGED while scanning.
 	dont_process_dbt_devnodes = TRUE;
+	// Preserve extracted Windows To Go WIM when the same ISO is detected
+	if (!IsWinToGoTempCurrent(image_path))
+		CleanupWinToGoTemp();
 	if (image_path == NULL)
 		goto out;
 	PrintInfoDebug(0, MSG_202);
@@ -1274,13 +1302,16 @@ DWORD WINAPI ImageScanThread(LPVOID param)
 	memset(&img_report, 0, sizeof(img_report));
 	img_report.is_iso = (BOOLEAN)ExtractISO(image_path, "", TRUE);
 	img_report.is_bootable_img = IsBootableImage(image_path);
-	if (img_report.wininst_index > 0 || img_report.is_windows_img)
+	// Add Windows To Go setting check to the delay (port)
+	if (enable_windows_to_go && (img_report.wininst_index > 0 || img_report.is_windows_img) &&
+		(WindowsVersion.Version >= WINDOWS_8 || img_report.is_windows_img))
 		PopulateWindowsVersion();
 	ComboBox_ResetContent(hImageOption);
 	imop_win_sel = 0;
 
 	if ((ErrorStatus == RUFUS_ERROR(ERROR_CANCELLED)) || (img_report.image_size == 0) ||
-		(!img_report.is_iso && (img_report.is_bootable_img <= 0) && !img_report.is_windows_img)) {
+		(!img_report.is_iso && (img_report.is_bootable_img <= 0) && !img_report.is_windows_img) ||
+		(img_report.is_windows_img && !enable_windows_to_go)) {
 		// Failed to scan image
 		if (img_report.is_bootable_img < 0)
 			MessageBoxExU(hMainDialog, lmprintf(MSG_322, image_path), lmprintf(MSG_042), MB_OK | MB_ICONERROR | MB_IS_RTL, selected_langid);
@@ -1425,7 +1456,7 @@ static DWORD WINAPI BootCheckThread(LPVOID param)
 	const char* ldlinux = "ldlinux";
 	const char* syslinux = "syslinux";
 	const char* ldlinux_ext[3] = { "sys", "bss", "c32" };
-	char tmp[MAX_PATH], tmp2[MAX_PATH], c;
+	char tmp[MAX_PATH] = { 0 }, tmp2[MAX_PATH] = { 0 }, c = 0;
 
 	syslinux_ldlinux_len[0] = 0; syslinux_ldlinux_len[1] = 0;
 	is_bootloader_revoked = FALSE;
@@ -1460,12 +1491,22 @@ static DWORD WINAPI BootCheckThread(LPVOID param)
 				// If the ISO is small enough to be written as an ESP and we are using GPT add the ISO → ESP option
 				if ((img_report.projected_size < MAX_ISO_TO_ESP_SIZE) && HAS_REGULAR_EFI(img_report) &&
 					(partition_type == PARTITION_STYLE_GPT) && IS_FAT(fs_type)) {
-					char* choices[3] = { lmprintf(MSG_276, iso_image), lmprintf(MSG_277, "ISO → ESP"), lmprintf(MSG_277, dd_image) };
-					i = SelectionDialog(lmprintf(MSG_274, "ISOHybrid"), lmprintf(MSG_275, iso_image, dd_image, iso_image, dd_image), choices, 3);
-					if (i < 0)	// Cancel
-						goto out;
-					write_as_esp = (i & 2);
-					write_as_image = (i & 4);
+					if (WindowsVersion.Version < WINDOWS_VISTA) {
+						// Native ISO/ESP prompt as the custom one fails to render on NT5 (port)
+						i = MessageBoxExU(hMainDialog, lmprintf(MSG_358), lmprintf(MSG_274, "ISOHybrid"),
+							MB_YESNOCANCEL | MB_ICONQUESTION | MB_IS_RTL, selected_langid);
+						if (i == IDCANCEL)
+							goto out;
+						write_as_esp = (i == IDNO);
+						write_as_image = FALSE;
+					} else {
+						char* choices[3] = { lmprintf(MSG_276, iso_image), lmprintf(MSG_277, "ISO → ESP"), lmprintf(MSG_277, dd_image) };
+						i = SelectionDialog(lmprintf(MSG_274, "ISOHybrid"), lmprintf(MSG_275, iso_image, dd_image, iso_image, dd_image), choices, 3);
+						if (i < 0)	// Cancel
+							goto out;
+						write_as_esp = (i & 2);
+						write_as_image = (i & 4);
+					}
 					esp_already_asked = TRUE;
 				} else {
 					char* choices[2] = { lmprintf(MSG_276, iso_image), lmprintf(MSG_277, dd_image) };
@@ -1489,7 +1530,9 @@ static DWORD WINAPI BootCheckThread(LPVOID param)
 				goto out;
 			}
 			if (SelectedDrive.MediaType != FixedMedia) {
-				if ((target_type == TT_UEFI) && (partition_type == PARTITION_STYLE_GPT) && (WindowsVersion.BuildNumber < 15000)) {
+				// Use our own staged partitioning for Windows To Go (port)
+				if ((WindowsVersion.Version >= WINDOWS_8) && (target_type == TT_UEFI) &&
+					(partition_type == PARTITION_STYLE_GPT) && (WindowsVersion.BuildNumber < 15000)) {
 					// Up to Windows 10 Creators Update (1703), we were screwed, since we need access to 2 partitions at the same time.
 					// Thankfully, the newer Windows allow mounting multiple partitions on the same REMOVABLE drive.
 					MessageBoxExU(hMainDialog, lmprintf(MSG_198), lmprintf(MSG_190), MB_OK | MB_ICONERROR | MB_IS_RTL, selected_langid);
@@ -1626,6 +1669,9 @@ static DWORD WINAPI BootCheckThread(LPVOID param)
 			assert(ARRAYSIZE(img_report.efi_boot_entry) > 0);
 			PrintStatus(0, MSG_351);
 			uuprintf("UEFI Secure Boot revocation checks:");
+			// Only hash DBX runs on W2k (port)
+			if (WindowsVersion.Version == WINDOWS_2000)
+				has_secureboot_signed_bootloader = TRUE;
 			// Make sure we have at least one regular EFI bootloader that is formally signed
 			// for Secure Boot, since it doesn't make sense to report revocation otherwise.
 			for (i = 0; !has_secureboot_signed_bootloader && i < ARRAYSIZE(img_report.efi_boot_entry) &&
@@ -1686,10 +1732,19 @@ static DWORD WINAPI BootCheckThread(LPVOID param)
 			// so ask the users if they want to write it as an ESP.
 			char* iso_image = lmprintf(MSG_036);
 			char* choices[2] = { lmprintf(MSG_276, iso_image), lmprintf(MSG_277, "ISO → ESP") };
-			i = SelectionDialog(lmprintf(MSG_274, "ESP"), lmprintf(MSG_310), choices, 2);
-			if (i < 0)	// Cancel
-				goto out;
-			write_as_esp = (i & 2);
+			if (WindowsVersion.Version < WINDOWS_VISTA) {
+				// Native ISO/ESP prompt as the custom one fails to render on NT5 (port)
+				i = MessageBoxExU(hMainDialog, lmprintf(MSG_359), lmprintf(MSG_274, "ESP"),
+					MB_YESNOCANCEL | MB_ICONQUESTION | MB_IS_RTL, selected_langid);
+				if (i == IDCANCEL)
+					goto out;
+				write_as_esp = (i == IDNO);
+			} else {
+				i = SelectionDialog(lmprintf(MSG_274, "ESP"), lmprintf(MSG_310), choices, 2);
+				if (i < 0)	// Cancel
+					goto out;
+				write_as_esp = (i & 2);
+			}
 		}
 
 		// If the selected target doesn't include BIOS, skip file downloads for GRUB/Syslinux
@@ -1902,6 +1957,12 @@ static DWORD WINAPI BootCheckThread(LPVOID param)
 		if (_accessU(tmp, 0) != -1) {
 			uprintf("Will reuse '%s' for MS-DOS installation", tmp);
 		} else {
+			// Use local diskcopy.dll on NT5 (port)
+			if (WindowsVersion.Version < WINDOWS_VISTA) {
+				uprintf("'diskcopy.dll' is not present in the Rufus data directory; MS-DOS files are unavailable");
+				ret = BOOTCHECK_DOWNLOAD_ERROR;
+				goto out;
+			}
 			r = MessageBoxExU(hMainDialog, lmprintf(MSG_337), lmprintf(MSG_115),
 				MB_YESNO | MB_ICONWARNING | MB_IS_RTL, selected_langid);
 			if (r != IDYES)
@@ -1947,16 +2008,20 @@ uefi_target:
 	if (boot_type == BT_UEFI_NTFS) {
 		fs_type = (int)ComboBox_GetCurItemData(hFileSystem);
 		if (fs_type != FS_NTFS && fs_type != FS_EXFAT) {
-			MessageBoxExU(hMainDialog, lmprintf(MSG_097, "UEFI:NTFS"), lmprintf(MSG_092), MB_OK|MB_ICONERROR|MB_IS_RTL, selected_langid);
+			MessageBoxExU(hMainDialog, lmprintf(MSG_097, "UEFI:NTFS"), lmprintf(MSG_092), MB_OK | MB_ICONERROR | MB_IS_RTL, selected_langid);
 			goto out;
 		}
 	}
 	ret = BOOTCHECK_PROCEED;
 
 out:
+	// Clean. Up. My. Damn. Windows To Go. (port)
+	if (ret != BOOTCHECK_PROCEED || !is_windows_to_go)
+		CleanupWinToGoTemp();
 	PostMessage(hMainDialog, UM_FORMAT_START, ret, 0);
 	ExitThread((DWORD)ret);
 }
+
 
 static __inline const char* IsAlphaOrBeta(void)
 {
@@ -1976,6 +2041,8 @@ static void InitDialog(HWND hDlg)
 {
 	DWORD len;
 	HDC hDC;
+	// Localizations fix on NT5 (port)
+	LANGID system_locale = (WindowsVersion.Version <= WINDOWS_XP) ? GetUserDefaultLangID() : GetUserDefaultUILanguage();
 	USHORT ProcessMachine = IMAGE_FILE_MACHINE_UNKNOWN;
 	int i, lfHeight;
 	char tmp[128], *token, *buf, *ext, *msg;
@@ -2050,9 +2117,8 @@ static void InitDialog(HWND hDlg)
 	for (i = 0; (i < 3) && ((token = strtok(NULL, ".")) != NULL); i++)
 		rufus_version[i] = (uint16_t)atoi(token);
 
-	// Redefine the title to be able to add "Alpha" or "Beta"
-	static_sprintf(tmp, APPLICATION_NAME " %d.%d.%d%s%s", rufus_version[0], rufus_version[1], rufus_version[2],
-		IsAlphaOrBeta(), (ini_file != NULL)?"(Portable)":"");
+	// Use a static title
+	static_strcpy(tmp, APPLICATION_NAME);
 	SetWindowTextU(hDlg, tmp);
 	// Now that we have a title, we can find the handle of our Dialog
 	dialog_handle = FindWindowA(NULL, tmp);
@@ -2067,8 +2133,9 @@ static void InitDialog(HWND hDlg)
 			uprintf(timestamp);
 		}
 	}
-	uprintf(APPLICATION_NAME " " APPLICATION_ARCH " v%d.%d.%d%s%s", rufus_version[0], rufus_version[1], rufus_version[2],
-		IsAlphaOrBeta(), (ini_file != NULL)?"(Portable)": (appstore_version ? "(AppStore version)" : ""));
+	uprintf(APPLICATION_NAME " " APPLICATION_ARCH " " UPDATE_LEVEL "%s",
+		(ini_file != NULL) ? " (Portable)" :
+		(appstore_version ? " (AppStore version)" : ""));
 	// Display a notice if running x86 emulation on ARM
 	// Oh, and https://devblogs.microsoft.com/oldnewthing/20220209-00/?p=106239 is *WRONG*:
 	// Get­Native­System­Info() will not tell you what the native system architecture is when
@@ -2100,7 +2167,7 @@ static void InitDialog(HWND hDlg)
 	uprintf("Syslinux versions: %s%s, %s%s", embedded_sl_version_str[0], embedded_sl_version_ext[0],
 		embedded_sl_version_str[1], embedded_sl_version_ext[1]);
 	uprintf("Grub versions: %s, %s", GRUB4DOS_VERSION, GRUB2_PACKAGE_VERSION);
-	uprintf("System locale ID: 0x%04X (%s)", GetUserDefaultUILanguage(), ToLocaleName(GetUserDefaultUILanguage()));
+	uprintf("System locale ID: 0x%04X (%s)", system_locale, ToLocaleName(system_locale));
 	ubflush();
 	if (selected_locale->ctrl_id & LOC_NEEDS_UPDATE) {
 		uprintf("NOTE: The %s translation requires an update, but the current translator hasn't submitted "
@@ -2112,11 +2179,14 @@ static void InitDialog(HWND hDlg)
 		uprintf("WARNING: This system has a policy set to prevent write access to FIXED drives not using BitLocker");
 	if (ReadRegistryKeyBool(HKEY_LOCAL_MACHINE, "SYSTEM\\CurrentControlSet\\Control\\StorageDevicePolicies\\WriteProtect"))
 		uprintf("WARNING: This system has a policy set to prevent write access to storage devices");
-	if (!is_vds_available)
+	if ((WindowsVersion.Version >= WINDOWS_8) && !is_vds_available)
 		uprintf("Notice: Windows VDS is unavailable");
 
-	CreateTaskbarList();
-	SetTaskbarProgressState(TASKBAR_NORMAL);
+	// Avoid errors in the log (port)
+	if (WindowsVersion.Version >= WINDOWS_7) {
+		CreateTaskbarList();
+		SetTaskbarProgressState(TASKBAR_NORMAL);
+	}
 
 	// Use maximum granularity for the progress bar
 	SendMessage(hProgress, PBM_SETRANGE, 0, (MAX_PROGRESS<<16) & 0xFFFF0000);
@@ -2144,6 +2214,10 @@ static void InitDialog(HWND hDlg)
 	SetSectionHeaders(hDlg, &hSectionHeaderFont);
 	PositionMainControls(hDlg);
 	AdjustForLowDPI(hDlg);
+	if (WindowsVersion.Version == WINDOWS_2000) {
+		// Fix dropdown menus on W2k (port)
+		W2K_RestoreComboBoxDropHeights(hDlg);
+	}
 	// Because we created the log dialog before we computed our sizes, we need to send a custom message
 	SendMessage(hLogDialog, UM_RESIZE_BUTTONS, 0, 0);
 	// Limit the amount of characters for the Persistence size field
@@ -2766,11 +2840,16 @@ static INT_PTR CALLBACK MainCallback(HWND hDlg, UINT message, WPARAM wParam, LPA
 		hLogDialog = MyCreateDialog(hMainInstance, IDD_LOG, hDlg, (DLGPROC)LogCallback);
 		InitDialog(hDlg);
 		GetDevices(0);
+		if (WindowsVersion.Version == WINDOWS_2000) {
+			W2K_RestoreComboBoxDropHeights(hDlg);
+		}
 		EnableControls(TRUE, FALSE);
 		UpdateImage(FALSE);
+		// Yeah you're right, we don't either.
+		/*
 		// The AppStore version does not need the internal check for updates
 		if (!appstore_version)
-			CheckForUpdates(FALSE);
+			CheckForUpdates(FALSE); */
 		// Register MEDIA_INSERTED/MEDIA_REMOVED notifications for card readers
 		if (SUCCEEDED(SHGetSpecialFolderLocation(0, CSIDL_DESKTOP, &pidlDesktop))) {
 			NotifyEntry.pidl = pidlDesktop;
@@ -2784,6 +2863,19 @@ static INT_PTR CALLBACK MainCallback(HWND hDlg, UINT message, WPARAM wParam, LPA
 		SetWindowPos(hMainDialog, HWND_TOPMOST, 0, 0, 0, 0, SWP_NOSIZE | SWP_NOMOVE);
 		SetWindowPos(hMainDialog, HWND_NOTOPMOST, 0, 0, 0, 0, SWP_NOSIZE | SWP_NOMOVE);
 		SetWindowPos(hMainDialog, HWND_TOP, 0, 0, 0, 0, SWP_NOSIZE | SWP_NOMOVE);
+
+		// Replace split buttons with push buttons on NT5 (port)
+		if (WindowsVersion.Version < WINDOWS_VISTA) {
+			HWND target_buttons[] = { hStart, hSelectImage, GetDlgItem(hDlg, IDCANCEL) };
+			for (i = 0; i < 3; i++) {
+				if (target_buttons[i] != NULL) {
+					LONG style = GetWindowLong(target_buttons[i], GWL_STYLE);
+					if (((style & BS_TYPEMASK) == BS_SPLITBUTTON) ||
+						((style & BS_TYPEMASK) == BS_DEFPUSHBUTTON))
+						SetWindowLong(target_buttons[i], GWL_STYLE, (style & ~BS_TYPEMASK) | BS_PUSHBUTTON);
+				}
+			}
+		}
 
 		// Set 'START' as the selected button if it's enabled, otherwise use 'SELECT', instead
 		SendMessage(hDlg, WM_NEXTDLGCTL, (WPARAM)(IsWindowEnabled(hStart) ? hStart : hSelectImage), TRUE);
@@ -2826,7 +2918,6 @@ static INT_PTR CALLBACK MainCallback(HWND hDlg, UINT message, WPARAM wParam, LPA
 			}
 		}
 		break;
-
 	case WM_PAINT:
 		hDC = BeginPaint(hDlg, &ps);
 		OnPaint(hDC);
@@ -2938,19 +3029,19 @@ static INT_PTR CALLBACK MainCallback(HWND hDlg, UINT message, WPARAM wParam, LPA
 	// What the heck is going on here?!?
 	// Also, even as we try to work around this, WM_ENDSESSION comes too late in the game
 	// to prevent shutdown block. So we need to handle the _undocumented_ WM_CLIENTSHUTDOWN.
+
+	// Faster shutdown iirc (port)
 	case WM_CLOSE:
+		if (op_in_progress)
+			return (INT_PTR)TRUE;
+		PostQuitMessage(0);
+		return (INT_PTR)TRUE;
 	case WM_CLIENTSHUTDOWN:
 	case WM_QUERYENDSESSION:
 	case WM_ENDSESSION:
 		if (op_in_progress)
 			return (INT_PTR)TRUE;
-		if (message == WM_CLOSE) {
-			// We must use PostQuitMessage() on WM_CLOSE, to prevent notification sound...
-			PostQuitMessage(0);
-		} else {
-			// ...but we must simulate Cancel on shutdown requests, else the app freezes.
-			SendMessage(hDlg, WM_COMMAND, (WPARAM)IDCANCEL, (LPARAM)0);
-		}
+		SendMessage(hDlg, WM_COMMAND, (WPARAM)IDCANCEL, (LPARAM)0);
 		break;
 
 	case UM_PROGRESS_INIT:
@@ -2998,6 +3089,14 @@ static INT_PTR CALLBACK MainCallback(HWND hDlg, UINT message, WPARAM wParam, LPA
 			goto aborted_start;
 		// All subsequent aborts below translate to a user cancellation
 		wParam = BOOTCHECK_CANCEL;
+
+		if ((WindowsVersion.Version < WINDOWS_VISTA) &&
+			(partition_type == PARTITION_STYLE_GPT)) {
+			// GPT mountability warning for NT5 (port)
+			if (MessageBoxExU(hMainDialog, lmprintf(MSG_356), lmprintf(MSG_357),
+				MB_OKCANCEL | MB_ICONWARNING | MB_IS_RTL, selected_langid) != IDOK)
+				goto aborted_start;
+		}
 
 		if ((partition_type == PARTITION_STYLE_MBR) && (SelectedDrive.DiskSize > 2 * TB)) {
 			if (MessageBoxExU(hMainDialog, lmprintf(MSG_134, SizeToHumanReadable(SelectedDrive.DiskSize - 2 * TB, FALSE, FALSE)),
@@ -3061,6 +3160,8 @@ static INT_PTR CALLBACK MainCallback(HWND hDlg, UINT message, WPARAM wParam, LPA
 		if (format_thread != NULL)
 			break;
 	aborted_start:
+		// Clean up Windows To Go when canceled, before formatting starts (port)
+		CleanupWinToGoTemp();
 		zero_drive = FALSE;
 		if (queued_hotplug_event)
 			SendMessage(hDlg, UM_MEDIA_CHANGE, 0, 0);
@@ -3079,6 +3180,7 @@ static INT_PTR CALLBACK MainCallback(HWND hDlg, UINT message, WPARAM wParam, LPA
 		// Fall through
 
 	case UM_FORMAT_COMPLETED:
+		CleanupWinToGoTemp();
 		zero_drive = FALSE;
 		format_thread = NULL;
 		if (unattend_xml_path != NULL) {
@@ -3235,10 +3337,22 @@ static HANDLE SetHogger(void)
 FARPROC WINAPI dllDelayLoadHook(unsigned dliNotify, PDelayLoadInfo pdli)
 {
 	if (dliNotify == dliNotePreLoadLibrary) {
-		// Windows 7 without KB2533623 does not support the LOAD_LIBRARY_SEARCH_SYSTEM32 flag.
-		// That is OK, because the delay load handler will interrupt the NULL return value
-		// to mean that it should perform a normal LoadLibrary.
-		return (FARPROC)LoadLibraryExA(pdli->szDll, NULL, LOAD_LIBRARY_SEARCH_SYSTEM32);
+		HMODULE module;
+		DWORD length;
+		char system_path[MAX_PATH];
+
+		module = LoadLibraryExA(pdli->szDll, NULL, LOAD_LIBRARY_SEARCH_SYSTEM32);
+		// Prevent delay loader from falling back to current dir on hosts without secure-search flags
+		if (module == NULL && GetLastError() == ERROR_INVALID_PARAMETER) {
+			length = GetSystemDirectoryA(system_path, ARRAYSIZE(system_path));
+			if (length != 0 && length < ARRAYSIZE(system_path) &&
+				length + 1 + safe_strlen(pdli->szDll) + 1 <= ARRAYSIZE(system_path)) {
+				system_path[length++] = '\\';
+				safe_strcpy(&system_path[length], ARRAYSIZE(system_path) - length, pdli->szDll);
+				module = LoadLibraryA(system_path);
+			}
+		}
+		return (FARPROC)module;
 	}
 	return NULL;
 }
@@ -3259,7 +3373,10 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine
 #endif
 {
 	const char* rufus_loc = "rufus.loc";
-	int i, opt, option_index = 0, argc = 0, si = 0, lcid = GetUserDefaultUILanguage();
+	// Use regional language for startup locale (port)
+	DWORD startup_version = GetVersion();
+	int i, opt, option_index = 0, argc = 0, si = 0, lcid =
+		(LOBYTE(LOWORD(startup_version)) <= 5) ? GetUserDefaultLangID() : GetUserDefaultUILanguage();
 	int wait_for_mutex = 0, forced_windows_version = 0;
 	uint32_t wue_options;
 	FILE* fd;
@@ -3287,6 +3404,8 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine
 		{0, 0, NULL, 0}
 	};
 
+	GetWindowsVersion(&WindowsVersion);
+
 	// Disable loading system DLLs from the current directory (side-loading mitigation)
 	// PS: You know that official MSDN documentation for SetDllDirectory() that explicitly
 	// indicates that "If the parameter is an empty string (""), the call removes the current
@@ -3312,7 +3431,11 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine
 	// For all other DLLs, use SetDefaultDllDirectories(LOAD_LIBRARY_SEARCH_SYSTEM32),
 	// though this *STILL* does not prevent the Windows default of looking for DLLs in the
 	// current directories.
-	SetDefaultDllDirectories(LOAD_LIBRARY_SEARCH_SYSTEM32);
+
+	// Windows Vista's implementation is FUCKING ASS.
+	// This is the reason theming broke in the last release. (port)
+	if (WindowsVersion.Version >= WINDOWS_7)
+		SetDefaultDllDirectories(LOAD_LIBRARY_SEARCH_SYSTEM32);
 
 	uprintf("*** " APPLICATION_NAME " init ***\n");
 	its_a_me_mario = GetUserNameA((char*)(uintptr_t)&u, &size) && (u == 7104878);
@@ -3354,6 +3477,7 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine
 		uprintf("Could not get temp directory: %s", WindowsErrorString());
 		static_strcpy(temp_dir, cur_dir);
 	} else {
+		static_strcpy(tmp_path, temp_dir);
 		// Some folks have found nothing better than configure their Windows installation to use
 		// a symlink for their temp dir, and it so happens that the Windows WIM mounting facility,
 		// which we need for applying the WUE options, can't handle symlinked directories. So we
@@ -3366,22 +3490,36 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine
 			(GetFinalPathNameByHandleU(hFile, temp_dir, sizeof(temp_dir), FILE_NAME_OPENED) == 0) ||
 			((strstr(temp_dir, "\\\\?\\") != temp_dir) && (strstr(temp_dir, "\\\\.\\") != temp_dir))) {
 			uprintf("Could not get actual temp directory from '%s': %s", temp_dir, WindowsErrorString());
-			static_strcpy(temp_dir, cur_dir);
+			static_strcpy(temp_dir, tmp_path);
 		} else {
 			// Need to remove the '\\?\' prefix or else we'll get issues with the Fido icon
 			static_strcpy(temp_dir, &temp_dir[4]);
 			// And me must re-append the '\' that gets removed by GetFinalPathNameByHandle()
 			static_strcat(temp_dir, "\\");
 		}
+		tmp_path[0] = 0;
 		safe_closehandle(hFile);
 	}
 	if (GetSystemDirectoryU(system_dir, sizeof(system_dir)) == 0) {
 		uprintf("Could not get system directory: %s", WindowsErrorString());
 		static_strcpy(system_dir, "C:\\Windows\\System32");
 	}
-	if (!SHGetSpecialFolderPathU(NULL, app_data_dir, CSIDL_LOCAL_APPDATA, FALSE)) {
-		uprintf("Could not get app data directory: %s", WindowsErrorString());
-		static_strcpy(app_data_dir, temp_dir);
+	// Create Local AppData on NT5 (port)
+	if (!SHGetSpecialFolderPathU(NULL, app_data_dir, CSIDL_LOCAL_APPDATA,
+		WindowsVersion.Version < WINDOWS_VISTA)) {
+		// Fallback
+		if (!SHGetSpecialFolderPathU(NULL, app_data_dir, CSIDL_APPDATA,
+			WindowsVersion.Version < WINDOWS_VISTA)) {
+			char xp_profile[MAX_PATH];
+			if ((WindowsVersion.Version < WINDOWS_VISTA) &&
+				SHGetSpecialFolderPathU(NULL, xp_profile, CSIDL_PROFILE, FALSE)) {
+				// Last resort (CUT MY LIFE INTO PIECES)
+				static_sprintf(app_data_dir, "%s\\Local Settings\\Application Data", xp_profile);
+			} else {
+				uprintf("Could not get pre-Vista app data directory: %s", WindowsErrorString());
+				static_strcpy(app_data_dir, temp_dir);
+			}
+		}
 	}
 	if (!SHGetSpecialFolderPathU(NULL, user_dir, CSIDL_PROFILE, FALSE)) {
 		uprintf("Could not get user directory: %s", WindowsErrorString());
@@ -3554,6 +3692,9 @@ skip_args_processing:
 	fd = fopenU(ini_path, ini_flags);	// Will create the file if portable mode is requested
 	// Using the string directly in safe_strcmp() would call GetSignatureName() twice
 	tmp = GetSignatureName(NULL, NULL, FALSE);
+	// Fuck yo signature (port)
+	vc = TRUE;
+
 	vc |= (safe_strcmp(tmp, cert_name[0]) == 0);
 	if (fd != NULL) {
 		ini_file = ini_path;
@@ -3561,6 +3702,10 @@ skip_args_processing:
 		static_strcpy(app_data_dir, app_dir);
 		fclose(fd);
 	}
+	// Create the shared cache directory before local DBX and boot files are accessed (port)
+	static_sprintf(tmp_path, "%s\\%s", app_data_dir, FILES_DIR);
+	if ((_mkdirU(tmp_path) != 0) && (errno != EEXIST))
+		uprintf("Could not create Rufus data directory '%s': %s", tmp_path, WindowsErrorString());
 	uprintf("Will use settings from %s", (ini_file != NULL) ? "INI file" : "registry");
 
 	// Use the locale specified by the settings, if any
@@ -3587,6 +3732,13 @@ skip_args_processing:
 	enable_vmdk = ReadSettingBool(SETTING_ENABLE_VMDK_DETECTION);
 	enable_file_indexing = ReadSettingBool(SETTING_ENABLE_FILE_INDEXING);
 	enable_VHDs = !ReadSettingBool(SETTING_DISABLE_VHDS);
+	// Read Windows To Go setting
+	enable_windows_to_go = (WindowsVersion.Version >= WINDOWS_2000) &&
+		((WindowsVersion.Version >= WINDOWS_8) ||
+			!ReadSettingBool(SETTING_DISABLE_WINDOWS_TO_GO));
+	// enable_windows_to_go = (WindowsVersion.Version >= WINDOWS_8) ||
+		// !ReadSettingBool(SETTING_DISABLE_WINDOWS_TO_GO);
+
 	enable_extra_hashes = ReadSettingBool(SETTING_ENABLE_EXTRA_HASHES);
 	expert_mode = ReadSettingBool(SETTING_EXPERT_MODE);
 	ignore_boot_marker = ReadSettingBool(SETTING_IGNORE_BOOT_MARKER);
@@ -3651,26 +3803,10 @@ skip_args_processing:
 	}
 	selected_langid = get_language_id(selected_locale);
 
-	// Set the Windows version
-	GetWindowsVersion(&WindowsVersion);
 	// Force a version if specified as parameter, but without allowing folks running
 	// a version of Windows we no longer support to use the option as a bypass!
 	if (WindowsVersion.Version > WINDOWS_7 && forced_windows_version != 0)
 		WindowsVersion.Version = forced_windows_version;
-
-	// ...and nothing of value was lost
-	if (WindowsVersion.Version <= WINDOWS_7) {
-		// Load the translation before we print the error
-		get_loc_data_file(loc_file, selected_locale);
-		right_to_left_mode = ((selected_locale->ctrl_id) & LOC_RIGHT_TO_LEFT);
-		// Set MB_SYSTEMMODAL to prevent Far Manager from stealing focus...
-		MessageBoxExU(NULL,
-			lmprintf(MSG_294,
-				(WindowsVersion.Version == WINDOWS_7) ? 3 : 2,
-				(WindowsVersion.Version == WINDOWS_7) ? 22 : 18),
-			lmprintf(MSG_293), MB_ICONSTOP | MB_IS_RTL | MB_SYSTEMMODAL, selected_langid);
-		goto out;
-	}
 
 	// This is needed as there appears to be a *FLAW* in Windows allowing the app to run unelevated with some
 	// weirdly configured user accounts, even as we explicitly set 'requireAdministrator' in the manifest...
@@ -3698,7 +3834,7 @@ skip_args_processing:
 		get_loc_data_file(loc_file, selected_locale);
 		right_to_left_mode = ((selected_locale->ctrl_id) & LOC_RIGHT_TO_LEFT);
 		// Set MB_SYSTEMMODAL to prevent Far Manager from stealing focus...
-		MessageBoxExU(NULL, lmprintf(MSG_002), lmprintf(MSG_001), MB_ICONSTOP|MB_IS_RTL|MB_SYSTEMMODAL, selected_langid);
+		MessageBoxExU(NULL, lmprintf(MSG_002), lmprintf(MSG_001), MB_ICONSTOP | MB_IS_RTL | MB_SYSTEMMODAL, selected_langid);
 		goto out;
 	}
 
@@ -3711,31 +3847,6 @@ skip_args_processing:
 	// Some dialogs have Rich Edit controls and won't display without this
 	if (GetLibraryHandle("Riched20") == NULL)
 		uprintf("Could not load RichEdit library - some dialogs may not display: %s", WindowsErrorString());
-
-	// Increase the application privileges (SE_DEBUG_PRIVILEGE), so that we can report
-	// the Windows Services preventing access to the disk or volume we want to format.
-	EnablePrivileges();
-
-	// We use local group policies rather than direct registry manipulation
-	// 0x9e disables removable and fixed drive notifications
-	lgp_set = SetLGP(FALSE, &existing_key, ep_reg, "NoDriveTypeAutorun", 0x9e);
-
-	// Re-enable AutoMount if needed
-	if (!GetAutoMount(&automount)) {
-		uprintf("Could not get AutoMount status");
-		automount = TRUE;	// So that we don't try to change its status on exit
-	} else if (!automount) {
-		uprintf("AutoMount was detected as disabled - temporarily re-enabling it");
-		if (!SetAutoMount(TRUE))
-			uprintf("Failed to enable AutoMount");
-	}
-
-	// Detect CPU acceleration for SHA-1/SHA-256
-	cpu_has_sha1_accel = DetectSHA1Acceleration();
-	cpu_has_sha256_accel = DetectSHA256Acceleration();
-	// FFU support started with Windows 10 1709 (through FfuProvider.dll)
-	static_sprintf(tmp_path, "%s\\dism\\FfuProvider.dll", sysnative_dir);
-	has_ffu_support = (_accessU(tmp_path, 0) == 0);
 
 relaunch:
 	ubprintf("Localization set to '%s'", selected_locale->txt[0]);
@@ -3765,17 +3876,41 @@ relaunch:
 	hDlg = MyCreateDialog(hInstance, IDD_DIALOG, NULL, MainCallback);
 	if (hDlg == NULL) {
 		MessageBoxExU(NULL, "Could not create Window", "DialogBox failure",
-			MB_ICONSTOP|MB_IS_RTL|MB_SYSTEMMODAL, selected_langid);
+			MB_ICONSTOP | MB_IS_RTL | MB_SYSTEMMODAL, selected_langid);
 		goto out;
 	}
 	if ((relaunch_rc.left > -65536) && (relaunch_rc.top > -65536))
 		SetWindowPos(hDlg, HWND_TOP, relaunch_rc.left, relaunch_rc.top, 0, 0, SWP_NOSIZE);
 
-	// Enable drag-n-drop through the message filter
-	ChangeWindowMessageFilterEx(hDlg, WM_DROPFILES, MSGFLT_ADD, NULL);
-	ChangeWindowMessageFilterEx(hDlg, WM_COPYDATA, MSGFLT_ADD, NULL);
-	// CopyGlobalData is needed since we are running elevated
-	ChangeWindowMessageFilterEx(hDlg, WM_COPYGLOBALDATA, MSGFLT_ADD, NULL);
+	{
+		typedef BOOL(WINAPI* pfnChangeWindowMessageFilterEx)(HWND, UINT, DWORD, PVOID);
+		static pfnChangeWindowMessageFilterEx _ChangeWindowMessageFilterEx = NULL;
+		static BOOL checked = FALSE;
+		if (!checked) {
+			HMODULE hUser32 = GetModuleHandleA("user32.dll");
+			if (hUser32 != NULL) {
+				_ChangeWindowMessageFilterEx = (pfnChangeWindowMessageFilterEx)GetProcAddress(hUser32, "ChangeWindowMessageFilterEx");
+			}
+			checked = TRUE;
+		}
+		if (_ChangeWindowMessageFilterEx != NULL) {
+			_ChangeWindowMessageFilterEx(hDlg, WM_DROPFILES, 1 /* MSGFLT_ADD */, NULL);
+			_ChangeWindowMessageFilterEx(hDlg, WM_COPYDATA, 1 /* MSGFLT_ADD */, NULL);
+			_ChangeWindowMessageFilterEx(hDlg, WM_COPYGLOBALDATA, 1 /* MSGFLT_ADD */, NULL);
+		}
+		else {
+			typedef BOOL(WINAPI* pfnChangeWindowMessageFilter)(UINT, DWORD);
+			HMODULE hUser32 = GetModuleHandleA("user32.dll");
+			if (hUser32 != NULL) {
+				pfnChangeWindowMessageFilter _ChangeWindowMessageFilter = (pfnChangeWindowMessageFilter)GetProcAddress(hUser32, "ChangeWindowMessageFilter");
+				if (_ChangeWindowMessageFilter != NULL) {
+					_ChangeWindowMessageFilter(WM_DROPFILES, 1 /* MSGFLT_ADD */);
+					_ChangeWindowMessageFilter(WM_COPYDATA, 1 /* MSGFLT_ADD */);
+					_ChangeWindowMessageFilter(WM_COPYGLOBALDATA, 1 /* MSGFLT_ADD */);
+				}
+			}
+		}
+	}
 
 	// Set the hook to automatically close Windows' "You need to format the disk in drive..." prompt
 	SetAlertPromptMessages();
@@ -4164,6 +4299,7 @@ extern int TestHashes(void);
 	}
 
 out:
+	CleanupWinToGoTemp();
 	_chdirU(cur_dir);
 	// Destroy the hogger mutex first, so that the cmdline app can exit and we can delete it
 	if (hogmutex != NULL) {
@@ -4201,7 +4337,7 @@ out:
 	}
 	if (lgp_set)
 		SetLGP(TRUE, &existing_key, ep_reg, "NoDriveTypeAutorun", 0);
-	if ((!automount) && (!SetAutoMount(FALSE)))
+	if ((WindowsVersion.Version > WINDOWS_XP) && (!automount) && (!SetAutoMount(FALSE)))
 		uprintf("Failed to restore AutoMount to disabled");
 	ubflush();
 	if (attached_console) {

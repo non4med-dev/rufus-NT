@@ -29,6 +29,7 @@
 #include <assert.h>
 
 #include "rufus.h"
+#include "winxp.h"
 
 #if defined(_MSC_VER)
 // We have a bunch of \xCD characters in this file that MS doesn't like

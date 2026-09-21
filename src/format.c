@@ -36,6 +36,7 @@
 #endif
 
 #include "rufus.h"
+#include "winxp.h"
 #include "format.h"
 #include "missing.h"
 #include "resource.h"
@@ -345,6 +346,13 @@ static BOOL FormatNativeVds(DWORD DriveIndex, uint64_t PartitionOffset, DWORD Cl
 	IUnknown *pUnk;
 	char* VolumeName = NULL;
 	WCHAR *wVolumeName = NULL, *wLabel = utf8_to_wchar(Label), *wFSName = utf8_to_wchar(FSName);
+
+	// VDS is Win8+ (port)
+	if (WindowsVersion.Version < WINDOWS_8) {
+		use_vds = FALSE;
+		is_vds_available = FALSE;
+		return FALSE;
+	}
 
 	if ((strcmp(FSName, FileSystemLabel[FS_EXFAT]) == 0) && !((dur_mins == 0) && (dur_secs == 0))) {
 		PrintInfo(0, MSG_220, FSName, dur_mins, dur_secs);
@@ -771,6 +779,7 @@ static BOOL WriteMBR(HANDLE hPhysicalDrive)
 {
 	BOOL r = FALSE;
 	BOOL needs_masquerading = HAS_WINPE(img_report) && (!img_report.uses_minint);
+	DWORD size;
 	uint8_t* buffer = NULL;
 	FAKE_FD fake_fd = { 0 };
 	FILE* fp = (FILE*)&fake_fd;
@@ -895,8 +904,10 @@ windows_mbr:
 	}
 
 notify:
-	// Tell the system we've updated the disk properties
-	if (!DeviceIoControl(hPhysicalDrive, IOCTL_DISK_UPDATE_PROPERTIES, NULL, 0, NULL, 0, NULL, NULL))
+	// Tell the system we've updated the disk properties (W2k) (port)
+	if (((WindowsVersion.Version == WINDOWS_2000) && !RefreshDriveLayout(hPhysicalDrive)) ||
+		((WindowsVersion.Version != WINDOWS_2000) && !DeviceIoControl(hPhysicalDrive,
+			IOCTL_DISK_UPDATE_PROPERTIES, NULL, 0, NULL, 0, &size, NULL)))
 		uprintf("Failed to notify system about disk properties update: %s", WindowsErrorString());
 
 out:
@@ -959,7 +970,9 @@ static BOOL WriteSBR(HANDLE hPhysicalDrive)
 	case BT_MAX:
 		uprintf("Writing protective message SBR");
 		size = 4 * KB;
-		br_size = 17 * KB;	// 34 sectors are reserved for protective MBR + primary GPT
+		// Keep the NT5 staging message beyond the complete GPT entry array (port)
+		br_size = (WindowsVersion.Version <= WINDOWS_XP) ?
+			34 * SelectedDrive.SectorSize : 17 * KB;
 		buf = GetResource(hMainInstance, MAKEINTRESOURCEA(IDR_SBR_MSG), _RT_RCDATA, "msg.txt", &size, TRUE);
 		if (buf == NULL) {
 			uprintf("Could not access message");
@@ -1157,6 +1170,13 @@ static int sector_write(int fd, const void* _buf, unsigned int count)
 	return (int)count;
 }
 
+static DWORD GetDriveWriteBufferSize(void)
+{
+	// Bound NT5 GPT writes to keep cooperative cancellation responsive (port)
+	return ((WindowsVersion.Version <= WINDOWS_XP) &&
+		(partition_type == PARTITION_STYLE_GPT)) ? (1 * MB) : DD_BUFFER_SIZE;
+}
+
 /* Write an image file or zero a drive */
 static BOOL WriteDrive(HANDLE hPhysicalDrive, BOOL bZeroDrive)
 {
@@ -1186,7 +1206,8 @@ static BOOL WriteDrive(HANDLE hPhysicalDrive, BOOL bZeroDrive)
 	if (bZeroDrive) {
 		uprintf(fast_zeroing ? "Fast-zeroing drive:" : "Zeroing drive:");
 		// Our buffer size must be a multiple of the sector size and *ALIGNED* to the sector size
-		buf_size = ((DD_BUFFER_SIZE + SelectedDrive.SectorSize - 1) / SelectedDrive.SectorSize) * SelectedDrive.SectorSize;
+		buf_size = ((GetDriveWriteBufferSize() + SelectedDrive.SectorSize - 1) /
+			SelectedDrive.SectorSize) * SelectedDrive.SectorSize;
 		buffer = (uint8_t*)_mm_malloc(buf_size, SelectedDrive.SectorSize);
 		if (buffer == NULL) {
 			ErrorStatus = RUFUS_ERROR(ERROR_NOT_ENOUGH_MEMORY);
@@ -1331,8 +1352,8 @@ static BOOL WriteDrive(HANDLE hPhysicalDrive, BOOL bZeroDrive)
 		if_not_assert(img_report.compression_type != IMG_COMPRESSION_FFU)
 			goto out;
 		// VHD/VHDX require mounting the image first
-		if (img_report.compression_type == IMG_COMPRESSION_VHD ||
-			img_report.compression_type == IMG_COMPRESSION_VHDX) {
+		if ((img_report.compression_type == IMG_COMPRESSION_VHD) ||
+			(img_report.compression_type == IMG_COMPRESSION_VHDX)) {
 			// Since VHDX images are compressed, we need to obtain the actual size
 			vhd_path = VhdMountImageAndGetSize(image_path, &target_size);
 			if (vhd_path == NULL || target_size == 0)
@@ -1348,7 +1369,8 @@ static BOOL WriteDrive(HANDLE hPhysicalDrive, BOOL bZeroDrive)
 		}
 
 		// Our buffer size must be a multiple of the sector size and *ALIGNED* to the sector size
-		buf_size = ((DD_BUFFER_SIZE + SelectedDrive.SectorSize - 1) / SelectedDrive.SectorSize) * SelectedDrive.SectorSize;
+		buf_size = ((GetDriveWriteBufferSize() + SelectedDrive.SectorSize - 1) /
+			SelectedDrive.SectorSize) * SelectedDrive.SectorSize;
 		buffer = (uint8_t*)_mm_malloc(buf_size * NUM_BUFFERS, SelectedDrive.SectorSize);
 		if (buffer == NULL) {
 			ErrorStatus = RUFUS_ERROR(ERROR_NOT_ENOUGH_MEMORY);
@@ -1488,8 +1510,17 @@ DWORD WINAPI FormatThread(void* param)
 		extra_partitions |= XP_PERSISTENCE;
 	// According to Microsoft, every GPT disk (we RUN Windows from) must have an MSR due to not having hidden sectors
 	// https://learn.microsoft.com/en-us/windows-hardware/manufacture/desktop/windows-and-gpt-faq#disks-that-require-an-msr
-	if ((windows_to_go) && (target_type == TT_UEFI) && (partition_type == PARTITION_STYLE_GPT))
-		extra_partitions |= XP_ESP | XP_MSR;
+	// 
+	if (windows_to_go && (target_type == TT_UEFI) && (partition_type == PARTITION_STYLE_GPT)) {
+		if ((WindowsVersion.Version < WINDOWS_8) && (SelectedDrive.MediaType != FixedMedia)) {
+			// Windows To Go resorts to UEFI:NTFS for creating partitions (port)
+			extra_partitions |= XP_UEFI_NTFS;
+			uprintf("Using UEFI:NTFS for legacy removable Windows To Go media");
+		}
+		else {
+			extra_partitions |= XP_ESP | XP_MSR;
+		}
+	}
 	// If we have a bootable image with UEFI bootloaders and the target file system is NTFS or exFAT
 	// or the UEFI:NTFS option is selected, we add the UEFI:NTFS partition...
 	else if ((((boot_type == BT_IMAGE) && IS_EFI_BOOTABLE(img_report)) && ((fs_type == FS_NTFS) || (fs_type == FS_EXFAT))) ||
@@ -1588,6 +1619,10 @@ DWORD WINAPI FormatThread(void* param)
 		UpdateProgress(OP_ANALYZE_MBR, -1.0f);
 	}
 
+	// Initialize the disk early to match the layout sequence supported by NT 5 (port)
+	if (WindowsVersion.Version <= WINDOWS_XP)
+		IGNORE_RETVAL(InitializeDisk(hPhysicalDrive));
+
 	if (zero_drive) {
 		WriteDrive(hPhysicalDrive, TRUE);
 		goto out;
@@ -1597,7 +1632,10 @@ DWORD WINAPI FormatThread(void* param)
 	// Note, Microsoft's way of cleaning partitions (IOCTL_DISK_CREATE_DISK, which is what we apply
 	// in InitializeDisk) is *NOT ENOUGH* to reset a disk and can render it inoperable for partitioning
 	// or formatting under Windows. See https://github.com/pbatard/rufus/issues/759 for details.
-	if ((boot_type != BT_IMAGE) || (img_report.is_iso && !write_as_image)) {
+
+	// A second reset requence leaves NT5 disks unpartitionable (port)
+	if ((WindowsVersion.Version > WINDOWS_XP) &&
+		((boot_type != BT_IMAGE) || (img_report.is_iso && !write_as_image))) {
 		if ((!ClearMBRGPT(hPhysicalDrive, SelectedDrive.DiskSize, SelectedDrive.SectorSize, use_large_fat32)) ||
 			(!InitializeDisk(hPhysicalDrive))) {
 			uprintf("Could not reset partitions");
@@ -1752,10 +1790,15 @@ DWORD WINAPI FormatThread(void* param)
 		}
 	} else {
 		if (!WaitForLogical(DriveIndex, SelectedDrive.Partition[partition_index[PI_MAIN]].Offset)) {
-			uprintf("Logical drive was not found - aborting");
-			if (!IS_ERROR(ErrorStatus))
-				ErrorStatus = RUFUS_ERROR(ERROR_TIMEOUT);
-			goto out;
+			if ((WindowsVersion.Version <= WINDOWS_XP) && (partition_type == PARTITION_STYLE_SFD)) {
+				// NT5 exposes an unformatted SFD only after the filesystem is created AAAAAAAAAAAAAAAAAAAAA (port)
+				uprintf("Continuing without a logical drive for SFD formatting");
+			} else {
+				uprintf("Logical drive was not found - aborting");
+				if (!IS_ERROR(ErrorStatus))
+					ErrorStatus = RUFUS_ERROR(ERROR_TIMEOUT);
+				goto out;
+			}
 		}
 	}
 	CHECK_FOR_USER_CANCEL;
@@ -1811,7 +1854,9 @@ DWORD WINAPI FormatThread(void* param)
 	// Thanks to Microsoft, we must fix the MBR AFTER the drive has been formatted
 	if ((partition_type == PARTITION_STYLE_MBR) || ((boot_type != BT_NON_BOOTABLE) && (partition_type == PARTITION_STYLE_GPT))) {
 		PrintInfoDebug(0, MSG_228);	// "Writing master boot record..."
-		if ((!WriteMBR(hPhysicalDrive)) || (!WriteSBR(hPhysicalDrive))) {
+		// Keep the temporary NT 5 MBR until all mounted-volume work is complete (port)
+		if (((WindowsVersion.Version <= WINDOWS_XP) && (partition_type == PARTITION_STYLE_GPT)) ?
+			!WriteSBR(hPhysicalDrive) : ((!WriteMBR(hPhysicalDrive)) || (!WriteSBR(hPhysicalDrive)))) {
 			if (!IS_ERROR(ErrorStatus))
 				ErrorStatus = RUFUS_ERROR(ERROR_WRITE_FAULT);
 			goto out;
@@ -2016,6 +2061,34 @@ DWORD WINAPI FormatThread(void* param)
 		drive_name[2] = 0;
 		if (archive_path != NULL && fs_type < FS_EXT2 && !ExtractZip(archive_path, drive_name) && !IS_ERROR(ErrorStatus))
 			uprintf("Warning: Could not copy additional files");
+	}
+
+	if (!IS_ERROR(ErrorStatus) && (WindowsVersion.Version <= WINDOWS_XP) &&
+		(partition_type == PARTITION_STYLE_GPT)) {
+		// Unmount the NT5 staging volume before committing the saved GPT metadata (port)
+		safe_unlockclose(hPhysicalDrive);
+		RemoveDriveLetters(DriveIndex, FALSE, TRUE);
+		hLogicalVolume = GetLogicalHandle(DriveIndex,
+			SelectedDrive.Partition[partition_index[PI_MAIN]].Offset, TRUE, TRUE, FALSE);
+		if ((hLogicalVolume == INVALID_HANDLE_VALUE) || (hLogicalVolume == NULL)) {
+			uprintf("Could not lock the staging volume for GPT finalization");
+			ErrorStatus = RUFUS_ERROR(ERROR_OPEN_FAILED);
+		} else {
+			IGNORE_RETVAL(FlushFileBuffers(hLogicalVolume));
+			if (!UnmountVolume(hLogicalVolume))
+				ErrorStatus = RUFUS_ERROR(ERROR_ACCESS_DENIED);
+			safe_unlockclose(hLogicalVolume);
+		}
+		if (!IS_ERROR(ErrorStatus)) {
+			hPhysicalDrive = GetPhysicalHandle(DriveIndex, TRUE, TRUE, FALSE);
+			if ((hPhysicalDrive == INVALID_HANDLE_VALUE) || !FinalizeXpGpt(hPhysicalDrive))
+				ErrorStatus = RUFUS_ERROR(ERROR_PARTITION_FAILURE);
+			else {
+				// Report success without remounting a GPT layout as NT5 can't expose those anyway, informatively-aesthetic lol (port)
+				ErrorStatus = 0;
+				uprintf("GPT finalization completed; replug the drive on its target machine");
+			}
+		}
 	}
 
 out:

@@ -1850,6 +1850,26 @@ msgstr "Matikan enkripsi perangkat otomatis BitLocker"
 msgid "Persistent log"
 msgstr "Catatan yang tetap/persistent"
 
+#. • MSG_355
+msgid "Enable GPT"
+msgstr "Aktifkan GPT"
+
+#. • MSG_356
+msgid "Windows XP cannot access drives that use the GPT partition scheme.\n\nRufus can still create this drive for use on another computer. Continue only if you are creating EFI-bootable media and the target computer supports UEFI.\n\nDo you want to continue?"
+msgstr "Windows XP tidak dapat mengakses drive yang menggunakan skema partisi GPT.\n\nRufus tetap dapat membuat drive ini untuk digunakan di komputer lain. Lanjutkan hanya jika Anda membuat media yang dapat di-boot dengan EFI dan komputer tujuan mendukung UEFI.\n\nApakah Anda ingin melanjutkan?"
+
+#. • MSG_357
+msgid "Rufus"
+msgstr "Rufus"
+
+#. • MSG_358
+msgid "Choose how Rufus should write this ISOHybrid image.\n\nYes - ISO mode (recommended)\nNo - EFI System Partition (ESP) mode"
+msgstr "Pilih cara Rufus menulis citra ISOHybrid ini.\n\nYa - Mode ISO (disarankan)\nTidak - Mode Partisi Sistem EFI (ESP)"
+
+#. • MSG_359
+msgid "Choose how Rufus should write this EFI image.\n\nYes - ISO mode (recommended)\nNo - EFI System Partition (ESP) mode"
+msgstr "Pilih cara Rufus menulis citra EFI ini.\n\nYa - Mode ISO (disarankan)\nTidak - Mode Partisi Sistem EFI (ESP)"
+
 #. • MSG_900
 #.
 #. The following messages are for the Windows Store listing only and are not used by the application

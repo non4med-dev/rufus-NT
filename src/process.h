@@ -49,6 +49,8 @@
 #define STATUS_INSUFFICIENT_RESOURCES	((NTSTATUS)0xC000009AL)
 #define STATUS_NOT_SUPPORTED			((NTSTATUS)0xC00000BBL)
 
+// XP's system handle info classes (port)
+#define SystemHandleInformation            16
 #define SystemExtendedHandleInformation    64
 #define FileProcessIdsUsingFileInformation 47
 
@@ -77,6 +79,23 @@ typedef struct _SYSTEM_HANDLE_INFORMATION_EX
 	ULONG_PTR Reserved;
 	SYSTEM_HANDLE_TABLE_ENTRY_INFO_EX Handles[1];
 } SYSTEM_HANDLE_INFORMATION_EX, *PSYSTEM_HANDLE_INFORMATION_EX;
+
+typedef struct _SYSTEM_HANDLE_TABLE_ENTRY_INFO_XP
+{
+	USHORT UniqueProcessId;
+	USHORT CreatorBackTraceIndex;
+	UCHAR ObjectTypeIndex;
+	UCHAR HandleAttributes;
+	USHORT HandleValue;
+	PVOID Object;
+	ULONG GrantedAccess;
+} SYSTEM_HANDLE_TABLE_ENTRY_INFO_XP, *PSYSTEM_HANDLE_TABLE_ENTRY_INFO_XP;
+
+typedef struct _SYSTEM_HANDLE_INFORMATION_XP
+{
+	ULONG NumberOfHandles;
+	SYSTEM_HANDLE_TABLE_ENTRY_INFO_XP Handles[1];
+} SYSTEM_HANDLE_INFORMATION_XP, *PSYSTEM_HANDLE_INFORMATION_XP;
 
 #if defined(_MSC_VER)
 typedef struct _OBJECT_NAME_INFORMATION

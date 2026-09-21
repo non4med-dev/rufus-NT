@@ -44,7 +44,7 @@
  */
 //#define RUFUS_TEST
 
-#define APPLICATION_NAME            "Rufus"
+#define APPLICATION_NAME            "Rufus-NT"
 #if defined(_M_AMD64)
 #define APPLICATION_ARCH            "x64"
 #elif defined(_M_IX86)
@@ -58,6 +58,10 @@
 #endif
 #define COMPANY_NAME                "Akeo Consulting"
 #define STR_NO_LABEL                "NO_LABEL"
+
+// Update level
+#define UPDATE_LEVEL                "Update 1"
+
 // Yes, there exist characters between these seemingly empty quotes!
 #define LEFT_TO_RIGHT_MARK          "‎"
 #define RIGHT_TO_LEFT_MARK          "‏"
@@ -116,13 +120,16 @@
 #define FAT32_CLUSTER_THRESHOLD     1.011f		// For FAT32, cluster size changes don't occur at power of 2 boundaries but slightly above
 #define DD_BUFFER_SIZE              (32 * MB)	// Minimum size of buffer to use for DD operations
 #define UBUFFER_SIZE                4096
-#define ISO_BUFFER_SIZE             (64 * KB)	// Buffer size used for ISO data extraction
+// Set ISO buffer size from 64kb to 1mb (port)
+#define ISO_BUFFER_SIZE             (1 * MB)	// Buffer size used for ISO data extraction
 #define RSA_SIGNATURE_SIZE          256
 #define CBN_SELCHANGE_INTERNAL      (CBN_SELCHANGE + 256)
 #if defined(RUFUS_TEST)
 #define RUFUS_URL                   "http://nas/~rufus"
 #else
 #define RUFUS_URL                   "https://rufus.ie"
+#define RUFUS_NT_URL                "https://github.com/non4med-dev/rufus-nt"
+#define RUFUS_GITHUB_URL            "https://github.com/pbatard/Rufus"
 #endif
 #define DOWNLOAD_URL                RUFUS_URL "/downloads"
 #define FILES_URL                   RUFUS_URL "/files"
@@ -562,6 +569,12 @@ typedef struct {
 	uint8_t thumbprint[SHA1_HASHSIZE];
 } cert_info_t;
 
+/* Store parsed thumbprints (port) */
+typedef struct {
+	uint32_t count;
+	uint8_t list[0][SHA1_HASHSIZE];
+} thumbprint_list_t;
+
 /* Hash functions */
 typedef void hash_init_t(HASH_CONTEXT* ctx);
 typedef void hash_write_t(HASH_CONTEXT* ctx, const uint8_t* buf, size_t len);
@@ -624,6 +637,8 @@ static __inline const char* GetArchName(USHORT uArch)
 /* Windows versions */
 enum WindowsVersion {
 	WINDOWS_UNDEFINED = 0,
+	WINDOWS_NT4 = 0x40,
+	WINDOWS_2000 = 0x50,
 	WINDOWS_XP = 0x51,
 	WINDOWS_2003 = 0x52,	// Also XP_64
 	WINDOWS_VISTA = 0x60,	// Also Server 2008
@@ -723,7 +738,7 @@ extern HWND hNBPasses, hLog, hInfo, hProgress;
 extern WORD selected_langid;
 extern DWORD ErrorStatus, DownloadStatus, MainThreadId, LastWriteError;
 extern BOOL use_own_c32[NB_OLD_C32], detect_fakes, op_in_progress, right_to_left_mode;
-extern BOOL allow_dual_uefi_bios, large_drive, usb_debug;
+extern BOOL allow_dual_uefi_bios, enable_windows_to_go, large_drive, usb_debug;
 extern uint8_t image_options, *pe256ssp;
 extern uint16_t rufus_version[3], embedded_sl_version[2];
 extern uint32_t pe256ssp_size;
@@ -734,6 +749,7 @@ extern const int nb_steps[FS_MAX];
 extern float fScale;
 extern windows_version_t WindowsVersion;
 extern sbat_entry_t* sbat_entries;
+extern thumbprint_list_t *sb_active_certs, *sb_revoked_certs;
 extern int dialog_showing, force_update, fs_type, boot_type, partition_type, target_type;
 extern unsigned long syslinux_ldlinux_len[2];
 extern char ubuffer[UBUFFER_SIZE], embedded_sl_version_str[2][12];
@@ -816,6 +832,8 @@ extern INT_PTR CALLBACK UpdateCallback(HWND hDlg, UINT message, WPARAM wParam, L
 extern void SetFidoCheck(void);
 extern BOOL SetUpdateCheck(void);
 extern BOOL CheckForUpdates(BOOL force);
+// Experimental GPT setting (port)
+extern void RefreshPartitionScheme(void);
 extern void DownloadNewVersion(void);
 extern BOOL DownloadISO(void);
 extern BOOL IsDownloadable(const char* url);
@@ -878,6 +896,7 @@ extern HANDLE CreatePreallocatedFile(const char* lpFileName, DWORD dwDesiredAcce
 	DWORD dwFlagsAndAttributes, LONGLONG fileSize);
 extern uint32_t ResolveDllAddress(dll_resolver_t* resolver);
 extern sbat_entry_t* GetSbatEntries(char* sbatlevel);
+extern thumbprint_list_t* GetThumbprintEntries(char* thumbprints_txt);
 extern uint16_t GetPeArch(uint8_t* buf);
 extern uint8_t* GetPeSection(uint8_t* buf, const char* name, uint32_t* len);
 extern uint8_t* GetPeSignatureData(uint8_t* buf);
@@ -906,33 +925,148 @@ extern HMODULE  OpenedLibrariesHandle[MAX_LIBRARY_HANDLES];
 extern uint16_t OpenedLibrariesHandleSize;
 #define         OPENED_LIBRARIES_VARS HMODULE OpenedLibrariesHandle[MAX_LIBRARY_HANDLES]; uint16_t OpenedLibrariesHandleSize = 0
 #define         CLOSE_OPENED_LIBRARIES while(OpenedLibrariesHandleSize > 0) FreeLibrary(OpenedLibrariesHandle[--OpenedLibrariesHandleSize])
-static __inline HMODULE GetLibraryHandle(char* szLibraryName) {
+
+/* static __inline HMODULE GetLibraryHandle(char* szLibraryName)
+{
 	HMODULE h = NULL;
 	wchar_t* wszLibraryName = NULL;
+	wchar_t wszSystemPath[MAX_PATH];
+	DWORD path_length, load_error = ERROR_SUCCESS;
+	size_t name_length;
 	int size;
-	if (szLibraryName == NULL || szLibraryName[0] == 0)
+
+	if ((szLibraryName == NULL) || (szLibraryName[0] == 0))
 		goto out;
+
 	size = MultiByteToWideChar(CP_UTF8, 0, szLibraryName, -1, NULL, 0);
-	if ((size <= 1) || ((wszLibraryName = (wchar_t*)calloc(size, sizeof(wchar_t))) == NULL) ||
-		(MultiByteToWideChar(CP_UTF8, 0, szLibraryName, -1, wszLibraryName, size) != size))
+	if ((size <= 1) ||
+		((wszLibraryName = (wchar_t*)calloc(size, sizeof(wchar_t))) == NULL) ||
+		(MultiByteToWideChar(CP_UTF8, 0, szLibraryName, -1,
+			wszLibraryName, size) != size))
 		goto out;
-	// If the library is already opened, just return a handle (that doesn't need to be freed)
-	if ((h = GetModuleHandleW(wszLibraryName)) != NULL)
+
+	h = GetModuleHandleW(wszLibraryName);
+	if (h != NULL)
 		goto out;
-	// Sanity check
+
 	if (OpenedLibrariesHandleSize >= MAX_LIBRARY_HANDLES) {
 		uprintf("Error: MAX_LIBRARY_HANDLES is too small\n");
 		goto out;
 	}
-	h = LoadLibraryExW(wszLibraryName, NULL, LOAD_LIBRARY_SEARCH_SYSTEM32);
-	if (h != NULL)
+
+	h = LoadLibraryExW(wszLibraryName, NULL,
+		LOAD_LIBRARY_SEARCH_SYSTEM32);
+	load_error = GetLastError();
+
+	// Load RichEdit before dialogs draw it
+	if ((h == NULL) &&
+		(load_error == ERROR_INVALID_PARAMETER) &&
+		((wcscmp(wszLibraryName, L"Riched20") == 0) ||
+			(wcscmp(wszLibraryName, L"Riched20.dll") == 0))) {
+		path_length = GetSystemDirectoryW(wszSystemPath,
+			ARRAYSIZE(wszSystemPath));
+		name_length = wcslen(L"\\Riched20.dll");
+
+		if ((path_length != 0) &&
+			(path_length < ARRAYSIZE(wszSystemPath)) &&
+			(path_length + name_length + 1 <= ARRAYSIZE(wszSystemPath))) {
+			memcpy(&wszSystemPath[path_length], L"\\Riched20.dll",
+				(name_length + 1) * sizeof(wchar_t));
+
+			h = LoadLibraryW(wszSystemPath);
+			if (h == NULL)
+				load_error = GetLastError();
+		}
+		else {
+			load_error = ERROR_INSUFFICIENT_BUFFER;
+		}
+	}
+
+	if (h != NULL) {
 		OpenedLibrariesHandle[OpenedLibrariesHandleSize++] = h;
-	else
-		uprintf("Unable to load '%S.dll': %s", wszLibraryName, WindowsErrorString());
+	}
+	else {
+		SetLastError(load_error);
+		uprintf("Unable to load '%S': %s",
+			wszLibraryName, WindowsErrorString());
+	}
+
+out:
+	free(wszLibraryName);
+	return h;
+} */
+
+// TEST #5
+static __inline HMODULE GetLibraryHandle(char* szLibraryName)
+{
+	HMODULE h = NULL;
+	wchar_t* wszLibraryName = NULL;
+	wchar_t wszSystemPath[MAX_PATH];
+	DWORD path_length, load_error = ERROR_SUCCESS;
+	size_t extension_length, name_length;
+	BOOL has_extension;
+	int size;
+
+	if ((szLibraryName == NULL) || (szLibraryName[0] == 0))
+		goto out;
+
+	size = MultiByteToWideChar(CP_UTF8, 0, szLibraryName, -1, NULL, 0);
+	if ((size <= 1) ||
+		((wszLibraryName = (wchar_t*)calloc(size, sizeof(wchar_t))) == NULL) ||
+		(MultiByteToWideChar(CP_UTF8, 0, szLibraryName, -1,
+			wszLibraryName, size) != size))
+		goto out;
+
+	h = GetModuleHandleW(wszLibraryName);
+	if (h != NULL)
+		goto out;
+
+	if (OpenedLibrariesHandleSize >= MAX_LIBRARY_HANDLES) {
+		uprintf("Error: MAX_LIBRARY_HANDLES is too small\n");
+		goto out;
+	}
+
+	// Use secure-search flags if available, and absolute paths on older/unupdated hosts
+	if (WindowsVersion.Version >= WINDOWS_7) {
+		h = LoadLibraryExW(wszLibraryName, NULL, LOAD_LIBRARY_SEARCH_SYSTEM32);
+		load_error = GetLastError();
+	}
+	if (h == NULL && (WindowsVersion.Version < WINDOWS_7 ||
+		load_error == ERROR_INVALID_PARAMETER)) {
+		path_length = GetSystemDirectoryW(wszSystemPath, ARRAYSIZE(wszSystemPath));
+		name_length = wcslen(wszLibraryName);
+		has_extension = (wcsrchr(wszLibraryName, L'.') != NULL);
+		extension_length = has_extension ? 0 : 4;
+		if (path_length != 0 && path_length < ARRAYSIZE(wszSystemPath) &&
+			path_length + 1 + name_length + extension_length + 1 <= ARRAYSIZE(wszSystemPath)) {
+			wszSystemPath[path_length++] = L'\\';
+			memcpy(&wszSystemPath[path_length], wszLibraryName,
+				(name_length + 1) * sizeof(wchar_t));
+			path_length += (DWORD)name_length;
+			if (!has_extension)
+				memcpy(&wszSystemPath[path_length], L".dll", 5 * sizeof(wchar_t));
+			h = LoadLibraryW(wszSystemPath);
+			load_error = GetLastError();
+		}
+		else {
+			load_error = ERROR_INSUFFICIENT_BUFFER;
+		}
+	}
+
+	if (h != NULL) {
+		OpenedLibrariesHandle[OpenedLibrariesHandleSize++] = h;
+	}
+	else {
+		SetLastError(load_error);
+		uprintf("Unable to load '%S': %s",
+			wszLibraryName, WindowsErrorString());
+	}
+
 out:
 	free(wszLibraryName);
 	return h;
 }
+
 #define PF_TYPE(api, ret, proc, args)		typedef ret (api *proc##_t)args
 #define PF_DECL(proc)						static proc##_t pf##proc = NULL
 #define PF_TYPE_DECL(api, ret, proc, args)	PF_TYPE(api, ret, proc, args); PF_DECL(proc)

@@ -25,6 +25,7 @@
 #include <stdint.h>
 
 #include "rufus.h"
+#include "winxp.h"
 #include "resource.h"
 #include "msapi_utf8.h"
 #include "localization.h"

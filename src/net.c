@@ -33,6 +33,7 @@
 #include <wininet.h>
 #include <netlistmgr.h>
 #include <stdio.h>
+#include <errno.h>
 #include <malloc.h>
 #include <string.h>
 #include <inttypes.h>
@@ -41,6 +42,7 @@
 #include <virtdisk.h>
 
 #include "rufus.h"
+#include "winxp.h"
 #include "missing.h"
 #include "resource.h"
 #include "msapi_utf8.h"
@@ -50,10 +52,129 @@
 
 #include "settings.h"
 
-/* Maximum download chunk size, in bytes */
+/* Maximum download chunk size in bytes (xp experiments) */
 #define DOWNLOAD_BUFFER_SIZE    (10*KB)
-/* Default delay between update checks (1 day) */
+/* Default delay between update checks */
 #define DEFAULT_UPDATE_INTERVAL (24*3600)
+#define WININET_TLS10_FLAG 0x00000080
+#define WININET_TLS11_FLAG 0x00000200
+#define WININET_TLS12_FLAG 0x00000800
+#define WININET_TLS13_FLAG 0x00002000
+#ifndef INTERNET_OPEN_TYPE_DIRECT
+#define INTERNET_OPEN_TYPE_DIRECT               1
+#endif
+#ifndef INTERNET_OPTION_SECURE_PROTOCOLS
+#define INTERNET_OPTION_SECURE_PROTOCOLS        31
+#endif
+
+static BOOL tls_restart_required;
+
+static BOOL ReadTlsDword(HKEY root, const char* path, const char* name, DWORD* value)
+{
+	HKEY hKey;
+	DWORD type = 0, size = sizeof(*value);
+	LONG status;
+
+	status = RegOpenKeyExA(root, path, 0, KEY_READ, &hKey);
+	if (status != ERROR_SUCCESS)
+		return FALSE;
+
+	status = RegQueryValueExA(hKey, name, NULL, &type, (LPBYTE)value, &size);
+	RegCloseKey(hKey);
+
+	return (status == ERROR_SUCCESS) &&
+		(type == REG_DWORD) &&
+		(size == sizeof(*value));
+}
+
+static DWORD GetConfiguredSecureProtocols(void)
+{
+	DWORD protocols;
+	DWORD value;
+	const char* internet_settings =
+		"SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Internet Settings";
+	const char* policy_settings =
+		"SOFTWARE\\Policies\\Microsoft\\Windows\\CurrentVersion\\Internet Settings";
+	const char* tls12_client =
+		"SYSTEM\\CurrentControlSet\\Control\\SecurityProviders\\SCHANNEL\\Protocols\\TLS 1.2\\Client";
+
+	/*
+	 * Group Policy overrides the user's Internet Options.
+	 */
+	if (ReadTlsDword(HKEY_LOCAL_MACHINE, policy_settings,
+		"SecureProtocols", &protocols)) {
+	}
+	else if (ReadTlsDword(HKEY_CURRENT_USER, internet_settings,
+		"SecureProtocols", &protocols)) {
+	}
+	else if (ReadTlsDword(HKEY_LOCAL_MACHINE, internet_settings,
+		"SecureProtocols", &protocols)) {
+	}
+	else {
+		if (WindowsVersion.Version >= WINDOWS_VISTA)
+			protocols = WININET_TLS10_FLAG;
+		else
+			protocols = WININET_TLS10_FLAG |
+			WININET_TLS11_FLAG |
+			WININET_TLS12_FLAG;
+	}
+
+	if ((protocols & WININET_TLS12_FLAG) &&
+		ReadTlsDword(HKEY_LOCAL_MACHINE, tls12_client,
+			"Enabled", &value) &&
+		(value == 0)) {
+		protocols &= ~WININET_TLS12_FLAG;
+	}
+
+	return protocols;
+}
+
+// Fido support and checks for Windows 7 and (experimentally) Vista
+// Vista is allowed to run fido under specific circumstances, AND...
+// Support is purely based on me injecting myself with hopium that
+// someone will bother looking into the SSL connection errors
+
+static BOOL IsDotNet45OrNewerInstalled(void)
+{
+	HKEY hKey;
+	DWORD dwRelease = 0, dwSize = sizeof(DWORD);
+	BOOL bInstalled = FALSE;
+
+	if (RegOpenKeyExA(HKEY_LOCAL_MACHINE,
+		"SOFTWARE\\Microsoft\\NET Framework Setup\\NDP\\v4\\Full",
+		0, KEY_READ, &hKey) == ERROR_SUCCESS)
+	{
+		if (RegQueryValueExA(hKey, "Release", NULL, NULL, (LPBYTE)&dwRelease, &dwSize) == ERROR_SUCCESS) {
+			if (dwRelease >= 378389)
+				bInstalled = TRUE;
+		}
+		RegCloseKey(hKey);
+	}
+
+	return bInstalled;
+}
+
+static BOOL IsWMF4OrNewerInstalled(void)
+{
+	HKEY hKey;
+	char version_str[32] = { 0 };
+	DWORD dwSize = sizeof(version_str);
+	BOOL bInstalled = FALSE;
+
+	if (RegOpenKeyExA(HKEY_LOCAL_MACHINE,
+		"SOFTWARE\\Microsoft\\PowerShell\\3\\PowerShellEngine",
+		0, KEY_READ, &hKey) == ERROR_SUCCESS)
+	{
+		if (RegQueryValueExA(hKey, "PowerShellVersion", NULL, NULL, (LPBYTE)version_str, &dwSize) == ERROR_SUCCESS) {
+			int major_ver = atoi(version_str);
+			if (major_ver >= 4)
+				bInstalled = TRUE;
+		}
+		RegCloseKey(hKey);
+	}
+
+	return bInstalled;
+}
 
 DWORD DownloadStatus;
 BYTE* fido_script = NULL;
@@ -88,8 +209,6 @@ static char* GetShortName(const char* url)
 	}
 	memset(short_name, 0, sizeof(short_name));
 	static_strcpy(short_name, &url[i]);
-	// If the URL is followed by a query, remove that part
-	// Make sure we detect escaped queries too
 	p = strstr(short_name, "%3F");
 	if (p != NULL)
 		*p = 0;
@@ -113,8 +232,13 @@ static __inline BOOL is_WOW64(void)
 }
 
 // Open an Internet session
+// Lots of bullshit
+// My testing shows that without TLS 1.2, networking fails
+// So let's do something stupid, and not innitialize WinINet unless it's enabled
 static HINTERNET GetInternetSession(const char* user_agent, BOOL bRetry)
 {
+	DWORD dwProtocols = GetConfiguredSecureProtocols() &
+		(WININET_TLS10_FLAG | WININET_TLS11_FLAG | WININET_TLS12_FLAG | WININET_TLS13_FLAG);
 	int i;
 	char default_agent[64];
 	BOOL decodingSupport = TRUE;
@@ -123,6 +247,17 @@ static HINTERNET GetInternetSession(const char* user_agent, BOOL bRetry)
 	HINTERNET hSession = NULL;
 	HRESULT hr = S_FALSE;
 	INetworkListManager* pNetworkListManager;
+	/*
+	if (tls_restart_required || !(dwProtocols & WININET_TLS12_FLAG)) {
+		SetLastError(ERROR_INTERNET_SECURITY_CHANNEL_ERROR);
+		return NULL;
+	} */
+	// I will re-allow TLS 1.0. TLS 1.2 checks for Fido are in place, so it should be fine for the most part.
+	if (tls_restart_required ||
+		!(dwProtocols & (WININET_TLS10_FLAG | WININET_TLS12_FLAG))) {
+		SetLastError(ERROR_INTERNET_SECURITY_CHANNEL_ERROR);
+		return NULL;
+	}
 	// Create a NetworkListManager Instance to check the network connection
 	IGNORE_RETVAL(CoInitializeEx(NULL, COINIT_APARTMENTTHREADED | COINIT_DISABLE_OLE1DDE));
 	hr = CoCreateInstance(&CLSID_NetworkListManager, NULL, CLSCTX_ALL,
@@ -142,15 +277,25 @@ static HINTERNET GetInternetSession(const char* user_agent, BOOL bRetry)
 			Sleep(1000);
 		}
 	}
+	/* VPN Fix for Windows 7 */
 	if (InternetConnection == VARIANT_FALSE) {
-		SetLastError(ERROR_INTERNET_DISCONNECTED);
-		goto out;
+		if (!InternetGetConnectedState(&dwFlags, 0)) {
+			// Ignore the disconnect check and attempt connection through active adapter (VPN)
+			uprintf("Network manager reported offline, attempting connection anyway...");
+		}
 	}
 	static_sprintf(default_agent, APPLICATION_NAME "/%d.%d.%d (Windows NT %lu.%lu%s)",
 		rufus_version[0], rufus_version[1], rufus_version[2],
 		WindowsVersion.Major, WindowsVersion.Minor, is_WOW64() ? "; WOW64" : "");
 	hSession = InternetOpenA((user_agent == NULL) ? default_agent : user_agent,
-		INTERNET_OPEN_TYPE_PRECONFIG, NULL, NULL, 0);
+		INTERNET_OPEN_TYPE_DIRECT, NULL, NULL, 0);
+	if (hSession == NULL)
+		return NULL;
+	if (!InternetSetOptionA(hSession, INTERNET_OPTION_SECURE_PROTOCOLS, &dwProtocols, sizeof(dwProtocols)) &&
+		(dwProtocols & WININET_TLS13_FLAG)) {
+		dwProtocols &= ~WININET_TLS13_FLAG;
+		InternetSetOptionA(hSession, INTERNET_OPTION_SECURE_PROTOCOLS, &dwProtocols, sizeof(dwProtocols));
+	}
 	// Set the timeouts
 	InternetSetOptionA(hSession, INTERNET_OPTION_CONNECT_TIMEOUT, (LPVOID)&dwTimeout, sizeof(dwTimeout));
 	InternetSetOptionA(hSession, INTERNET_OPTION_SEND_TIMEOUT, (LPVOID)&dwTimeout, sizeof(dwTimeout));
@@ -159,8 +304,6 @@ static HINTERNET GetInternetSession(const char* user_agent, BOOL bRetry)
 	InternetSetOptionA(hSession, INTERNET_OPTION_HTTP_DECODING, (LPVOID)&decodingSupport, sizeof(decodingSupport));
 	// Enable HTTP/2 protocol support
 	InternetSetOptionA(hSession, INTERNET_OPTION_ENABLE_HTTP_PROTOCOL, (LPVOID)&dwProtocolSupport, sizeof(dwProtocolSupport));
-
-out:
 	return hSession;
 }
 
@@ -177,20 +320,29 @@ out:
 uint64_t DownloadToFileOrBufferEx(const char* url, const char* file, const char* user_agent,
 	BYTE** buffer, HWND hProgressDialog, BOOL bTaskBarProgress)
 {
-	const char* accept_types[] = {"*/*\0", NULL};
+	const char* accept_types[] = { "*/*\0", NULL };
 	const char* short_name;
 	unsigned char buf[DOWNLOAD_BUFFER_SIZE];
-	char hostname[64], urlpath[128], strsize[32];
-	BOOL r = FALSE, use_github_api;
+	char hostname[64], urlpath[128], strsize[32] = { 0 };
+	BOOL r = FALSE, use_github_api, has_content_length = FALSE;
 	DWORD dwSize, dwWritten, dwDownloaded;
+	BYTE* resized_buffer;
 	HANDLE hFile = INVALID_HANDLE_VALUE;
 	HINTERNET hSession = NULL, hConnection = NULL, hRequest = NULL;
 	URL_COMPONENTSA UrlParts = { sizeof(URL_COMPONENTSA), NULL, 1, (INTERNET_SCHEME)0,
 		hostname, sizeof(hostname), 0, NULL, 1, urlpath, sizeof(urlpath), NULL, 1 };
 	uint64_t size = 0, total_size = 0;
+	size_t buffer_capacity = 0, required_capacity, new_capacity;
 
 	ErrorStatus = 0;
 	DownloadStatus = 404;
+	// Force-fail networking and use local dbx instead (port)
+	if (WindowsVersion.Version < WINDOWS_VISTA) {
+		if (buffer != NULL)
+			*buffer = NULL;
+		SetLastError(ERROR_NOT_SUPPORTED);
+		return 0;
+	}
 	if (hProgressDialog != NULL)
 		UpdateProgressWithInfoInit(hProgressDialog, FALSE);
 
@@ -215,6 +367,12 @@ uint64_t DownloadToFileOrBufferEx(const char* url, const char* file, const char*
 	hSession = GetInternetSession(user_agent, TRUE);
 	if (hSession == NULL) {
 		uprintf("Could not open Internet session: %s", WindowsErrorString());
+		if (WindowsVersion.Version == WINDOWS_VISTA) {
+			uprintf("Make sure KB4019276 or later is installed, and that TLS 1.2 is enabled in Internet Options.");
+		}
+		if (WindowsVersion.Version >= WINDOWS_7) {
+			uprintf("Make sure TLS 1.2 is enabled in Internet Options.");
+		}
 		goto out;
 	}
 
@@ -255,13 +413,15 @@ uint64_t DownloadToFileOrBufferEx(const char* url, const char* file, const char*
 		uprintf("%s '%s': %d", (DownloadStatus == 404) ? "File not found" : "Unable to access file", url, DownloadStatus);
 		goto out;
 	}
-	dwSize = sizeof(strsize);
-	if (!HttpQueryInfoA(hRequest, HTTP_QUERY_CONTENT_LENGTH, (LPVOID)strsize, &dwSize, NULL)) {
-		uprintf("Unable to retrieve file length: %s", WindowsErrorString());
-		goto out;
+	dwSize = sizeof(strsize) - 1;
+	has_content_length = HttpQueryInfoA(hRequest, HTTP_QUERY_CONTENT_LENGTH,
+		(LPVOID)strsize, &dwSize, NULL);
+	if (has_content_length) {
+		strsize[dwSize] = 0;
+		total_size = strtoull(strsize, NULL, 10);
 	}
-	total_size = strtoull(strsize, NULL, 10);
-	if (hProgressDialog != NULL) {
+
+	if (hProgressDialog != NULL && has_content_length) {
 		char msg[128];
 		uprintf("File length: %s", SizeToHumanReadable(total_size, FALSE, FALSE));
 		if (right_to_left_mode)
@@ -282,8 +442,14 @@ uint64_t DownloadToFileOrBufferEx(const char* url, const char* file, const char*
 			uprintf("No buffer pointer provided for download");
 			goto out;
 		}
-		// Allocate one extra byte, so that caller can rely on NUL-terminated text if needed
-		*buffer = calloc((size_t)total_size + 2, 1);
+		// Start off with a normal block if final response is unknown
+		// Why do you gotta be like that sbat?
+		if (has_content_length && total_size > (uint64_t)(SIZE_MAX - 2)) {
+			uprintf("Download is too large for this process");
+			goto out;
+		}
+		buffer_capacity = has_content_length ? (size_t)total_size + 2 : DOWNLOAD_BUFFER_SIZE + 2;
+		*buffer = calloc(buffer_capacity, 1);
 		if (*buffer == NULL) {
 			uprintf("Could not allocate buffer for download");
 			goto out;
@@ -295,33 +461,67 @@ uint64_t DownloadToFileOrBufferEx(const char* url, const char* file, const char*
 		// User may have cancelled the download
 		if (IS_ERROR(ErrorStatus))
 			goto out;
-		if (!InternetReadFile(hRequest, buf, sizeof(buf), &dwDownloaded) || (dwDownloaded == 0))
+		if (!InternetReadFile(hRequest, buf, sizeof(buf), &dwDownloaded)) {
+			uprintf("Error reading download: %s", WindowsErrorString());
+			goto out;
+		}
+		if (dwDownloaded == 0)
 			break;
-		if (hProgressDialog != NULL)
+		if (hProgressDialog != NULL && has_content_length)
 			UpdateProgressWithInfo(OP_NOOP, MSG_241, size, total_size);
 		if (file != NULL) {
 			if (!WriteFile(hFile, buf, dwDownloaded, &dwWritten, NULL)) {
 				uprintf("Error writing file '%s': %s", short_name, WindowsErrorString());
 				goto out;
-			} else if (dwDownloaded != dwWritten) {
+			}
+			else if (dwDownloaded != dwWritten) {
 				uprintf("Error writing file '%s': Only %d/%d bytes written", short_name, dwWritten, dwDownloaded);
 				goto out;
 			}
-		} else {
+		}
+		else {
+			// Grow memory downloads as data arrives when the server uses chunked transfer encoding
+			if (size > (uint64_t)(SIZE_MAX - dwDownloaded - 2)) {
+				uprintf("Download is too large for this process");
+				goto out;
+			}
+			required_capacity = (size_t)size + dwDownloaded + 2;
+			if (required_capacity > buffer_capacity) {
+				new_capacity = buffer_capacity;
+				while (new_capacity < required_capacity && new_capacity <= SIZE_MAX / 2)
+					new_capacity *= 2;
+				if (new_capacity < required_capacity)
+					new_capacity = required_capacity;
+				resized_buffer = (BYTE*)realloc(*buffer, new_capacity);
+				if (resized_buffer == NULL) {
+					uprintf("Could not grow download buffer");
+					goto out;
+				}
+				*buffer = resized_buffer;
+				buffer_capacity = new_capacity;
+			}
 			memcpy(&(*buffer)[size], buf, dwDownloaded);
 		}
 		size += dwDownloaded;
 	}
 
-	if (size != total_size) {
+	if (buffer != NULL) {
+		(*buffer)[size] = 0;
+		(*buffer)[size + 1] = 0;
+	}
+	if (has_content_length && size != total_size) {
 		uprintf("Could not download complete file - read: %lld bytes, expected: %lld bytes", size, total_size);
 		ErrorStatus = RUFUS_ERROR(ERROR_WRITE_FAULT);
 		goto out;
-	} else {
+	}
+	else {
 		DownloadStatus = 200;
 		r = TRUE;
+		// No
+		SetLastError(ERROR_SUCCESS);
 		if (hProgressDialog != NULL) {
-			UpdateProgressWithInfo(OP_NOOP, MSG_241, total_size, total_size);
+			if (has_content_length)
+				UpdateProgressWithInfo(OP_NOOP, MSG_241, total_size, total_size);
 			uprintf("Successfully downloaded '%s'", short_name);
 		}
 	}
@@ -329,7 +529,6 @@ uint64_t DownloadToFileOrBufferEx(const char* url, const char* file, const char*
 out:
 	error_code = GetLastError();
 	if (hFile != INVALID_HANDLE_VALUE) {
-		// Force a flush - May help with the PKI API trying to process downloaded updates too early...
 		FlushFileBuffers(hFile);
 		CloseHandle(hFile);
 	}
@@ -450,7 +649,12 @@ static __inline uint64_t to_uint64_t(uint16_t x[3]) {
 
 BOOL UseLocalDbx(int arch)
 {
-	char reg_name[32];
+	char reg_name[32], path[MAX_PATH];
+	static_sprintf(path, "%s\\%s\\dbx_%s.bin", app_data_dir, FILES_DIR, efi_archname[arch]);
+	if (_accessU(path, 0) == -1)
+		return FALSE;
+	if (WindowsVersion.Version < WINDOWS_VISTA)
+		return TRUE;
 	static_sprintf(reg_name, "DBXTimestamp_%s", efi_archname[arch]);
 	return (uint64_t)ReadSetting64(reg_name) > dbx_info[arch - 1].timestamp;
 }
@@ -458,8 +662,8 @@ BOOL UseLocalDbx(int arch)
 static void CheckForDBXUpdates(int verbose)
 {
 	int i, r;
-	char reg_name[32], timestamp_url[256], path[MAX_PATH];
-	char *p, *c, *rep, *buf = NULL;
+	char reg_name[32], timestamp_url[256], path[MAX_PATH], directory[MAX_PATH];
+	char* p, * c, * rep, * buf = NULL;
 	struct tm t = { 0 };
 	uint64_t size, timestamp;
 	BOOL already_prompted = FALSE;
@@ -506,7 +710,10 @@ static void CheckForDBXUpdates(int verbose)
 		vuprintf("DBX update timestamp is %" PRId64, timestamp);
 		static_sprintf(reg_name, "DBXTimestamp_%s", efi_archname[i + 1]);
 		// Check if we have an external DBX that is newer than embedded/last downloaded
-		if (timestamp <= MAX(dbx_info[i].timestamp, (uint64_t)ReadSetting64(reg_name)))
+		if (timestamp <= dbx_info[i].timestamp)
+			continue;
+		static_sprintf(path, "%s\\%s\\dbx_%s.bin", app_data_dir, FILES_DIR, efi_archname[i + 1]);
+		if (PathFileExistsU(path) && timestamp <= (uint64_t)ReadSetting64(reg_name))
 			continue;
 		if (!already_prompted) {
 			r = MessageBoxExU(hMainDialog, lmprintf(MSG_354), lmprintf(MSG_353),
@@ -514,15 +721,18 @@ static void CheckForDBXUpdates(int verbose)
 			already_prompted = TRUE;
 			if (r != IDYES)
 				break;
-			IGNORE_RETVAL(_chdirU(app_data_dir));
-			IGNORE_RETVAL(_mkdir(FILES_DIR));
-			IGNORE_RETVAL(_chdir(FILES_DIR));
+			// Create the parent directory
+			static_sprintf(directory, "%s\\%s", app_data_dir, FILES_DIR);
+			if ((_mkdirU(directory) != 0) && (errno != EEXIST)) {
+				uprintf("Warning: Could not create DBX update directory '%s'", directory);
+				break;
+			}
 		}
-		static_sprintf(path, "%s\\%s\\dbx_%s.bin", app_data_dir, FILES_DIR, efi_archname[i + 1]);
 		if (DownloadToFileOrBuffer(dbx_info[i].url, path, NULL, NULL, FALSE) != 0) {
 			WriteSetting64(reg_name, timestamp);
 			uprintf("Saved %s as 'dbx_%s.bin'", dbx_info[i].url, efi_archname[i + 1]);
-		} else
+		}
+		else
 			uprintf("Warning: Failed to download %s", dbx_info[i].url);
 	}
 }
@@ -539,7 +749,8 @@ static DWORD WINAPI CheckForUpdatesThread(LPVOID param)
 	static const char* channel[] = { "release", "beta", "test" };		// release channel
 	const char* accept_types[] = { "*/*\0", NULL };
 	char* buf = NULL;
-	char agent[64], hostname[64], urlpath[128], sigpath[256];
+	// Changed urlpath from 128 to 1024, same as in IsDownloadable()
+	char agent[64], hostname[64], urlpath[1024], sigpath[256];
 	DWORD dwSize, dwDownloaded, dwTotalSize, dwStatus;
 	BYTE *sig = NULL;
 	HINTERNET hSession = NULL, hConnection = NULL, hRequest = NULL;
@@ -649,7 +860,8 @@ static DWORD WINAPI CheckForUpdatesThread(LPVOID param)
 				INTERNET_FLAG_IGNORE_REDIRECT_TO_HTTP | INTERNET_FLAG_IGNORE_REDIRECT_TO_HTTPS |
 				INTERNET_FLAG_NO_COOKIES | INTERNET_FLAG_NO_UI | INTERNET_FLAG_NO_CACHE_WRITE | INTERNET_FLAG_HYPERLINK |
 				((UrlParts.nScheme == INTERNET_SCHEME_HTTPS) ? INTERNET_FLAG_SECURE : 0), (DWORD_PTR)NULL);
-			if ((hRequest == NULL) || (!HttpSendRequestA(hRequest, request_headers[1], -1L, NULL, 0))) {
+			if ((hRequest == NULL) || (!HttpSendRequestA(hRequest,
+				request_headers[1], -1L, NULL, 0))) {
 				uprintf("Unable to send request: %s", WindowsErrorString());
 				goto out;
 			}
@@ -743,7 +955,8 @@ out:
 		PrintInfoDebug(3000, MSG_244);
 		break;
 	case 2:
-		PrintInfoDebug(3000, MSG_245);
+		// MSG_245 -> MSG_247, updates are disabled anyways, so show no updates available for aesthetics lol (port)
+		PrintInfoDebug(3000, MSG_247);
 		break;
 	case 3:
 	case 4:
@@ -772,6 +985,9 @@ out:
  */
 BOOL CheckForUpdates(BOOL force)
 {
+	// Disable networking on NT5 (port)
+	if (WindowsVersion.Version < WINDOWS_VISTA)
+		return FALSE;
 	force_update_check = force;
 	if (update_check_thread != NULL)
 		return FALSE;
@@ -789,18 +1005,27 @@ BOOL CheckForUpdates(BOOL force)
  */
 static DWORD WINAPI DownloadISOThread(LPVOID param)
 {
+	BOOL is_vista = (WindowsVersion.Version == WINDOWS_VISTA);
+	BOOL is_seven = (WindowsVersion.Version == WINDOWS_7);
 	char locale_str[1024], cmdline[sizeof(locale_str) + 512], pipe[MAX_GUID_STRING_LENGTH + 16] = "\\\\.\\pipe\\";
 	char powershell_path[MAX_PATH], icon_path[MAX_PATH] = { 0 }, script_path[MAX_PATH] = { 0 };
+	char found_pwsh[MAX_PATH] = { 0 };
 	char *url = NULL, sig_url[128];
+	const char* selected_powershell = NULL;
 	uint64_t uncompressed_size;
 	int64_t size = -1;
 	BYTE *compressed = NULL, *sig = NULL;
 	HANDLE hFile, hPipe;
 	DWORD dwExitCode = 99, dwCompressedSize, dwSize, dwAvail, dwPipeSize = 4096;
+	LARGE_INTEGER patch_pos;
+	char *version_line, *version_eol;
 	GUID guid;
 
 	dialog_showing++;
 	IGNORE_RETVAL(CoInitializeEx(NULL, COINIT_APARTMENTTHREADED | COINIT_DISABLE_OLE1DDE));
+	// Disable Fido on NT5 (port)
+	if (WindowsVersion.Version < WINDOWS_VISTA)
+		goto out;
 
 	// Use a GUID as random unique string, else ill-intentioned security "researchers"
 	// may either spam our pipe or replace our script to fool antivirus solutions into
@@ -856,6 +1081,7 @@ static DWORD WINAPI DownloadISOThread(LPVOID param)
 			goto out;
 		}
 		fido_len = (DWORD)size;
+
 		SendMessage(hProgress, PBM_SETSTATE, (WPARAM)PBST_NORMAL, 0);
 		SetTaskbarProgressState(TASKBAR_NORMAL);
 		SetTaskbarProgressValue(0, MAX_PROGRESS);
@@ -866,7 +1092,7 @@ static DWORD WINAPI DownloadISOThread(LPVOID param)
 	assert((fido_script != NULL) && (fido_len != 0));
 
 	static_sprintf(script_path, "%s%s.ps1", temp_dir, GuidToString(&guid, TRUE));
-	hFile = CreateFileU(script_path, GENERIC_WRITE, FILE_SHARE_READ, NULL, CREATE_ALWAYS, FILE_ATTRIBUTE_READONLY, NULL);
+	hFile = CreateFileU(script_path, GENERIC_WRITE, FILE_SHARE_READ, NULL, CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, NULL);
 	if (hFile == INVALID_HANDLE_VALUE) {
 		uprintf("Unable to create download script '%s': %s", script_path, WindowsErrorString());
 		goto out;
@@ -878,6 +1104,34 @@ static DWORD WINAPI DownloadISOThread(LPVOID param)
 	// Why oh why does PowerShell refuse to open read-only files that haven't been closed?
 	// Because of this limitation, we can't use LockFileEx() on the file we create...
 	safe_closehandle(hFile);
+	if (ValidateSignature(INVALID_HANDLE_VALUE, script_path) != NO_ERROR) {
+		uprintf("FATAL: Script signature is invalid ✗");
+		ErrorStatus = RUFUS_ERROR(APPERR(ERROR_BAD_SIGNATURE));
+		SendMessage(hProgress, PBM_SETSTATE, (WPARAM)PBST_ERROR, 0);
+		SetTaskbarProgressState(TASKBAR_ERROR);
+		goto out;
+	}
+	uprintf("Script signature is valid ✓");
+
+	// FIDO PATCH (port)
+	if (is_vista || is_seven) {
+		version_line = strstr((char*)fido_script, "$winver =");
+		version_eol = (version_line == NULL) ? NULL : strchr(version_line, '\n');
+		if ((version_eol != NULL) && (version_eol - version_line >= 17)) {
+			hFile = CreateFileU(script_path, GENERIC_WRITE, FILE_SHARE_READ, NULL,
+				OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, NULL);
+			patch_pos.QuadPart = version_line - (char*)fido_script;
+			if ((hFile == INVALID_HANDLE_VALUE) || !SetFilePointerEx(hFile, patch_pos, NULL, FILE_BEGIN) ||
+				!WriteFile(hFile, "$winver = 10.0; #", 17, &dwSize, NULL) || (dwSize != 17)) {
+				uprintf("Could not prepare Fido for PowerShell 7: %s", WindowsErrorString());
+				safe_closehandle(hFile);
+				goto out;
+			}
+			safe_closehandle(hFile);
+			duprintf("Adjusted Fido version check for PowerShell 7");
+		}
+	}
+	SetFileAttributesU(script_path, FILE_ATTRIBUTE_READONLY);
 #endif
 	static_sprintf(powershell_path, "%s\\WindowsPowerShell\\v1.0\\powershell.exe", system_dir);
 	static_sprintf(locale_str, "%s|%s|%s|%s|%s|%s|%s|%s|%s|%s|%s|%s|%s|%s|%s|%s|%s|%s",
@@ -894,23 +1148,233 @@ static DWORD WINAPI DownloadISOThread(LPVOID param)
 		goto out;
 	}
 
-	static_sprintf(cmdline, "\"%s\" -NonInteractive -Sta -NoProfile –ExecutionPolicy Bypass "
-		"-File \"%s\" -PipeName %s -LocData \"%s\" -Icon \"%s\" -AppTitle \"%s\" -PlatformArch \"%s\"",
-		powershell_path, script_path, &pipe[9], locale_str, icon_path, lmprintf(MSG_149), GetArchName(NativeMachine));
+	// External Powershell for Fido on 7 and Vista (port)
+	selected_powershell = (WindowsVersion.Version >= WINDOWS_8) ? powershell_path : NULL;
+	if (selected_powershell == NULL) {
+		if (is_vista) {
+			HKEY hKey;
+			BOOL update_found = FALSE;
 
-#ifndef RUFUS_TEST
-	// For extra security, even after we validated that the LZMA download is properly
-	// signed, we also validate the Authenticode signature of the local script.
-	if (ValidateSignature(INVALID_HANDLE_VALUE, script_path) != NO_ERROR) {
-		uprintf("FATAL: Script signature is invalid ✗");
-		ErrorStatus = RUFUS_ERROR(APPERR(ERROR_BAD_SIGNATURE));
-		SendMessage(hProgress, PBM_SETSTATE, (WPARAM)PBST_ERROR, 0);
-		SetTaskbarProgressState(TASKBAR_ERROR);
-		goto out;
+			// All rollups that include TLS 1.2
+			const char* valid_kbs[] = {
+				"KB4019276", "KB4056564", "KB4103725", "KB4284826", "KB4338815", "KB4343899",
+				"KB4458010", "KB4462926", "KB4467695", "KB4471320", "KB4480964", "KB4487018",
+				"KB4489880", "KB4493467", "KB4499175", "KB4503269", "KB4507452", "KB4512491",
+				"KB4516033", "KB4520009", "KB4525234", "KB4530692", "KB4534303", "KB4537810",
+				"KB4541506", "KB4550951", "KB4556836", "KB4561670", "KB4565536", "KB4571723",
+				"KB4577064", "KB4580346", "KB4586807", "KB4592498", "KB4598275", "KB4601360",
+				"KB5000844", "KB5001339", "KB5003192", "KB5003661", "KB5004299", "KB5005030",
+				"KB5005607", "KB5006669", "KB5007206", "KB5008244", "KB5009586", "KB5010384",
+				"KB5011534", "KB5012632", "KB5014006", "KB5014739", "KB5015861", "KB5016686",
+				"KB5017305", "KB5018413", "KB5020019", "KB5021289", "KB5022340", "KB5022874",
+				"KB5023759", "KB5025279", "KB5026362", "KB5027279", "KB5028222", "KB5029318",
+				"KB5030271", "KB5031416", "KB5032254", "KB5033422", "KB5034173", "KB5034831",
+				"KB5035942", "KB5036966", "KB5037778", "KB5039260", "KB5040497", "KB5041838",
+				"KB5043051", "KB5044277", "KB5046613", "KB5048685", "KB5050009", "KB5051979",
+				"KB5053603", "KB5055609", "KB5058429", "KB5061198", "KB5061026", "KB5062624",
+				"KB5063888", "KB5065508", "KB5066874", "KB5068906", "KB5071504", "KB5073697"
+			};
+
+			if (RegOpenKeyExA(HKEY_LOCAL_MACHINE, "SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Component Based Servicing\\Packages", 0, KEY_READ, &hKey) == ERROR_SUCCESS ||
+				RegOpenKeyExA(HKEY_LOCAL_MACHINE, "SOFTWARE\\Wow6432Node\\Microsoft\\Windows\\CurrentVersion\\Component Based Servicing\\Packages", 0, KEY_READ, &hKey) == ERROR_SUCCESS)
+			{
+				char pkg_name[MAX_PATH];
+				DWORD pkg_index = 0, pkg_len = MAX_PATH;
+
+				while (pkg_len = MAX_PATH, RegEnumKeyExA(hKey, pkg_index++, pkg_name, &pkg_len, NULL, NULL, NULL, NULL) == ERROR_SUCCESS) {
+					for (size_t i = 0; i < ARRAYSIZE(valid_kbs); i++) {
+						if (strstr(pkg_name, valid_kbs[i]) != NULL) {
+							update_found = TRUE;
+							break;
+						}
+					}
+					if (update_found) break;
+				}
+				RegCloseKey(hKey);
+			}
+
+			if (!update_found) {
+				for (size_t i = 0; i < ARRAYSIZE(valid_kbs); i++) {
+					char hotfix_path[256];
+					static_sprintf(hotfix_path, "SOFTWARE\\Microsoft\\Windows NT\\CurrentVersion\\Hotfix\\%s", valid_kbs[i]);
+
+					if (RegOpenKeyExA(HKEY_LOCAL_MACHINE, hotfix_path, 0, KEY_READ, &hKey) == ERROR_SUCCESS)
+					{
+						update_found = TRUE;
+						RegCloseKey(hKey);
+						break;
+					}
+				}
+			}
+
+			if (!update_found) {
+				int response = MessageBoxA(NULL,
+					"Windows Vista requires a May 2018 or later security update to support secure TLS 1.2 connections.\n\n"
+					"Would you like to open your browser to download the required update from the Microsoft Update Catalog?",
+					"Security Update Required",
+					MB_YESNO | MB_ICONEXCLAMATION);
+
+				if (response == IDYES) {
+					ShellExecuteA(NULL, "open",
+						"https://www.catalog.update.microsoft.com/Search.aspx?q=KB4056564",
+						NULL, NULL, SW_SHOWNORMAL);
+				}
+				goto out;
+			}
+
+		}
+
+		const char* pwsh_candidates[] = {
+			"C:\\Program Files\\PowerShell\\7\\pwsh.exe",
+			"C:\\Program Files (x86)\\PowerShell\\7\\pwsh.exe",
+			"C:\\Program Files\\PowerShell\\7-preview\\pwsh.exe",
+		};
+
+		char reg_subkey[MAX_PATH] = { 0 };
+		HKEY hParentKey, hSubKey;
+		DWORD subkey_index = 0, subkey_len = MAX_PATH, val_size = sizeof(found_pwsh);
+
+		for (size_t k = 0; k < ARRAYSIZE(pwsh_candidates); k++) {
+			if (PathFileExistsA(pwsh_candidates[k])) {
+				selected_powershell = pwsh_candidates[k];
+				break;
+			}
+		}
+
+		if (selected_powershell == NULL) {
+			if (RegOpenKeyExA(HKEY_LOCAL_MACHINE, "SOFTWARE\\Microsoft\\PowerShellCore\\InstalledVersions", 0, KEY_READ, &hParentKey) == ERROR_SUCCESS) {
+				while (RegEnumKeyExA(hParentKey, subkey_index++, reg_subkey, &subkey_len, NULL, NULL, NULL, NULL) == ERROR_SUCCESS) {
+					subkey_len = sizeof(reg_subkey);
+					val_size = sizeof(found_pwsh);
+					char full_subkey_path[MAX_PATH];
+					static_sprintf(full_subkey_path, "SOFTWARE\\Microsoft\\PowerShellCore\\InstalledVersions\\%s", reg_subkey);
+					if (RegOpenKeyExA(HKEY_LOCAL_MACHINE, full_subkey_path, 0, KEY_READ, &hSubKey) == ERROR_SUCCESS) {
+						if (RegQueryValueExA(hSubKey, "InstallDir", NULL, NULL, (LPBYTE)found_pwsh, &val_size) == ERROR_SUCCESS) {
+							PathCombineA(found_pwsh, found_pwsh, "pwsh.exe");
+							if (PathFileExistsA(found_pwsh)) {
+								selected_powershell = found_pwsh;
+								RegCloseKey(hSubKey);
+								break;
+							}
+						}
+						RegCloseKey(hSubKey);
+					}
+				}
+				RegCloseKey(hParentKey);
+			}
+		}
+
+		if (selected_powershell == NULL) {
+			if (SearchPathA(NULL, "pwsh.exe", NULL, MAX_PATH, found_pwsh, NULL) > 0)
+				selected_powershell = found_pwsh;
+		}
+
+		if ((selected_powershell == NULL) || (is_vista && !PathFileExistsA(selected_powershell))) {
+			if (!IsDotNet45OrNewerInstalled()) {
+				int response;
+				if (is_vista) {
+					response = MessageBoxA(NULL,
+						"Powershell 7 requires .NET Framework 4.6 or newer to run, but it isn't detected on your system.\n\n"
+						"Would you like to open your browser to download .NET Framework 4.6?",
+						".NET Framework 4.6 Required",
+						MB_YESNO | MB_ICONEXCLAMATION);
+
+					if (response == IDYES) {
+						ShellExecuteA(NULL, "open",
+							"https://www.microsoft.com/en-us/download/details.aspx?id=48130",
+							NULL, NULL, SW_SHOWNORMAL);
+					}
+				}
+				else {
+					response = MessageBoxA(NULL,
+						"Windows Management Framework (WMF) requires .NET Framework 4.5.2 or newer to be installed, but it isn't detected on your system.\n\n"
+						"Would you like to open your browser to download .NET Framework 4.8?",
+						".NET Framework 4.5.2+ Required",
+						MB_YESNO | MB_ICONEXCLAMATION);
+
+					if (response == IDYES) {
+						ShellExecuteA(NULL, "open",
+							"https://dotnet.microsoft.com/en-us/download/dotnet-framework/net48",
+							NULL, NULL, SW_SHOWNORMAL);
+					}
+				}
+				goto out;
+			}
+
+			if (!is_vista && !IsWMF4OrNewerInstalled()) {
+				int response = MessageBoxA(NULL,
+					"PowerShell needs Windows Management Framework (WMF) 4.0 or newer to run, but your system version is out of date.\n\n"
+					"Would you like to open your browser to download WMF 5.1?",
+					"WMF 4.0+ Required",
+					MB_YESNO | MB_ICONEXCLAMATION);
+
+				if (response == IDYES) {
+					ShellExecuteA(NULL, "open",
+						"https://www.microsoft.com/en-us/download/details.aspx?id=54616",
+						NULL, NULL, SW_SHOWNORMAL);
+				}
+				goto out;
+			}
+
+			int response;
+			if (is_vista) {
+				response = MessageBoxA(NULL,
+					"PowerShell 7 is required to run Fido!\n\n"
+					"Windows Vista Extended Kernel, Ver. 10192022 (recommended) or newer is required.\n\n"
+					"Would you like to visit forum.legacydev.org to learn how to install Powershell 7 on Windows Vista?",
+					"PowerShell 7 Required",
+					MB_YESNO | MB_ICONEXCLAMATION);
+			} else if (is_seven) {
+				response = MessageBoxA(NULL,
+					"PowerShell 7 is required to run Fido!\n\n"
+					"Would you like to open your browser to download PowerShell 7.2.24?",
+					"PowerShell 7 Required",
+					MB_YESNO | MB_ICONEXCLAMATION);
+			}
+			else {
+				response = MessageBoxA(NULL,
+				"PowerShell 7 is required to run Fido!\n\n"
+					"Would you like to open your browser to download PowerShell 7?",
+					"PowerShell 7 Required",
+					MB_YESNO | MB_ICONEXCLAMATION);
+			}
+
+			if (response == IDYES) {
+				if (is_vista) {
+					ShellExecuteA(NULL, "open",
+						"https://forum.legacydev.org/viewtopic.php?t=231",
+						NULL, NULL, SW_SHOWNORMAL);
+				} else if (is_seven) {
+					ShellExecuteA(NULL, "open",
+						"https://github.com/PowerShell/PowerShell/releases/download/v7.2.24/PowerShell-7.2.24-win-x64.msi",
+						NULL, NULL, SW_SHOWNORMAL);
+				} else {
+					ShellExecuteA(NULL, "open",
+						"https://github.com/PowerShell/powershell/releases/latest",
+						NULL, NULL, SW_SHOWNORMAL);
+				}
+			}
+
+			goto out;
+		}
 	}
-	uprintf("Script signature is valid ✓");
-#endif
 
+	if (is_vista) {
+		// Written with Powershell 7.2.2 running through the extended kernel in mind
+		// Credits go to TSNH https://forum.legacydev.org/viewtopic.php?t=231
+		static_sprintf(cmdline,
+			"cmd.exe /c pwsh.exe -Command \""
+			"$host.UI.RawUI.WindowTitle = 'PowerShell 7'; "
+			"[Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12; "
+			"if ((Get-ExecutionPolicy) -ne 'AllSigned') { Set-ExecutionPolicy -Scope Process Bypass }; "
+			"& '%s' -PipeName '%s' -LocData '%s' -Icon '%s' -AppTitle '%s' -PlatformArch '%s'\"",
+			script_path, &pipe[9], locale_str, icon_path, lmprintf(MSG_149), GetArchName(NativeMachine)
+		);
+	} else {
+		static_sprintf(cmdline, "\"%s\" -NonInteractive -Sta -NoProfile -ExecutionPolicy Bypass "
+			"-Command \"[Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12; & '%s' -PipeName '%s' -LocData '%s' -Icon '%s' -AppTitle '%s' -PlatformArch '%s'\"",
+			selected_powershell, script_path, &pipe[9], locale_str, icon_path, lmprintf(MSG_149), GetArchName(NativeMachine));
+	}
 	ErrorStatus = 0;
 	dwExitCode = RunCommand(cmdline, app_data_dir, TRUE);
 	uprintf("Exited download script with code: %d", dwExitCode);
@@ -978,6 +1442,9 @@ out:
 
 BOOL DownloadISO()
 {
+	// Do not expose network-backed ISO downloads before Windows Vista. (port)
+	if (WindowsVersion.Version < WINDOWS_VISTA)
+		return FALSE;
 	if (CreateThread(NULL, 0, DownloadISOThread, NULL, 0, NULL) == NULL) {
 		uprintf("Unable to start Windows ISO download thread");
 		ErrorStatus = RUFUS_ERROR(APPERR(ERROR_CANT_START_THREAD));
@@ -991,12 +1458,14 @@ BOOL IsDownloadable(const char* url)
 {
 	DWORD dwSize, dwTotalSize = 0;
 	const char* accept_types[] = { "*/*\0", NULL };
-	char hostname[64], urlpath[128];
+	// Changed urlpath from 128 to 1024, modern microsoft download URLs reach 400 + characters in some cases
+	char hostname[64], urlpath[1024];
 	HINTERNET hSession = NULL, hConnection = NULL, hRequest = NULL;
 	URL_COMPONENTSA UrlParts = { sizeof(URL_COMPONENTSA), NULL, 1, (INTERNET_SCHEME)0,
 		hostname, sizeof(hostname), 0, NULL, 1, urlpath, sizeof(urlpath), NULL, 1 };
 
-	if (url == NULL)
+	// Do not probe remote URLs before Windows Vista. (port)
+	if ((WindowsVersion.Version < WINDOWS_VISTA) || (url == NULL))
 		return FALSE;
 
 	ErrorStatus = 0;

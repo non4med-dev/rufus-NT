@@ -17,18 +17,20 @@
  * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  */
 
+// Replace Rufus URL with my own
 const char* about_blurb_format =
 "{\\rtf1\\ansi\n"
 "\\b\\fs20%s\\b0\\line\n"
 "\\fs18%s\\line\n"
 "\\line\n"
 "%s\\line\n"
-RUFUS_URL "\\line\n"
-"\\fs3 \\line\n"
-"\\fs18%s\\line\n"
+"Github: " RUFUS_NT_URL "\\line\n"
 "\\line\n"
 "%s\\line\n"
-"https://github.com/pbatard/rufus/issues\\line\n"
+"Github: " RUFUS_GITHUB_URL "\\line\n"
+"%s\\line\n"
+"\\line\n"
+"%s\\line\n"
 "\\line\n"
 "\\b\\fs19 %s\\b0}";
 

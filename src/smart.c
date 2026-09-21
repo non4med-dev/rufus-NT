@@ -32,6 +32,7 @@
 #include <stddef.h>
 
 #include "rufus.h"
+#include "winxp.h"
 #include "missing.h"
 #include "msapi_utf8.h"
 

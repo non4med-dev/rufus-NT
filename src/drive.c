@@ -33,6 +33,7 @@
 #endif
 
 #include "rufus.h"
+#include "winxp.h"
 #include "missing.h"
 #include "resource.h"
 #include "settings.h"
@@ -77,6 +78,65 @@ extern windows_version_t WindowsVersion;
 int partition_index[PI_MAX];
 uint64_t persistence_size = 0;
 
+// GPT on XP/2000 (port)
+// The most beautiful part of all >:D
+// This attempts to preserve GPT structure and metadata whilst letting NT5 write data through a temporary MBR
+static BOOL xp_gpt_pending = FALSE;
+static DRIVE_LAYOUT_INFORMATION_EX4 xp_gpt_layout;
+
+#pragma pack(push, 1)
+typedef struct {
+	uint64_t Signature;
+	uint32_t Revision;
+	uint32_t HeaderSize;
+	uint32_t HeaderCrc32;
+	uint32_t Reserved;
+	uint64_t CurrentLba;
+	uint64_t BackupLba;
+	uint64_t FirstUsableLba;
+	uint64_t LastUsableLba;
+	GUID DiskGuid;
+	uint64_t PartitionEntryLba;
+	uint32_t NumberOfPartitionEntries;
+	uint32_t SizeOfPartitionEntry;
+	uint32_t PartitionEntryArrayCrc32;
+} XP_GPT_HEADER;
+
+typedef struct {
+	GUID PartitionTypeGuid;
+	GUID UniquePartitionGuid;
+	uint64_t StartingLba;
+	uint64_t EndingLba;
+	uint64_t Attributes;
+	WCHAR PartitionName[36];
+} XP_GPT_ENTRY;
+#pragma pack(pop)
+
+_Static_assert(sizeof(XP_GPT_HEADER) == 92, "Invalid GPT header size");
+_Static_assert(sizeof(XP_GPT_ENTRY) == 128, "Invalid GPT entry size");
+
+static uint8_t GetMbrPartitionTypeForFs(int file_system)
+{
+	switch (file_system) {
+	case FS_FAT16: return 0x0e;
+	case FS_FAT32: return 0x0c;
+	case FS_NTFS:
+	case FS_EXFAT:
+	case FS_UDF:
+	case FS_REFS: return 0x07;
+	case FS_EXT2:
+	case FS_EXT3:
+	case FS_EXT4: return 0x83;
+	default: return 0;
+	}
+}
+
+// VDS is Win8+
+static __inline BOOL HasVdsSupport(void)
+{
+	return (WindowsVersion.Version >= WINDOWS_8);
+}
+
 /*
  * The following methods get or set the AutoMount setting (which is different from AutoRun)
  * Rufus needs AutoMount to be set as the format process may fail for fixed drives otherwise.
@@ -90,12 +150,15 @@ uint64_t persistence_size = 0;
 BOOL SetAutoMount(BOOL enable)
 {
 	HANDLE hMountMgr;
+	DWORD size;
 	BOOL ret = FALSE;
 
 	hMountMgr = CreateFileA(MOUNTMGR_DOS_DEVICE_NAME, 0, FILE_SHARE_READ|FILE_SHARE_WRITE, NULL, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, NULL);
 	if (hMountMgr == INVALID_HANDLE_VALUE)
 		return FALSE;
-	ret = DeviceIoControl(hMountMgr, IOCTL_MOUNTMGR_SET_AUTO_MOUNT, &enable, sizeof(enable), NULL, 0, NULL, NULL);
+	// NT5 requires a valid bytecount pointer for synchronous IOCTLs (port)
+	ret = DeviceIoControl(hMountMgr, IOCTL_MOUNTMGR_SET_AUTO_MOUNT,
+		&enable, sizeof(enable), NULL, 0, &size, NULL);
 	CloseHandle(hMountMgr);
 	return ret;
 }
@@ -136,6 +199,7 @@ static HANDLE GetHandle(char* Path, BOOL bLockDrive, BOOL bWriteAccess, BOOL bWr
 {
 	int i;
 	BYTE access_mask = 0;
+	DWORD size, flags = FILE_ATTRIBUTE_NORMAL;
 	uint64_t EndTime;
 	HANDLE hDrive = INVALID_HANDLE_VALUE;
 	char DevPath[MAX_PATH];
@@ -155,9 +219,14 @@ static HANDLE GetHandle(char* Path, BOOL bLockDrive, BOOL bWriteAccess, BOOL bWr
 		// However this means we might have to wait for an access gap...
 		// We keep FILE_SHARE_READ though, as this shouldn't hurt us any, and is
 		// required for enumeration.
-		hDrive = CreateFileA(Path, GENERIC_READ|(bWriteAccess?GENERIC_WRITE:0),
-			FILE_SHARE_READ|(bWriteShare?FILE_SHARE_WRITE:0),
-			NULL, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, NULL);
+
+		// Hotfix for cancellation leaving queded I/O causing XP and 2000 to freeze (port)
+		if (bWriteAccess && (WindowsVersion.Version <= WINDOWS_XP))
+			flags |= FILE_FLAG_NO_BUFFERING | FILE_FLAG_WRITE_THROUGH | FILE_FLAG_SEQUENTIAL_SCAN;
+
+		hDrive = CreateFileA(Path, GENERIC_READ | (bWriteAccess ? GENERIC_WRITE : 0),
+			FILE_SHARE_READ | (bWriteShare ? FILE_SHARE_WRITE : 0),
+			NULL, OPEN_EXISTING, flags, NULL);
 		if (hDrive != INVALID_HANDLE_VALUE)
 			break;
 		if ((GetLastError() != ERROR_SHARING_VIOLATION) && (GetLastError() != ERROR_ACCESS_DENIED))
@@ -184,13 +253,14 @@ static HANDLE GetHandle(char* Path, BOOL bLockDrive, BOOL bWriteAccess, BOOL bWr
 	}
 
 	if (bLockDrive) {
-		if (DeviceIoControl(hDrive, FSCTL_ALLOW_EXTENDED_DASD_IO, NULL, 0, NULL, 0, NULL, NULL)) {
+		// NT5 requires a valid bytecount pointer for synchronous IOCTLs (port)
+		if (DeviceIoControl(hDrive, FSCTL_ALLOW_EXTENDED_DASD_IO, NULL, 0, NULL, 0, &size, NULL)) {
 			uprintf("I/O boundary checks disabled");
 		}
 
 		EndTime = GetTickCount64() + DRIVE_ACCESS_TIMEOUT;
 		do {
-			if (DeviceIoControl(hDrive, FSCTL_LOCK_VOLUME, NULL, 0, NULL, 0, NULL, NULL))
+			if (DeviceIoControl(hDrive, FSCTL_LOCK_VOLUME, NULL, 0, NULL, 0, &size, NULL))
 				goto out;
 			if (IS_ERROR(ErrorStatus))	// User cancel
 				break;
@@ -451,6 +521,10 @@ static const char* VdsErrorString(HRESULT hr) {
  */
 BOOL IsVdsAvailable(BOOL bSilent)
 {
+	// VDS #1 (port)
+	if (!HasVdsSupport())
+		return FALSE;
+
 	HRESULT hr = S_FALSE;
 	IVdsService* pService = NULL;
 	IVdsServiceLoader* pLoader = NULL;
@@ -488,6 +562,10 @@ out:
  */
 BOOL RefreshLayout(DWORD DriveIndex)
 {
+	// VDS #2 (port)
+	if (!HasVdsSupport())
+		return FALSE;
+
 	HRESULT hr = S_FALSE;
 	wchar_t wPhysicalName[24];
 	IVdsServiceLoader* pLoader = NULL;
@@ -568,6 +646,10 @@ out:
  */
 static BOOL GetVdsDiskInterface(DWORD DriveIndex, const IID* InterfaceIID, void** pInterfaceInstance, BOOL bSilent)
 {
+	// VDS #3 (port)
+	if (!HasVdsSupport())
+		return FALSE;
+
 	HRESULT hr = S_FALSE;
 	ULONG ulFetched;
 	wchar_t wPhysicalName[24];
@@ -724,6 +806,10 @@ out:
  */
 BOOL VdsRescan(DWORD dwRescanType, DWORD dwSleepTime, BOOL bSilent)
 {
+	// VDS #4 (port)
+	if (!HasVdsSupport())
+		return FALSE;
+
 	BOOL ret = TRUE;
 	HRESULT hr = S_FALSE;
 	IVdsServiceLoader* pLoader;
@@ -787,6 +873,10 @@ BOOL VdsRescan(DWORD dwRescanType, DWORD dwSleepTime, BOOL bSilent)
  */
 BOOL DeletePartition(DWORD DriveIndex, ULONGLONG PartitionOffset, BOOL bSilent)
 {
+	// VDS #5 (port)
+	if (!HasVdsSupport())
+		return FALSE;
+
 	HRESULT hr = S_FALSE;
 	VDS_PARTITION_PROP* prop_array = NULL;
 	LONG i, prop_array_size;
@@ -1100,6 +1190,7 @@ static BOOL _GetDriveLettersAndType(DWORD DriveIndex, char* drive_letters, UINT*
 	FILE_FS_DEVICE_INFORMATION file_fs_device_info;
 	BYTE geometry[256] = { 0 };
 	PDISK_GEOMETRY_EX DiskGeometry = (PDISK_GEOMETRY_EX)(void*)geometry;
+	DISK_GEOMETRY legacyGeometry;
 	int i = 0, drives_found = 0, drive_number;
 	char *drive, drives[26*4 + 1];	/* "D:\", "E:\", etc., plus one NUL */
 	char logical_drive[] = "\\\\.\\#:";
@@ -1181,6 +1272,14 @@ static BOOL _GetDriveLettersAndType(DWORD DriveIndex, char* drive_letters, UINT*
 	if ((drives_found == 0) && (drive_type != NULL)) {
 		hPhysical = GetPhysicalHandle(DriveIndex + DRIVE_INDEX_MIN, FALSE, FALSE, FALSE);
 		r = DeviceIoControl(hPhysical, IOCTL_DISK_GET_DRIVE_GEOMETRY_EX, NULL, 0, geometry, sizeof(geometry), &size, NULL);
+		// Written by chatGPT, I didn't know what the fuck was going on here
+		if (!r && (WindowsVersion.Version == WINDOWS_2000)) {
+			// Classify unmounted Windows 2000 disks through legacy geometry (port-AI)
+			r = DeviceIoControl(hPhysical, IOCTL_DISK_GET_DRIVE_GEOMETRY, NULL, 0,
+				&legacyGeometry, sizeof(legacyGeometry), &size, NULL);
+			if (r)
+				DiskGeometry->Geometry = legacyGeometry;
+		}
 		safe_closehandle(hPhysical);
 		if (r && size > 0) {
 			if (DiskGeometry->Geometry.MediaType == FixedMedia)
@@ -1312,7 +1411,7 @@ BOOL IsDriveLetterInUse(const char drive_letter)
 BOOL GetDriveLabel(DWORD DriveIndex, char* letters, char** label, BOOL bSilent)
 {
 	HANDLE hPhysical;
-	DWORD error;
+	DWORD size, error;
 	static char VolumeLabel[MAX_PATH + 1] = { 0 };
 	char DrivePath[] = "#:\\", AutorunPath[] = "#:\\autorun.inf", *AutorunLabel = NULL;
 	WCHAR VolumeName[MAX_PATH + 1] = { 0 }, FileSystemName[64];
@@ -1342,7 +1441,8 @@ BOOL GetDriveLabel(DWORD DriveIndex, char* letters, char** label, BOOL bSilent)
 	// In the case of card readers with no card, users can get an annoying popup asking them
 	// to insert media. Use IOCTL_STORAGE_CHECK_VERIFY to prevent this
 	hPhysical = GetPhysicalHandle(DriveIndex, FALSE, FALSE, TRUE);
-	if (DeviceIoControl(hPhysical, IOCTL_STORAGE_CHECK_VERIFY, NULL, 0, NULL, 0, NULL, NULL))
+	// NT 5 requires a valid bytecount pointer for synchronous IOCTLs (port)
+	if (DeviceIoControl(hPhysical, IOCTL_STORAGE_CHECK_VERIFY, NULL, 0, NULL, 0, &size, NULL))
 		AutorunLabel = get_token_data_file("label", AutorunPath);
 	else if (GetLastError() == ERROR_NOT_READY)
 		suprintf("Ignoring 'autorun.inf' label for drive %c: No media", toupper(letters[0]));
@@ -1379,12 +1479,23 @@ uint64_t GetDriveSize(DWORD DriveIndex)
 	DWORD size;
 	BYTE geometry[256];
 	PDISK_GEOMETRY_EX DiskGeometry = (PDISK_GEOMETRY_EX)(void*)geometry;
+	DISK_GEOMETRY legacyGeometry;
 
 	hPhysical = GetPhysicalHandle(DriveIndex, FALSE, FALSE, TRUE);
 	if (hPhysical == INVALID_HANDLE_VALUE)
 		return FALSE;
 
 	r = DeviceIoControl(hPhysical, IOCTL_DISK_GET_DRIVE_GEOMETRY_EX, NULL, 0, geometry, sizeof(geometry), &size, NULL);
+	if (!r && (WindowsVersion.Version == WINDOWS_2000)) {
+		// Calculate Windows 2000 disk size from legacy geometry (port-AI)
+		r = DeviceIoControl(hPhysical, IOCTL_DISK_GET_DRIVE_GEOMETRY, NULL, 0,
+			&legacyGeometry, sizeof(legacyGeometry), &size, NULL);
+		if (r) {
+			safe_closehandle(hPhysical);
+			return (uint64_t)legacyGeometry.Cylinders.QuadPart * legacyGeometry.TracksPerCylinder *
+				legacyGeometry.SectorsPerTrack * legacyGeometry.BytesPerSector;
+		}
+	}
 	safe_closehandle(hPhysical);
 	if (!r || size <= 0)
 		return 0;
@@ -1400,9 +1511,15 @@ BOOL IsMediaPresent(DWORD DriveIndex)
 	HANDLE hPhysical;
 	DWORD size;
 	BYTE geometry[128];
+	DISK_GEOMETRY legacyGeometry;
 
 	hPhysical = GetPhysicalHandle(DriveIndex, FALSE, FALSE, TRUE);
 	r = DeviceIoControl(hPhysical, IOCTL_DISK_GET_DRIVE_GEOMETRY_EX, NULL, 0, geometry, sizeof(geometry), &size, NULL) && (size > 0);
+	if (!r && (WindowsVersion.Version == WINDOWS_2000)) {
+		// Use the legacy geometry query to detect media on Windows 2000 (port-AI)
+		r = DeviceIoControl(hPhysical, IOCTL_DISK_GET_DRIVE_GEOMETRY, NULL, 0,
+			&legacyGeometry, sizeof(legacyGeometry), &size, NULL) && (size > 0);
+	}
 	safe_closehandle(hPhysical);
 	return r;
 }
@@ -1689,7 +1806,8 @@ BOOL ToggleEsp(DWORD DriveIndex, uint64_t PartitionOffset)
 	}
 
 	DriveLayout->PartitionEntry[esp_index].RewritePartition = TRUE;	// Just in case
-	r = DeviceIoControl(hPhysical, IOCTL_DISK_SET_DRIVE_LAYOUT_EX, (BYTE*)DriveLayout, dl_size, NULL, 0, NULL, NULL);
+	// NT 5 requires a valid bytecount pointer for synchronous IOCTLs (port)
+	r = DeviceIoControl(hPhysical, IOCTL_DISK_SET_DRIVE_LAYOUT_EX, (BYTE*)DriveLayout, dl_size, NULL, 0, &dl_size, NULL);
 	if (!r) {
 		uprintf("Could not set drive layout: %s", WindowsErrorString());
 		goto out;
@@ -1855,9 +1973,11 @@ BOOL GetDrivePartitionData(DWORD DriveIndex, char* FileSystemName, DWORD FileSys
 	BOOL r, ret = FALSE, isUefiNtfs;
 	HANDLE hPhysical;
 	DWORD size, i, j, super_floppy_disk = FALSE;
-	BYTE geometry[256] = {0}, layout[4096] = {0}, part_type;
+	BYTE geometry[256] = {0}, layout[4096] = {0}, legacy_layout[4096] = {0}, part_type;
 	PDISK_GEOMETRY_EX DiskGeometry = (PDISK_GEOMETRY_EX)(void*)geometry;
+	DISK_GEOMETRY legacyGeometry;
 	PDRIVE_LAYOUT_INFORMATION_EX DriveLayout = (PDRIVE_LAYOUT_INFORMATION_EX)(void*)layout;
+	PDRIVE_LAYOUT_INFORMATION LegacyDriveLayout = (PDRIVE_LAYOUT_INFORMATION)(void*)legacy_layout;
 	char *volume_name, *buf;
 
 	if (FileSystemName == NULL)
@@ -1878,6 +1998,17 @@ BOOL GetDrivePartitionData(DWORD DriveIndex, char* FileSystemName, DWORD FileSys
 		return FALSE;
 
 	r = DeviceIoControl(hPhysical, IOCTL_DISK_GET_DRIVE_GEOMETRY_EX, NULL, 0, geometry, sizeof(geometry), &size, NULL);
+	if (!r && (WindowsVersion.Version == WINDOWS_2000)) {
+		// Translate Windows 2000 geometry into the common representation. (port-AI)
+		r = DeviceIoControl(hPhysical, IOCTL_DISK_GET_DRIVE_GEOMETRY, NULL, 0,
+			&legacyGeometry, sizeof(legacyGeometry), &size, NULL);
+		if (r) {
+			DiskGeometry->Geometry = legacyGeometry;
+			DiskGeometry->DiskSize.QuadPart = legacyGeometry.Cylinders.QuadPart *
+				legacyGeometry.TracksPerCylinder * legacyGeometry.SectorsPerTrack *
+				legacyGeometry.BytesPerSector;
+		}
+	}
 	if (!r || size <= 0) {
 		suprintf("Could not get geometry for drive 0x%02x: %s", DriveIndex, WindowsErrorString());
 		safe_closehandle(hPhysical);
@@ -1902,6 +2033,35 @@ BOOL GetDrivePartitionData(DWORD DriveIndex, char* FileSystemName, DWORD FileSys
 	assert(SelectedDrive.SectorSize != 0);
 
 	r = DeviceIoControl(hPhysical, IOCTL_DISK_GET_DRIVE_LAYOUT_EX, NULL, 0, layout, sizeof(layout), &size, NULL );
+	if (!r && (WindowsVersion.Version == WINDOWS_2000)) {
+		DWORD maxEntries = (sizeof(layout) - FIELD_OFFSET(DRIVE_LAYOUT_INFORMATION_EX, PartitionEntry)) /
+			sizeof(PARTITION_INFORMATION_EX);
+		// Translate a Windows 2000 MBR layout into the a regular representation (port)
+		r = DeviceIoControl(hPhysical, IOCTL_DISK_GET_DRIVE_LAYOUT, NULL, 0,
+			legacy_layout, sizeof(legacy_layout), &size, NULL);
+		if (r && (LegacyDriveLayout->PartitionCount <= maxEntries)) {
+			memset(layout, 0, sizeof(layout));
+			DriveLayout->PartitionStyle = PARTITION_STYLE_MBR;
+			DriveLayout->PartitionCount = LegacyDriveLayout->PartitionCount;
+			DriveLayout->Mbr.Signature = LegacyDriveLayout->Signature;
+			for (i = 0; i < LegacyDriveLayout->PartitionCount; i++) {
+				DriveLayout->PartitionEntry[i].PartitionStyle = PARTITION_STYLE_MBR;
+				DriveLayout->PartitionEntry[i].StartingOffset = LegacyDriveLayout->PartitionEntry[i].StartingOffset;
+				DriveLayout->PartitionEntry[i].PartitionLength = LegacyDriveLayout->PartitionEntry[i].PartitionLength;
+				DriveLayout->PartitionEntry[i].PartitionNumber = LegacyDriveLayout->PartitionEntry[i].PartitionNumber;
+				DriveLayout->PartitionEntry[i].RewritePartition = LegacyDriveLayout->PartitionEntry[i].RewritePartition;
+				DriveLayout->PartitionEntry[i].Mbr.PartitionType = LegacyDriveLayout->PartitionEntry[i].PartitionType;
+				DriveLayout->PartitionEntry[i].Mbr.BootIndicator = LegacyDriveLayout->PartitionEntry[i].BootIndicator;
+				DriveLayout->PartitionEntry[i].Mbr.RecognizedPartition = LegacyDriveLayout->PartitionEntry[i].RecognizedPartition;
+				DriveLayout->PartitionEntry[i].Mbr.HiddenSectors = LegacyDriveLayout->PartitionEntry[i].HiddenSectors;
+			}
+			size = FIELD_OFFSET(DRIVE_LAYOUT_INFORMATION_EX, PartitionEntry) +
+				DriveLayout->PartitionCount * sizeof(PARTITION_INFORMATION_EX);
+		} else if (r) {
+			SetLastError(ERROR_INSUFFICIENT_BUFFER);
+			r = FALSE;
+		}
+	}
 	if (!r || size <= 0) {
 		suprintf("Could not get layout for drive 0x%02x: %s", DriveIndex, WindowsErrorString());
 		safe_closehandle(hPhysical);
@@ -2011,7 +2171,9 @@ BOOL GetDrivePartitionData(DWORD DriveIndex, char* FileSystemName, DWORD FileSys
 				 (CompareGUID(&DriveLayout->PartitionEntry[i].Gpt.PartitionType, &PARTITION_MICROSOFT_RESERVED)) ||
 				 (CompareGUID(&DriveLayout->PartitionEntry[i].Gpt.PartitionType, &PARTITION_GENERIC_ESP)) )
 				--SelectedDrive.nPartitions;
-			if (CompareGUID(&DriveLayout->PartitionEntry[i].Gpt.PartitionType, &PARTITION_MICROSOFT_DATA))
+			// Don't expose GPT partitions as mountable to NT5 (port)
+			if ((WindowsVersion.Version >= WINDOWS_VISTA) &&
+				CompareGUID(&DriveLayout->PartitionEntry[i].Gpt.PartitionType, &PARTITION_MICROSOFT_DATA))
 				ret = TRUE;
 		}
 		break;
@@ -2058,7 +2220,9 @@ out:
  */
 BOOL UnmountVolume(HANDLE hDrive)
 {
-	if (!DeviceIoControl(hDrive, FSCTL_DISMOUNT_VOLUME, NULL, 0, NULL, 0, NULL, NULL)) {
+	DWORD size;
+	// NT5 requires a valid bytecount pointer for synchronous IOCTLs (port)
+	if (!DeviceIoControl(hDrive, FSCTL_DISMOUNT_VOLUME, NULL, 0, NULL, 0, &size, NULL)) {
 		uprintf("Could not unmount drive: %s", WindowsErrorString());
 		return FALSE;
 	}
@@ -2246,6 +2410,42 @@ static BOOL ClearPartition(HANDLE hDrive, uint64_t offset, DWORD size)
 	return r;
 }
 
+static BOOL W2K_SetLegacyDriveLayout(HANDLE hDrive, const DRIVE_LAYOUT_INFORMATION_EX4* source)
+{
+	BYTE buffer[sizeof(DRIVE_LAYOUT_INFORMATION) + 3 * sizeof(PARTITION_INFORMATION)] = { 0 };
+	PDRIVE_LAYOUT_INFORMATION layout = (PDRIVE_LAYOUT_INFORMATION)(void*)buffer;
+	DWORD i, size, returned;
+
+	if ((source == NULL) || (source->PartitionStyle != PARTITION_STYLE_MBR) ||
+		(source->PartitionCount == 0) ||
+		(source->PartitionCount > 4)) {
+		SetLastError(ERROR_INVALID_PARAMETER);
+		return FALSE;
+	}
+	layout->PartitionCount = source->PartitionCount;
+	layout->Signature = source->Type.Mbr.Signature;
+	for (i = 0; i < source->PartitionCount; i++) {
+		layout->PartitionEntry[i].StartingOffset = source->PartitionEntry[i].StartingOffset;
+		layout->PartitionEntry[i].PartitionLength = source->PartitionEntry[i].PartitionLength;
+		layout->PartitionEntry[i].HiddenSectors = source->PartitionEntry[i].Mbr.HiddenSectors;
+		if ((layout->PartitionEntry[i].HiddenSectors == 0) &&
+			(source->PartitionEntry[i].StartingOffset.QuadPart > 0))
+			layout->PartitionEntry[i].HiddenSectors = (DWORD)
+				(source->PartitionEntry[i].StartingOffset.QuadPart / SelectedDrive.SectorSize);
+		layout->PartitionEntry[i].PartitionNumber = source->PartitionEntry[i].PartitionNumber;
+		layout->PartitionEntry[i].PartitionType = source->PartitionEntry[i].Mbr.PartitionType;
+		layout->PartitionEntry[i].BootIndicator = source->PartitionEntry[i].Mbr.BootIndicator;
+		layout->PartitionEntry[i].RecognizedPartition =
+			(source->PartitionEntry[i].Mbr.PartitionType != PARTITION_ENTRY_UNUSED);
+		layout->PartitionEntry[i].RewritePartition = source->PartitionEntry[i].RewritePartition;
+	}
+	size = sizeof(DRIVE_LAYOUT_INFORMATION) +
+		(source->PartitionCount - 1) * sizeof(PARTITION_INFORMATION);
+	// Submit the new layout through W2k's API (port)
+	return DeviceIoControl(hDrive, IOCTL_DISK_SET_DRIVE_LAYOUT, layout, size,
+		NULL, 0, &returned, NULL);
+}
+
 /*
  * Create a partition table
  * See http://technet.microsoft.com/en-us/library/cc739412.aspx for some background info
@@ -2270,14 +2470,26 @@ BOOL CreatePartition(HANDLE hDrive, int partition_style, int file_system, BOOL m
 	LONGLONG esp_size = 260 * MB;
 	LONGLONG ClusterSize = (LONGLONG)ComboBox_GetCurItemData(hClusterSize);
 
+	// Discard staged GPT metadata at the start of each partitioning operation (port)
+	xp_gpt_pending = FALSE;
+
 	PrintInfoDebug(0, MSG_238, PartitionTypeName[partition_style]);
 
 	if (ClusterSize == 0)
 		ClusterSize = 0x200;
 
-	if (partition_style == PARTITION_STYLE_SFD)
+	if (partition_style == PARTITION_STYLE_SFD) {
+		if (WindowsVersion.Version <= WINDOWS_XP) {
+			// Describe the complete NT 5 disk as the SFD data volume (port)
+			memset(partition_index, 0, sizeof(partition_index));
+			memset(SelectedDrive.Partition, 0, sizeof(SelectedDrive.Partition));
+			partition_index[PI_MAIN] = 0;
+			SelectedDrive.Partition[0].Offset = 0;
+			SelectedDrive.Partition[0].Size = SelectedDrive.DiskSize;
+		}
 		// Nothing to do
 		return TRUE;
+	}
 
 	if (extra_partitions & XP_UEFI_NTFS) {
 		uefi_ntfs_size = GetResourceSize(hMainInstance, MAKEINTRESOURCEA(IDR_UEFI_NTFS), _RT_RCDATA, "uefi-ntfs.img");
@@ -2312,7 +2524,10 @@ BOOL CreatePartition(HANDLE hDrive, int partition_style, int file_system, BOOL m
 	// Having the ESP up front may help (and is the Microsoft recommended way) but this
 	// is only achievable if we can mount more than one partition at once, which means
 	// either fixed drive or Windows 10 1703 or later.
-	if (((SelectedDrive.MediaType == FixedMedia) || (WindowsVersion.BuildNumber > 15000)) &&
+
+	// More NT5 GPT exposure bullshit (port)
+	if (((SelectedDrive.MediaType == FixedMedia) ||
+		((WindowsVersion.Version >= WINDOWS_10) && (WindowsVersion.BuildNumber > 15000))) &&
 		(extra_partitions & XP_ESP)) {
 		assert(partition_style == PARTITION_STYLE_GPT);
 		partition_index[PI_ESP] = pi;
@@ -2534,21 +2749,65 @@ BOOL CreatePartition(HANDLE hDrive, int partition_style, int file_system, BOOL m
 		break;
 	}
 
+	if ((WindowsVersion.Version <= WINDOWS_XP) && (partition_style == PARTITION_STYLE_GPT)) {
+		DRIVE_LAYOUT_INFORMATION_EX4 xpMbrLayout = { 0 };
+		CREATE_DISK xpCreateDisk = { PARTITION_STYLE_MBR, { { 0 } } };
+		uint8_t xpMbrType = GetMbrPartitionTypeForFs(file_system);
+
+		// Stage the GPT data partition as MBR so the NT 5 mount manager can access it (port-AI)
+		// I was out of ideas
+		if ((xpMbrType == 0) || (SelectedDrive.DiskSize > 2 * TB)) {
+			uprintf("GPT staging does not support this file system or a drive larger than 2 TB");
+			return FALSE;
+		}
+		xp_gpt_layout = DriveLayoutEx;
+		xp_gpt_pending = TRUE;
+		xpCreateDisk.Mbr.Signature = (DWORD)GetTickCount64();
+		xpMbrLayout.PartitionStyle = PARTITION_STYLE_MBR;
+		xpMbrLayout.PartitionCount = 4;
+		xpMbrLayout.Type.Mbr.Signature = xpCreateDisk.Mbr.Signature;
+		xpMbrLayout.PartitionEntry[0].PartitionStyle = PARTITION_STYLE_MBR;
+		xpMbrLayout.PartitionEntry[0].StartingOffset = DriveLayoutEx.PartitionEntry[mi].StartingOffset;
+		xpMbrLayout.PartitionEntry[0].PartitionLength = DriveLayoutEx.PartitionEntry[mi].PartitionLength;
+		xpMbrLayout.PartitionEntry[0].PartitionNumber = 1;
+		xpMbrLayout.PartitionEntry[0].RewritePartition = TRUE;
+		xpMbrLayout.PartitionEntry[0].Mbr.PartitionType = xpMbrType;
+		xpMbrLayout.PartitionEntry[0].Mbr.BootIndicator = FALSE;
+		xpMbrLayout.PartitionEntry[0].Mbr.RecognizedPartition = TRUE;
+		xpMbrLayout.PartitionEntry[0].Mbr.HiddenSectors =
+			(DWORD)(xpMbrLayout.PartitionEntry[0].StartingOffset.QuadPart / SelectedDrive.SectorSize);
+		CreateDisk = xpCreateDisk;
+		DriveLayoutEx = xpMbrLayout;
+		uprintf("Using a temporary MBR layout for GPT data access");
+	}
+
+	if (WindowsVersion.Version == WINDOWS_2000) {
+		// Submit MBR and staged GPT layouts through the W2k's API (port)
+		if (!W2K_SetLegacyDriveLayout(hDrive, &DriveLayoutEx)) {
+			uprintf("Could not set Windows 2000 drive layout: %s", WindowsErrorString());
+			return FALSE;
+		}
+		return TRUE;
+	}
+
 	// If you don't call IOCTL_DISK_CREATE_DISK, the IOCTL_DISK_SET_DRIVE_LAYOUT_EX call will fail
 	size = sizeof(CreateDisk);
-	if (!DeviceIoControl(hDrive, IOCTL_DISK_CREATE_DISK, (BYTE*)&CreateDisk, size, NULL, 0, NULL, NULL)) {
+	if (!DeviceIoControl(hDrive, IOCTL_DISK_CREATE_DISK, (BYTE*)&CreateDisk, size, NULL, 0, &size, NULL)) {
 		uprintf("Could not reset disk: %s", WindowsErrorString());
 		return FALSE;
 	}
 
 	// "The goggles, they do nothing!"
-	RefreshDriveLayout(hDrive);
+	// Skip the refresh for NT5, it causes issues (port)
+	if (WindowsVersion.Version > WINDOWS_XP)
+		RefreshDriveLayout(hDrive);
 
-	size = sizeof(DriveLayoutEx) - ((partition_style == PARTITION_STYLE_GPT) ?
-		((MAX_PARTITIONS - pi) * sizeof(PARTITION_INFORMATION_EX)) : 0);
+	// Whatdoyouwannadobrah (port)
+	size = FIELD_OFFSET(DRIVE_LAYOUT_INFORMATION_EX4, PartitionEntry) +
+		DriveLayoutEx.PartitionCount * sizeof(PARTITION_INFORMATION_EX);
 	// The DRIVE_LAYOUT_INFORMATION_EX used by Microsoft, with its 1-sized array, is designed to overrun...
 	// coverity[overrun-buffer-arg]
-	if (!DeviceIoControl(hDrive, IOCTL_DISK_SET_DRIVE_LAYOUT_EX, (BYTE*)&DriveLayoutEx, size, NULL, 0, NULL, NULL)) {
+	if (!DeviceIoControl(hDrive, IOCTL_DISK_SET_DRIVE_LAYOUT_EX, (BYTE*)&DriveLayoutEx, size, NULL, 0, &size, NULL)) {
 		uprintf("Could not set drive layout: %s", WindowsErrorString());
 		return FALSE;
 	}
@@ -2559,12 +2818,204 @@ BOOL CreatePartition(HANDLE hDrive, int partition_style, int file_system, BOOL m
 	return TRUE;
 }
 
+static uint32_t XpGptCrc32(const void* data, size_t size)
+{
+	const uint8_t* p = (const uint8_t*)data;
+	uint32_t crc = 0xffffffffU;
+	size_t i;
+	int bit;
+
+	// Generate the IEEE CRC-32 values required by GPT metadata (port)
+	for (i = 0; i < size; i++) {
+		crc ^= p[i];
+		for (bit = 0; bit < 8; bit++)
+			crc = (crc >> 1) ^ (0xedb88320U & (uint32_t)-(int32_t)(crc & 1));
+	}
+	return crc ^ 0xffffffffU;
+}
+
+static BOOL XpWriteGptBlock(HANDLE hDrive, uint64_t offset, const void* buffer, DWORD size)
+{
+	LARGE_INTEGER position;
+
+	position.QuadPart = offset;
+	if (!SetFilePointerEx(hDrive, position, NULL, FILE_BEGIN))
+		return FALSE;
+	return WriteFileWithRetry(hDrive, buffer, size, NULL, WRITE_RETRIES);
+}
+
+BOOL FinalizeXpGpt(HANDLE hDrive)
+{
+	const DWORD entry_count = 128;
+	const DWORD entry_size = sizeof(XP_GPT_ENTRY);
+	const DWORD entries_size = entry_count * entry_size;
+	BOOL ret = FALSE;
+	DWORD i, size;
+	uint32_t protective_size;
+	uint64_t disk_sectors, last_lba, first_usable_lba, last_usable_lba;
+	uint64_t entry_sectors, backup_entry_lba, start_lba, end_lba;
+	uint8_t *protective_mbr = NULL, *primary_header_sector = NULL, *backup_header_sector = NULL;
+	XP_GPT_ENTRY* entries = NULL;
+	XP_GPT_HEADER *primary_header, *backup_header;
+
+	if ((WindowsVersion.Version > WINDOWS_XP) || !xp_gpt_pending)
+		return TRUE;
+	// Commit the saved GPT metadata after all NT 5 mounted-volume work is complete (port)
+	if ((hDrive == NULL) || (hDrive == INVALID_HANDLE_VALUE) ||
+		(SelectedDrive.SectorSize < 512) ||
+		((SelectedDrive.SectorSize & (SelectedDrive.SectorSize - 1)) != 0) ||
+		(entries_size % SelectedDrive.SectorSize != 0) ||
+		(SelectedDrive.DiskSize % SelectedDrive.SectorSize != 0)) {
+		uprintf("Invalid drive geometry for GPT finalization");
+		goto out;
+	}
+
+	disk_sectors = SelectedDrive.DiskSize / SelectedDrive.SectorSize;
+	entry_sectors = (entries_size + SelectedDrive.SectorSize - 1) / SelectedDrive.SectorSize;
+	if (disk_sectors <= (2 * entry_sectors + 3)) {
+		uprintf("Drive is too small for GPT finalization");
+		goto out;
+	}
+	last_lba = disk_sectors - 1;
+	first_usable_lba = xp_gpt_layout.Type.Gpt.StartingUsableOffset.QuadPart / SelectedDrive.SectorSize;
+	last_usable_lba = first_usable_lba +
+		(xp_gpt_layout.Type.Gpt.UsableLength.QuadPart / SelectedDrive.SectorSize) - 1;
+	backup_entry_lba = last_lba - entry_sectors;
+	if ((first_usable_lba < 2 + entry_sectors) || (last_usable_lba >= backup_entry_lba)) {
+		uprintf("Saved GPT usable range is invalid");
+		goto out;
+	}
+
+	// Align GPT buffers and lengths for an unbuffered physical-drive handle (port)
+	protective_mbr = (uint8_t*)_mm_malloc(SelectedDrive.SectorSize, SelectedDrive.SectorSize);
+	primary_header_sector = (uint8_t*)_mm_malloc(SelectedDrive.SectorSize, SelectedDrive.SectorSize);
+	backup_header_sector = (uint8_t*)_mm_malloc(SelectedDrive.SectorSize, SelectedDrive.SectorSize);
+	entries = (XP_GPT_ENTRY*)_mm_malloc(entries_size, SelectedDrive.SectorSize);
+	if ((protective_mbr == NULL) || (primary_header_sector == NULL) ||
+		(backup_header_sector == NULL) || (entries == NULL)) {
+		uprintf("Could not allocate GPT metadata");
+		SetLastError(ERROR_NOT_ENOUGH_MEMORY);
+		goto out;
+	}
+	memset(protective_mbr, 0, SelectedDrive.SectorSize);
+	memset(primary_header_sector, 0, SelectedDrive.SectorSize);
+	memset(backup_header_sector, 0, SelectedDrive.SectorSize);
+	memset(entries, 0, entries_size);
+
+	if ((xp_gpt_layout.PartitionCount == 0) ||
+		(xp_gpt_layout.PartitionCount > MIN(entry_count, MAX_PARTITIONS))) {
+		uprintf("Saved GPT partition count is invalid");
+		goto out;
+	}
+	for (i = 0; i < xp_gpt_layout.PartitionCount; i++) {
+		PARTITION_INFORMATION_EX* source = &xp_gpt_layout.PartitionEntry[i];
+
+		if ((source->PartitionStyle != PARTITION_STYLE_GPT) ||
+			(source->StartingOffset.QuadPart % SelectedDrive.SectorSize != 0) ||
+			(source->PartitionLength.QuadPart <= 0) ||
+			(source->PartitionLength.QuadPart % SelectedDrive.SectorSize != 0)) {
+			uprintf("Saved GPT partition %lu is invalid", i + 1);
+			goto out;
+		}
+		start_lba = source->StartingOffset.QuadPart / SelectedDrive.SectorSize;
+		end_lba = start_lba + source->PartitionLength.QuadPart / SelectedDrive.SectorSize - 1;
+		if ((start_lba < first_usable_lba) || (end_lba > last_usable_lba) || (end_lba < start_lba)) {
+			uprintf("Saved GPT partition %lu is outside the usable range", i + 1);
+			goto out;
+		}
+		entries[i].PartitionTypeGuid = source->Gpt.PartitionType;
+		entries[i].UniquePartitionGuid = source->Gpt.PartitionId;
+		entries[i].StartingLba = start_lba;
+		entries[i].EndingLba = end_lba;
+		entries[i].Attributes = source->Gpt.Attributes;
+		memcpy(entries[i].PartitionName, source->Gpt.Name, sizeof(entries[i].PartitionName));
+	}
+
+	primary_header = (XP_GPT_HEADER*)primary_header_sector;
+	primary_header->Signature = 0x5452415020494645ULL;
+	primary_header->Revision = 0x00010000;
+	primary_header->HeaderSize = sizeof(XP_GPT_HEADER);
+	primary_header->CurrentLba = 1;
+	primary_header->BackupLba = last_lba;
+	primary_header->FirstUsableLba = first_usable_lba;
+	primary_header->LastUsableLba = last_usable_lba;
+	primary_header->DiskGuid = xp_gpt_layout.Type.Gpt.DiskId;
+	primary_header->PartitionEntryLba = 2;
+	primary_header->NumberOfPartitionEntries = entry_count;
+	primary_header->SizeOfPartitionEntry = entry_size;
+	primary_header->PartitionEntryArrayCrc32 = XpGptCrc32(entries, entries_size);
+	primary_header->HeaderCrc32 = XpGptCrc32(primary_header, primary_header->HeaderSize);
+
+	memcpy(backup_header_sector, primary_header_sector, SelectedDrive.SectorSize);
+	backup_header = (XP_GPT_HEADER*)backup_header_sector;
+	backup_header->HeaderCrc32 = 0;
+	backup_header->CurrentLba = last_lba;
+	backup_header->BackupLba = 1;
+	backup_header->PartitionEntryLba = backup_entry_lba;
+	backup_header->HeaderCrc32 = XpGptCrc32(backup_header, backup_header->HeaderSize);
+
+	protective_mbr[446 + 1] = 0x00;
+	protective_mbr[446 + 2] = 0x02;
+	protective_mbr[446 + 3] = 0x00;
+	protective_mbr[446 + 4] = 0xee;
+	protective_mbr[446 + 5] = 0xff;
+	protective_mbr[446 + 6] = 0xff;
+	protective_mbr[446 + 7] = 0xff;
+	i = 1;
+	memcpy(&protective_mbr[446 + 8], &i, sizeof(i));
+	protective_size = (last_lba > 0xffffffffULL) ? 0xffffffffU : (uint32_t)last_lba;
+	memcpy(&protective_mbr[446 + 12], &protective_size, sizeof(protective_size));
+	protective_mbr[510] = 0x55;
+	protective_mbr[511] = 0xaa;
+
+	uprintf("Finalizing staged disk as GPT...");
+	if (!XpWriteGptBlock(hDrive, backup_entry_lba * SelectedDrive.SectorSize, entries, entries_size) ||
+		!XpWriteGptBlock(hDrive, last_lba * SelectedDrive.SectorSize,
+			backup_header_sector, SelectedDrive.SectorSize) ||
+		!XpWriteGptBlock(hDrive, 2ULL * SelectedDrive.SectorSize, entries, entries_size) ||
+		!XpWriteGptBlock(hDrive, SelectedDrive.SectorSize,
+			primary_header_sector, SelectedDrive.SectorSize) ||
+		!XpWriteGptBlock(hDrive, 0, protective_mbr, SelectedDrive.SectorSize)) {
+		uprintf("Could not write GPT metadata: %s", WindowsErrorString());
+		goto out;
+	}
+	if (!FlushFileBuffers(hDrive)) {
+		DWORD flush_error = GetLastError();
+		// Accept only unsupported flush errors after synchronous write-through I/O (port)
+		if ((flush_error != ERROR_INVALID_FUNCTION) &&
+			!((WindowsVersion.Version == WINDOWS_2000) && (flush_error == ERROR_NOT_SUPPORTED))) {
+			SetLastError(flush_error);
+			uprintf("Could not flush GPT metadata: %s", WindowsErrorString());
+			goto out;
+		}
+	}
+	if ((WindowsVersion.Version == WINDOWS_2000) ||
+		!DeviceIoControl(hDrive, IOCTL_DISK_UPDATE_PROPERTIES, NULL, 0, NULL, 0, &size, NULL))
+		uprintf("The GPT layout will be available after the drive is replugged");
+	xp_gpt_pending = FALSE;
+	ret = TRUE;
+
+out:
+	safe_mm_free(entries);
+	safe_mm_free(backup_header_sector);
+	safe_mm_free(primary_header_sector);
+	safe_mm_free(protective_mbr);
+	return ret;
+}
+
 BOOL RefreshDriveLayout(HANDLE hDrive)
 {
 	BOOL r;
+	DWORD size;
 
-	// Diskpart does call the following IOCTL this after updating the partition table, so we do too
-	r = DeviceIoControl(hDrive, IOCTL_DISK_UPDATE_PROPERTIES, NULL, 0, NULL, 0, NULL, NULL);
+	if (WindowsVersion.Version == WINDOWS_2000) {
+		// W2k is already good (port)
+		return TRUE;
+	}
+
+	// Diskpart calls this IOCTL after updating the partition table, and so do we
+	// NT5 requires a valid bytecount pointer for synchronous IOCTLs (again) (port)
+	r = DeviceIoControl(hDrive, IOCTL_DISK_UPDATE_PROPERTIES, NULL, 0, NULL, 0, &size, NULL);
 	if (!r)
 		uprintf("Could not refresh drive layout: %s", WindowsErrorString());
 	return r;
@@ -2574,17 +3025,24 @@ BOOL RefreshDriveLayout(HANDLE hDrive)
 BOOL InitializeDisk(HANDLE hDrive)
 {
 	BOOL r;
+	DWORD size;
 	CREATE_DISK CreateDisk = {PARTITION_STYLE_RAW, {{0}}};
 
 	uprintf("Initializing disk...");
+	if (WindowsVersion.Version == WINDOWS_2000) {
+		// CreatePartition replaces the complete Windows 2000 layout (port)
+		return TRUE;
+	}
 
-	r = DeviceIoControl(hDrive, IOCTL_DISK_CREATE_DISK, (BYTE*)&CreateDisk, sizeof(CreateDisk), NULL, 0, NULL, NULL);
+	// NT5 requires a valid bytecount pointer for synchronous IOCTLs (port)
+	size = sizeof(CreateDisk);
+	r = DeviceIoControl(hDrive, IOCTL_DISK_CREATE_DISK, (BYTE*)&CreateDisk, size, NULL, 0, &size, NULL);
 	if (!r) {
 		uprintf("Could not delete drive layout: %s", WindowsErrorString());
 		return FALSE;
 	}
 
-	r = DeviceIoControl(hDrive, IOCTL_DISK_UPDATE_PROPERTIES, NULL, 0, NULL, 0, NULL, NULL);
+	r = DeviceIoControl(hDrive, IOCTL_DISK_UPDATE_PROPERTIES, NULL, 0, NULL, 0, &size, NULL);
 	if (!r) {
 		uprintf("Could not refresh drive layout: %s", WindowsErrorString());
 		return FALSE;
@@ -2668,7 +3126,8 @@ BOOL IsFilteredDrive(DWORD DriveIndex)
 	if (hPhysical == INVALID_HANDLE_VALUE)
 		goto out;
 
-	r = DeviceIoControl(hPhysical, IOCTL_DISK_GET_DRIVE_LAYOUT_EX, NULL, 0, layout, sizeof(layout), &size, NULL);
+	r = DeviceIoControl(hPhysical, IOCTL_DISK_GET_DRIVE_LAYOUT_EX, NULL, 0,
+		layout, sizeof(layout), &size, NULL);
 	if (!r || size <= 0)
 		goto out;
 

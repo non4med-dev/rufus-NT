@@ -768,15 +768,45 @@ static __inline DWORD GetModuleFileNameU(HMODULE hModule, char* lpFilename, DWOR
 static __inline DWORD GetModuleFileNameExU(HANDLE hProcess, HMODULE hModule, char* lpFilename, DWORD nSize)
 {
 	DWORD ret = 0, err = ERROR_INVALID_DATA;
-	// coverity[returned_null]
-	walloc(lpFilename, nSize);
-	ret = GetModuleFileNameExW(hProcess, hModule, wlpFilename, nSize);
+	HMODULE hMod;
+	wchar_t* wlpFilename = NULL;
+	typedef DWORD(WINAPI* pfnGetModuleFileNameExW)(HANDLE, HMODULE, LPWSTR, DWORD);
+	static pfnGetModuleFileNameExW _GetModuleFileNameExW = NULL;
+	static HMODULE hPsapi = NULL;
+	static BOOL initialized = FALSE;
+
+	// Vista support (port)
+	if (!initialized) {
+		hMod = GetModuleHandleA("kernel32.dll");
+		if (hMod != NULL)
+			_GetModuleFileNameExW = (pfnGetModuleFileNameExW)GetProcAddress(hMod, "K32GetModuleFileNameExW");
+		if (_GetModuleFileNameExW == NULL) {
+			hPsapi = LoadLibraryA("psapi.dll");
+			if (hPsapi != NULL)
+				_GetModuleFileNameExW = (pfnGetModuleFileNameExW)GetProcAddress(hPsapi, "GetModuleFileNameExW");
+		}
+		initialized = TRUE;
+	}
+
+	if (_GetModuleFileNameExW == NULL) {
+		SetLastError(ERROR_PROC_NOT_FOUND);
+		return 0;
+	}
+
+	wlpFilename = (wchar_t*)calloc(nSize, sizeof(wchar_t));
+	if (wlpFilename == NULL) {
+		SetLastError(ERROR_NOT_ENOUGH_MEMORY);
+		return 0;
+	}
+
+	ret = _GetModuleFileNameExW(hProcess, hModule, wlpFilename, nSize);
 	err = GetLastError();
-	if ((ret != 0)
-		&& ((ret = wchar_to_utf8_no_alloc(wlpFilename, lpFilename, nSize)) == 0)) {
+
+	if ((ret != 0) && ((ret = wchar_to_utf8_no_alloc(wlpFilename, lpFilename, nSize)) == 0)) {
 		err = GetLastError();
 	}
-	wfree(lpFilename);
+
+	sfree(wlpFilename);
 	SetLastError(err);
 	return ret;
 }

@@ -29,6 +29,7 @@
 #include <assert.h>
 
 #include "rufus.h"
+#include "winxp.h"
 #include "file.h"
 #include "drive.h"
 #include "format.h"

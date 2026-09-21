@@ -33,6 +33,7 @@
 #include <assert.h>
 
 #include "rufus.h"
+#include "winxp.h"
 #include "drive.h"
 #include "missing.h"
 #include "resource.h"
@@ -70,6 +71,22 @@ static IAccPropServices* pfaps = NULL;
 static int nb_slots[OP_MAX];
 static float slot_end[OP_MAX+1];	// shifted +1 so that we can subtract 1 to OP indexes
 static float previous_end;
+
+// Keep NT5 toolbars from covering the main dialog buttons (port)
+static void RaiseNt5MainButtons(HWND hDlg)
+{
+	HWND hCtrl;
+	int i;
+
+	if (WindowsVersion.Version > WINDOWS_XP)
+		return;
+	for (i = 0; i < ARRAYSIZE(main_button_ids); i++) {
+		hCtrl = GetDlgItem(hDlg, main_button_ids[i]);
+		SetWindowPos(hCtrl, HWND_TOP, 0, 0, 0, 0,
+			SWP_NOMOVE | SWP_NOSIZE | SWP_SHOWWINDOW);
+		InvalidateRect(hCtrl, NULL, TRUE);
+	}
+}
 
 void SetAccessibleName(HWND hCtrl, const char* name)
 {
@@ -397,7 +414,11 @@ void PositionMainControls(HWND hDlg)
 		if (i % 2 == 1)
 			x -= bw + ssw;
 		hPrevCtrl = GetNextWindow(hCtrl, GW_HWNDPREV);
-		SetWindowPos(hCtrl, hPrevCtrl, x, rc.top, bw, ddbh, 0);
+		// Preserve the NT5 button order without affecting Vista+ (port)
+		if (WindowsVersion.Version <= WINDOWS_XP)
+			SetWindowPos(hCtrl, hPrevCtrl, x, rc.top, bw, ddbh, 0);
+		else
+			SetWindowPos(hCtrl, NULL, x, rc.top, bw, ddbh, SWP_NOZORDER);
 	}
 
 	// Reposition the Save button
@@ -486,6 +507,8 @@ void PositionMainControls(HWND hDlg)
 	MapWindowPoints(NULL, hDlg, (POINT*)&rc, 2);
 	hPrevCtrl = GetNextWindow(hCtrl, GW_HWNDPREV);
 	SetWindowPos(hCtrl, hPrevCtrl, rc.left, rc.top, bsw, rc.bottom - rc.top, 0);
+
+	RaiseNt5MainButtons(hDlg);
 }
 
 static void ResizeDialogs(int shift)
@@ -553,6 +576,7 @@ void AdjustForLowDPI(HWND hDlg)
 
 	ResizeDialogs(dy + 2 * ddy);
 	InvalidateRect(hDlg, NULL, TRUE);
+	RaiseNt5MainButtons(hDlg);
 }
 
 void SetSectionHeaders(HWND hDlg, HFONT* hFont)
@@ -565,10 +589,13 @@ void SetSectionHeaders(HWND hDlg, HFONT* hFont)
 	int i;
 
 	// Set the section header fonts and resize the static controls accordingly
+	// Another fix attempt for XPs font
 	if (*hFont == NULL) {
 		HDC hDC = GetDC(hMainDialog);
-		*hFont = CreateFontA(-MulDiv(14, GetDeviceCaps(hDC, LOGPIXELSY), 72), 0, 0, 0,
-			FW_SEMIBOLD, FALSE, FALSE, FALSE, DEFAULT_CHARSET, 0, 0, PROOF_QUALITY, 0, "Segoe UI");
+		*hFont = CreateFontA(-MulDiv(14, GetDeviceCaps(hDC, LOGPIXELSY), 72),
+			0, 0, 0, FW_SEMIBOLD, FALSE, FALSE, FALSE, DEFAULT_CHARSET,
+			0, 0, PROOF_QUALITY, 0,
+			(WindowsVersion.Version <= WINDOWS_XP) ? "Tahoma" : "Segoe UI");
 		safe_release_dc(hMainDialog, hDC);
 	}
 
@@ -629,6 +656,10 @@ void ToggleAdvancedDeviceOptions(BOOL enable)
 	GetWindowRect(hDeviceList, &rc);
 	MapWindowPoints(NULL, hMainDialog, (POINT*)&rc, 2);
 	SetWindowPos(hDeviceList, GetDlgItem(hMainDialog, IDS_DEVICE_TXT), rc.left, rc.top, enable ? fw - ssw - sbw : fw, rc.bottom - rc.top, 0);
+	if (WindowsVersion.Version == WINDOWS_2000) {
+		// Restore W2k's combo-box drop heights after resizing (port)
+		W2K_RestoreComboBoxDropHeights(hMainDialog);
+	}
 
 	// Resize the main dialog and log window
 	ResizeDialogs(shift);
@@ -780,9 +811,15 @@ void ToggleImageOptions(void)
 	BOOL has_wintogo, has_persistence;
 	uint8_t entry_image_options = image_options;
 	int i, shift = rh;
-
+	/*
 	has_wintogo = ((boot_type == BT_IMAGE) && (image_path != NULL) && (img_report.is_iso || img_report.is_windows_img) &&
 		(WindowsVersion.Version >= WINDOWS_8) && (HAS_WINTOGO(img_report)));
+	has_persistence = ((boot_type == BT_IMAGE) && (image_path != NULL) && (img_report.is_iso) && (HAS_PERSISTENCE(img_report)));
+	*/
+
+	// Remove Windows To Go version check, add settings option (port)
+	has_wintogo = enable_windows_to_go && ((boot_type == BT_IMAGE) && (image_path != NULL) &&
+		(img_report.is_iso || img_report.is_windows_img) && HAS_WINTOGO(img_report));
 	has_persistence = ((boot_type == BT_IMAGE) && (image_path != NULL) && (img_report.is_iso) && (HAS_PERSISTENCE(img_report)));
 
 	assert(popcnt8(image_options) <= 1);
@@ -841,24 +878,62 @@ void ToggleImageOptions(void)
 void CreateSmallButtons(HWND hDlg)
 {
 	HIMAGELIST hSaveImageList, hHashImageList;
-	HICON hIconSave, hIconHash;
+	HICON hIconSave = NULL, hIconHash = NULL;
 	int icon_offset = 0, i16 = GetSystemMetrics(SM_CXSMICON);
 	TBBUTTON tbToolbarButtons[1];
 	unsigned char* buffer;
 	DWORD bufsize;
+	UINT dpi, il_flags;
+
+	if (WindowsVersion.Version <= WINDOWS_XP) {
+		// Select icon sizes from a custom API because NT5 is outdated as shi (port)
+		dpi = XP_GetDpiForWindow(hDlg);
+		i16 = (dpi >= 168) ? 32 : ((dpi >= 120) ? 24 : 16);
+	}
 
 	if (i16 >= 28)
 		icon_offset = 20;
 	else if (i16 >= 20)
 		icon_offset = 10;
 
+	// Proper DPI handling Win8+ (vanilla Rufus) (port)
+	il_flags = ILC_COLOR32 | ILC_MASK;
+	if (WindowsVersion.Version >= WINDOWS_8)
+		il_flags |= ILC_HIGHQUALITYSCALE;
+
 	hSaveToolbar = CreateWindowEx(0, TOOLBARCLASSNAME, NULL, TOOLBAR_STYLE,
 		0, 0, 0, 0, hMainDialog, (HMENU)IDC_SAVE_TOOLBAR, hMainInstance, NULL);
-	hSaveImageList = ImageList_Create(i16, i16, ILC_COLOR32 | ILC_HIGHQUALITYSCALE | ILC_MIRROR, 1, 0);
-	buffer = GetResource(hMainInstance, MAKEINTRESOURCEA(IDI_SAVE_16 + icon_offset), _RT_RCDATA, "save icon", &bufsize, FALSE);
-	hIconSave = CreateIconFromResourceEx(buffer, bufsize, TRUE, 0x30000, 0, 0, 0);
-	ImageList_AddIcon(hSaveImageList, hIconSave);
-	DestroyIcon(hIconSave);
+	hSaveImageList = ImageList_Create(i16, i16, il_flags, 1, 0);
+
+	// Use pngs for icons on Vista+ (port)
+	if (WindowsVersion.Version >= WINDOWS_VISTA) {
+		buffer = GetResource(hMainInstance, MAKEINTRESOURCEA(IDI_SAVE_16 + icon_offset),
+			_RT_RCDATA, "save icon", &bufsize, FALSE);
+		if (buffer != NULL)
+			hIconSave = CreateIconFromResourceEx(buffer, bufsize, TRUE, 0x30000, 0, 0, 0);
+	}
+
+	// Use icos for icons on NT5 (port)
+	if (hIconSave == NULL) {
+		hIconSave = (WindowsVersion.Version == WINDOWS_2000) ?
+			W2K_LoadAlphaIconResource(hMainInstance, IDI_SAVE_16 + icon_offset,
+				i16, i16, GetSysColor(COLOR_BTNFACE)) :
+			(HICON)LoadImageA(hMainInstance, MAKEINTRESOURCEA(IDI_SAVE_16 + icon_offset),
+				IMAGE_ICON, i16, i16, LR_DEFAULTCOLOR);
+	}
+
+	// Troubleshooting, shouldn't be necessary anymore but doesn't hurt to keep
+	if (hIconSave == NULL) {
+		uprintf("Failed to load save toolbar icon (ID %d): %s", IDI_SAVE_16, WindowsErrorString());
+		hIconSave = (HICON)LoadImageA(NULL, MAKEINTRESOURCEA(32512), /* IDI_APPLICATION */
+			IMAGE_ICON, i16, i16, LR_SHARED);
+	}
+
+	if (hIconSave != NULL) {
+		ImageList_AddIcon(hSaveImageList, hIconSave);
+		DestroyIcon(hIconSave);
+	}
+
 	SendMessage(hSaveToolbar, TB_SETIMAGELIST, (WPARAM)0, (LPARAM)hSaveImageList);
 	SendMessage(hSaveToolbar, TB_BUTTONSTRUCTSIZE, (WPARAM)sizeof(TBBUTTON), 0);
 	memset(tbToolbarButtons, 0, sizeof(TBBUTTON));
@@ -871,11 +946,34 @@ void CreateSmallButtons(HWND hDlg)
 
 	hHashToolbar = CreateWindowEx(0, TOOLBARCLASSNAME, NULL, TOOLBAR_STYLE,
 		0, 0, 0, 0, hMainDialog, (HMENU)IDC_HASH_TOOLBAR, hMainInstance, NULL);
-	hHashImageList = ImageList_Create(i16, i16, ILC_COLOR32 | ILC_HIGHQUALITYSCALE | ILC_MIRROR, 1, 0);
-	buffer = GetResource(hMainInstance, MAKEINTRESOURCEA(IDI_HASH_16 + icon_offset), _RT_RCDATA, "hash icon", &bufsize, FALSE);
-	hIconHash = CreateIconFromResourceEx(buffer, bufsize, TRUE, 0x30000, 0, 0, 0);
-	ImageList_AddIcon(hHashImageList, hIconHash);
-	DestroyIcon(hIconHash);
+	hHashImageList = ImageList_Create(i16, i16, il_flags, 1, 0);
+
+	if (WindowsVersion.Version >= WINDOWS_VISTA) {
+		buffer = GetResource(hMainInstance, MAKEINTRESOURCEA(IDI_HASH_16 + icon_offset),
+			_RT_RCDATA, "hash icon", &bufsize, FALSE);
+		if (buffer != NULL)
+			hIconHash = CreateIconFromResourceEx(buffer, bufsize, TRUE, 0x30000, 0, 0, 0);
+	}
+
+	if (hIconHash == NULL) {
+		hIconHash = (WindowsVersion.Version == WINDOWS_2000) ?
+			W2K_LoadAlphaIconResource(hMainInstance, IDI_HASH_16 + icon_offset,
+				i16, i16, GetSysColor(COLOR_BTNFACE)) :
+			(HICON)LoadImageA(hMainInstance, MAKEINTRESOURCEA(IDI_HASH_16 + icon_offset),
+				IMAGE_ICON, i16, i16, LR_DEFAULTCOLOR);
+	}
+
+	if (hIconHash == NULL) {
+		uprintf("Failed to load hash toolbar icon (ID %d): %s", IDI_HASH_16, WindowsErrorString());
+		hIconHash = (HICON)LoadImageA(NULL, MAKEINTRESOURCEA(32512), /* IDI_APPLICATION */
+			IMAGE_ICON, i16, i16, LR_SHARED);
+	}
+
+	if (hIconHash != NULL) {
+		ImageList_AddIcon(hHashImageList, hIconHash);
+		DestroyIcon(hIconHash);
+	}
+
 	SendMessage(hHashToolbar, TB_SETIMAGELIST, (WPARAM)0, (LPARAM)hHashImageList);
 	SendMessage(hHashToolbar, TB_BUTTONSTRUCTSIZE, (WPARAM)sizeof(TBBUTTON), 0);
 	memset(tbToolbarButtons, 0, sizeof(TBBUTTON));
@@ -1044,8 +1142,13 @@ void CreateAdditionalControls(HWND hDlg)
 	TBBUTTON tbToolbarButtons[ARRAYSIZE(buttons_list) * 2 - 1];
 	unsigned char* buffer;
 	DWORD bufsize;
+	UINT dpi, il_flags;
 
 	s16 = i16 = GetSystemMetrics(SM_CXSMICON);
+	if (WindowsVersion.Version <= WINDOWS_XP) {
+		dpi = XP_GetDpiForWindow(hDlg);
+		s16 = i16 = (dpi >= 168) ? 32 : ((dpi >= 120) ? 24 : 16);
+	}
 	if (s16 >= 54)
 		s16 = 64;
 	else if (s16 >= 40)
@@ -1060,26 +1163,46 @@ void CreateAdditionalControls(HWND hDlg)
 		icon_offset = 10;
 
 	// Fetch the up and down expand icons for the advanced options toolbar
-	hDll = GetLibraryHandle("ComDlg32");
-	hIconDown = (HICON)LoadImage(hDll, MAKEINTRESOURCE(577), IMAGE_ICON, s16, s16, LR_DEFAULTCOLOR | LR_SHARED);
-	hIconUp = (HICON)LoadImage(hDll, MAKEINTRESOURCE(578), IMAGE_ICON, s16, s16, LR_DEFAULTCOLOR | LR_SHARED);
-	// Fallback to using Shell32 if we can't locate the icons we want in ComDlg32 (Windows 8)
-	hDll = GetLibraryHandle("Shell32");
-	if (hIconUp == NULL)
-		hIconUp = (HICON)LoadImage(hDll, MAKEINTRESOURCE(16749), IMAGE_ICON, s16, s16, LR_DEFAULTCOLOR | LR_SHARED);
-	if (hIconDown == NULL)
-		hIconDown = (HICON)LoadImage(hDll, MAKEINTRESOURCE(16750), IMAGE_ICON, s16, s16, LR_DEFAULTCOLOR | LR_SHARED);
-	hUpImageList = ImageList_Create(i16, i16, ILC_COLOR32 | ILC_HIGHQUALITYSCALE, 1, 0);
-	hDownImageList = ImageList_Create(i16, i16, ILC_COLOR32 | ILC_HIGHQUALITYSCALE, 1, 0);
-	ImageList_AddIcon(hUpImageList, hIconUp);
-	ImageList_AddIcon(hDownImageList, hIconDown);
+	if (WindowsVersion.Version >= WINDOWS_VISTA) {
+		hDll = GetLibraryHandle("ComDlg32");
+		hIconDown = (HICON)LoadImage(hDll, MAKEINTRESOURCE(577), IMAGE_ICON, s16, s16, LR_DEFAULTCOLOR | LR_SHARED);
+		hIconUp = (HICON)LoadImage(hDll, MAKEINTRESOURCE(578), IMAGE_ICON, s16, s16, LR_DEFAULTCOLOR | LR_SHARED);
+		// Fallback to using Shell32 if we can't locate the icons we want in ComDlg32 (Windows 8)
+		if (hIconUp == NULL || hIconDown == NULL) {
+			hDll = GetLibraryHandle("Shell32");
+			if (hIconUp == NULL)
+				hIconUp = (HICON)LoadImage(hDll, MAKEINTRESOURCE(16749), IMAGE_ICON, s16, s16, LR_DEFAULTCOLOR | LR_SHARED);
+			if (hIconDown == NULL)
+				hIconDown = (HICON)LoadImage(hDll, MAKEINTRESOURCE(16750), IMAGE_ICON, s16, s16, LR_DEFAULTCOLOR | LR_SHARED);
+		}
+	} else {
+		HMODULE hInst = GetModuleHandle(NULL);
+		hIconUp = (HICON)LoadImage(hInst, MAKEINTRESOURCE(IDI_UP), IMAGE_ICON, s16, s16, LR_DEFAULTCOLOR);
+		hIconDown = (HICON)LoadImage(hInst, MAKEINTRESOURCE(IDI_DOWN), IMAGE_ICON, s16, s16, LR_DEFAULTCOLOR);
+		if (hIconUp == NULL || hIconDown == NULL) {
+			uprintf("Could not load advanced-options icons: %s", WindowsErrorString());
+		}
+	}
+	il_flags = ILC_COLOR32 | ILC_MASK;
+	if (WindowsVersion.Version >= WINDOWS_8)
+		il_flags |= ILC_HIGHQUALITYSCALE;
+
+	hUpImageList = ImageList_Create(i16, i16, il_flags, 1, 0);
+	hDownImageList = ImageList_Create(i16, i16, il_flags, 1, 0);
+
+	if (hIconUp != NULL)
+		ImageList_AddIcon(hUpImageList, hIconUp);
+	if (hIconDown != NULL)
+		ImageList_AddIcon(hDownImageList, hIconDown);
 
 	// Create the advanced options toolbars
 	memset(wtbtext, 0, sizeof(wtbtext));
 	utf8_to_wchar_no_alloc(lmprintf((advanced_mode_device) ? MSG_122 : MSG_121, lmprintf(MSG_119)), wtbtext[0], ARRAYSIZE(wtbtext[0]));
 	hAdvancedDeviceToolbar = CreateWindowEx(0, TOOLBARCLASSNAME, NULL, TOOLBAR_STYLE,
 		0, 0, 0, 0, hMainDialog, (HMENU)IDC_ADVANCED_DEVICE_TOOLBAR, hMainInstance, NULL);
-	SendMessage(hAdvancedDeviceToolbar, CCM_SETVERSION, (WPARAM)6, 0);
+	// Common Controls 6 for NT5 (port-AI)
+	if (WindowsVersion.Version >= WINDOWS_VISTA)
+		SendMessage(hAdvancedDeviceToolbar, CCM_SETVERSION, (WPARAM)6, 0);
 	memset(tbToolbarButtons, 0, sizeof(tbToolbarButtons));
 	tbToolbarButtons[0].idCommand = IDC_ADVANCED_DRIVE_PROPERTIES;
 	tbToolbarButtons[0].fsStyle = BTNS_SHOWTEXT | BTNS_AUTOSIZE;
@@ -1098,7 +1221,9 @@ void CreateAdditionalControls(HWND hDlg)
 	utf8_to_wchar_no_alloc(lmprintf((advanced_mode_format) ? MSG_122 : MSG_121, lmprintf(MSG_120)), wtbtext[1], ARRAYSIZE(wtbtext[1]));
 	hAdvancedFormatToolbar = CreateWindowEx(0, TOOLBARCLASSNAME, NULL, TOOLBAR_STYLE,
 		0, 0, 0, 0, hMainDialog, (HMENU)IDC_ADVANCED_FORMAT_TOOLBAR, hMainInstance, NULL);
-	SendMessage(hAdvancedFormatToolbar, CCM_SETVERSION, (WPARAM)6, 0);
+	// Common Controls 6 for NT5 (port-AI)
+	if (WindowsVersion.Version >= WINDOWS_VISTA)
+		SendMessage(hAdvancedFormatToolbar, CCM_SETVERSION, (WPARAM)6, 0);
 	memset(tbToolbarButtons, 0, sizeof(tbToolbarButtons));
 	tbToolbarButtons[0].idCommand = IDC_ADVANCED_FORMAT_OPTIONS;
 	tbToolbarButtons[0].fsStyle = BTNS_SHOWTEXT | BTNS_AUTOSIZE;
@@ -1117,17 +1242,49 @@ void CreateAdditionalControls(HWND hDlg)
 	// Create the multi toolbar
 	hMultiToolbar = CreateWindowEx(0, TOOLBARCLASSNAME, NULL, TOOLBAR_STYLE,
 		0, 0, 0, 0, hMainDialog, (HMENU)IDC_MULTI_TOOLBAR, hMainInstance, NULL);
-	hToolbarImageList = ImageList_Create(i16, i16, ILC_COLOR32 | ILC_HIGHQUALITYSCALE, 8, 0);
+
+	il_flags = ILC_COLOR32 | ILC_MASK;
+	if (WindowsVersion.Version >= WINDOWS_8)
+		il_flags |= ILC_HIGHQUALITYSCALE;
+
+	hToolbarImageList = ImageList_Create(i16, i16, il_flags, ARRAYSIZE(multitoolbar_icons), 0);
+
 	for (i = 0; i < ARRAYSIZE(multitoolbar_icons); i++) {
-		buffer = GetResource(hMainInstance, MAKEINTRESOURCEA(multitoolbar_icons[i] + icon_offset),
-			_RT_RCDATA, "toolbar icon", &bufsize, FALSE);
-		hIcon = CreateIconFromResourceEx(buffer, bufsize, TRUE, 0x30000, 0, 0, 0);
-		// Mirror the "world" icon on RTL since we can't use an ImageList mirroring flag for that...
-		if (right_to_left_mode && (i == 0))
+		hIcon = NULL;
+
+		if (WindowsVersion.Version >= WINDOWS_VISTA) {
+			buffer = GetResource(hMainInstance,
+				MAKEINTRESOURCEA(multitoolbar_icons[i] + icon_offset),
+				_RT_RCDATA, "toolbar icon", &bufsize, FALSE);
+			if (buffer != NULL)
+				hIcon = CreateIconFromResourceEx(buffer, bufsize, TRUE, 0x30000, 0, 0, 0);
+		}
+
+		if (hIcon == NULL) {
+			hIcon = (WindowsVersion.Version == WINDOWS_2000) ?
+				W2K_LoadAlphaIconResource(hMainInstance, multitoolbar_icons[i] + icon_offset,
+					i16, i16, GetSysColor(COLOR_BTNFACE)) :
+				(HICON)LoadImageA(hMainInstance,
+					MAKEINTRESOURCEA(multitoolbar_icons[i] + icon_offset),
+					IMAGE_ICON, i16, i16, LR_DEFAULTCOLOR);
+		}
+
+		if (hIcon == NULL) {
+			uprintf("Failed to load toolbar icon %d (ID %d): %s",
+				i, multitoolbar_icons[i], WindowsErrorString());
+			hIcon = (HICON)LoadImageA(NULL, MAKEINTRESOURCEA(32512),
+				IMAGE_ICON, i16, i16, LR_SHARED);
+		}
+
+		if ((hIcon != NULL) && right_to_left_mode && (i == 0))
 			hIcon = CreateMirroredIcon(hIcon);
-		ImageList_AddIcon(hToolbarImageList, hIcon);
-		DestroyIcon(hIcon);
+
+		if (hIcon != NULL) {
+			ImageList_AddIcon(hToolbarImageList, hIcon);
+			DestroyIcon(hIcon);
+		}
 	}
+
 	SendMessage(hMultiToolbar, TB_SETIMAGELIST, (WPARAM)0, (LPARAM)hToolbarImageList);
 	SendMessage(hMultiToolbar, TB_BUTTONSTRUCTSIZE, (WPARAM)sizeof(TBBUTTON), 0);
 	memset(tbToolbarButtons, 0, sizeof(TBBUTTON) * ARRAYSIZE(tbToolbarButtons));
@@ -1152,7 +1309,19 @@ void CreateAdditionalControls(HWND hDlg)
 		}
 	}
 	SendMessage(hMultiToolbar, TB_ADDBUTTONS, (WPARAM)i, (LPARAM)&tbToolbarButtons);
+
+	// Use the NT5 icon width instead of the unscaled system metric (port)
 	SendMessage(hMultiToolbar, TB_SETBUTTONSIZE, 0, MAKELPARAM(i16, ddbh));
+	SendMessage(hMultiToolbar, TB_AUTOSIZE, 0, 0);
+
+	SendMessage(hMultiToolbar, TB_GETIDEALSIZE, (WPARAM)FALSE, (LPARAM)&sz);
+
+	if (sz.cx > fw - 3 * bw)
+		sz.cx = fw - 3 * bw;
+
+	GetWindowRect(GetDlgItem(hDlg, IDC_ABOUT), &rc);
+	MapWindowPoints(NULL, hDlg, (POINT*)&rc, 2);
+	SetWindowPos(hMultiToolbar, hProgress, rc.left, rc.top, sz.cx, ddbh, 0);
 	SetAccessibleName(hMultiToolbar, lmprintf(MSG_315));
 
 	// Subclass the progress bar so that we can write on it

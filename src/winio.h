@@ -57,6 +57,54 @@ typedef struct {
 /// <param name="dwCreationDisposition">Action to take on a file or device that exists or does not exist</param>
 /// <param name="dwFlagsAndAttributes">The file or device attributes and flags</param>
 /// <returns>Non NULL on success</returns>
+
+// GetOverlappedResultEx for Windows 7, this is where it all began (port)
+static __inline BOOL WINAPI GetOverlappedResultEx_Compat(
+	HANDLE hFile,
+	LPOVERLAPPED lpOverlapped,
+	LPDWORD lpNumberOfBytesTransferred,
+	DWORD dwMilliseconds,
+	BOOL bAlertable)
+{
+	typedef BOOL(WINAPI* pfnGetOverlappedResultEx)(HANDLE, LPOVERLAPPED, LPDWORD, DWORD, BOOL);
+	static pfnGetOverlappedResultEx nativeGetOverlappedResultEx = NULL;
+	static BOOL resolved = FALSE;
+	DWORD dwWait;
+	HMODULE hKernel32;
+
+	if (!resolved) {
+		hKernel32 = GetModuleHandleA("kernel32.dll");
+		if (hKernel32 != NULL)
+			nativeGetOverlappedResultEx = (pfnGetOverlappedResultEx)
+				GetProcAddress(hKernel32, "GetOverlappedResultEx");
+		resolved = TRUE;
+	}
+	if (nativeGetOverlappedResultEx != NULL)
+		return nativeGetOverlappedResultEx(hFile, lpOverlapped,
+			lpNumberOfBytesTransferred, dwMilliseconds, bAlertable);
+
+	if ((dwMilliseconds != 0) && (dwMilliseconds != INFINITE)) {
+		dwWait = WaitForSingleObjectEx((lpOverlapped->hEvent != NULL) ?
+			lpOverlapped->hEvent : hFile, dwMilliseconds, bAlertable);
+		if (dwWait == WAIT_TIMEOUT) {
+			SetLastError(ERROR_IO_INCOMPLETE);
+			return FALSE;
+		}
+		if (dwWait == WAIT_IO_COMPLETION) {
+			SetLastError(ERROR_IO_INCOMPLETE);
+			return FALSE;
+		}
+		if (dwWait != WAIT_OBJECT_0)
+			return FALSE;
+	}
+
+	return GetOverlappedResult(hFile, lpOverlapped, lpNumberOfBytesTransferred, (dwMilliseconds != 0));
+}
+
+#ifndef GetOverlappedResultEx
+#define GetOverlappedResultEx GetOverlappedResultEx_Compat
+#endif
+
 static __inline HANDLE CreateFileAsync(LPCSTR lpFileName, DWORD dwDesiredAccess,
 	DWORD dwShareMode, DWORD dwCreationDisposition, DWORD dwFlagsAndAttributes)
 {

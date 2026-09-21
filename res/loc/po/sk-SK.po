@@ -1927,6 +1927,26 @@ msgstr "Extrahovanie archívnych súborov: %s"
 msgid "Use Rufus MBR"
 msgstr "Použiť Rufus MBR"
 
+#. • MSG_355
+msgid "Enable GPT"
+msgstr "Povoliť GPT"
+
+#. • MSG_356
+msgid "Windows XP cannot access drives that use the GPT partition scheme.\n\nRufus can still create this drive for use on another computer. Continue only if you are creating EFI-bootable media and the target computer supports UEFI.\n\nDo you want to continue?"
+msgstr "Windows XP nemôže pristupovať k jednotkám, ktoré používajú schému oblastí GPT.\n\nRufus napriek tomu môže vytvoriť túto jednotku na použitie v inom počítači. Pokračujte iba vtedy, ak vytvárate zavádzacie médium EFI a cieľový počítač podporuje UEFI.\n\nChcete pokračovať?"
+
+#. • MSG_357
+msgid "Rufus"
+msgstr "Rufus"
+
+#. • MSG_358
+msgid "Choose how Rufus should write this ISOHybrid image.\n\nYes - ISO mode (recommended)\nNo - EFI System Partition (ESP) mode"
+msgstr "Vyberte, ako má Rufus zapísať tento obraz ISOHybrid.\n\nÁno - Režim ISO (odporúčaný)\nNie - Režim systémovej oblasti EFI (ESP)"
+
+#. • MSG_359
+msgid "Choose how Rufus should write this EFI image.\n\nYes - ISO mode (recommended)\nNo - EFI System Partition (ESP) mode"
+msgstr "Vyberte, ako má Rufus zapísať tento obraz EFI.\n\nÁno - Režim ISO (odporúčaný)\nNie - Režim systémovej oblasti EFI (ESP)"
+
 #. • MSG_900
 #.
 #. The following messages are for the Windows Store listing only and are not used by the application
