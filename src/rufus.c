@@ -2117,8 +2117,9 @@ static void InitDialog(HWND hDlg)
 	for (i = 0; (i < 3) && ((token = strtok(NULL, ".")) != NULL); i++)
 		rufus_version[i] = (uint16_t)atoi(token);
 
-	// Use a static title
-	static_strcpy(tmp, APPLICATION_NAME);
+	// Use a static title (but keep the Portable suffix)
+	static_sprintf(tmp, APPLICATION_NAME "%s",
+		(ini_file != NULL) ? " (Portable)" : "");
 	SetWindowTextU(hDlg, tmp);
 	// Now that we have a title, we can find the handle of our Dialog
 	dialog_handle = FindWindowA(NULL, tmp);

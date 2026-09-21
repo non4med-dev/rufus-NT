@@ -1936,6 +1936,26 @@ msgstr "Επιλέξτε πώς θα εγγράψει το Rufus αυτή την
 msgid "Choose how Rufus should write this EFI image.\n\nYes - ISO mode (recommended)\nNo - EFI System Partition (ESP) mode"
 msgstr "Επιλέξτε πώς θα εγγράψει το Rufus αυτή την εικόνα EFI.\n\nΝαι - Λειτουργία ISO (συνιστάται)\nΌχι - Λειτουργία διαμερίσματος συστήματος EFI (ESP)"
 
+#. • MSG_400
+msgid "Rufus-NT is not affiliated with nor endorsed by the Rufus project"
+msgstr "Το Rufus-NT δεν συνδέεται με ούτε υποστηρίζεται από το έργο Rufus"
+
+#. • MSG_401
+msgid "The original Rufus project can be found here"
+msgstr "Το αρχικό έργο Rufus βρίσκεται εδώ"
+
+#. • MSG_402
+msgid "Copyright © 2011 - 2026 Pete Batard"
+msgstr "Πνευματικά δικαιώματα © 2011 - 2026 Pete Batard"
+
+#. • MSG_403
+msgid "This project wouldn't have been possible without..."
+msgstr "Αυτό το έργο δεν θα ήταν δυνατό χωρίς..."
+
+#. • MSG_404
+msgid "Public Domain"
+msgstr "Κοινό κτήμα"
+
 #. • MSG_900
 #.
 #. The following messages are for the Windows Store listing only and are not used by the application

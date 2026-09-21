@@ -1940,6 +1940,26 @@ msgstr "เลือกวิธีที่ Rufus จะเขียนอิ�
 msgid "Choose how Rufus should write this EFI image.\n\nYes - ISO mode (recommended)\nNo - EFI System Partition (ESP) mode"
 msgstr "เลือกวิธีที่ Rufus จะเขียนอิมเมจ EFI นี้\n\nใช่ - โหมด ISO (แนะนำ)\nไม่ - โหมดพาร์ติชันระบบ EFI (ESP)"
 
+#. • MSG_400
+msgid "Rufus-NT is not affiliated with nor endorsed by the Rufus project"
+msgstr "Rufus-NT ไม่มีความเกี่ยวข้องและไม่ได้รับการรับรองจากโครงการ Rufus"
+
+#. • MSG_401
+msgid "The original Rufus project can be found here"
+msgstr "สามารถดูโครงการ Rufus ต้นฉบับได้ที่นี่"
+
+#. • MSG_402
+msgid "Copyright © 2011 - 2026 Pete Batard"
+msgstr "ลิขสิทธิ์ © 2011 - 2026 Pete Batard"
+
+#. • MSG_403
+msgid "This project wouldn't have been possible without..."
+msgstr "โครงการนี้คงไม่สามารถเกิดขึ้นได้หากไม่มี..."
+
+#. • MSG_404
+msgid "Public Domain"
+msgstr "สาธารณสมบัติ"
+
 #. • MSG_900
 #.
 #. The following messages are for the Windows Store listing only and are not used by the application

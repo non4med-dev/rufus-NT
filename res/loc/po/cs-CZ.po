@@ -1943,6 +1943,26 @@ msgstr "Vyberte, jak má Rufus zapsat tento obraz ISOHybrid.\n\nAno - režim ISO
 msgid "Choose how Rufus should write this EFI image.\n\nYes - ISO mode (recommended)\nNo - EFI System Partition (ESP) mode"
 msgstr "Vyberte, jak má Rufus zapsat tento obraz EFI.\n\nAno - režim ISO (doporučeno)\nNe - režim systémového oddílu EFI (ESP)"
 
+#. • MSG_400
+msgid "Rufus-NT is not affiliated with nor endorsed by the Rufus project"
+msgstr "Rufus-NT není spojen s projektem Rufus ani jím není podporován"
+
+#. • MSG_401
+msgid "The original Rufus project can be found here"
+msgstr "Původní projekt Rufus naleznete zde"
+
+#. • MSG_402
+msgid "Copyright © 2011 - 2026 Pete Batard"
+msgstr "Autorská práva © 2011 - 2026 Pete Batard"
+
+#. • MSG_403
+msgid "This project wouldn't have been possible without..."
+msgstr "Tento projekt by nebyl možný bez..."
+
+#. • MSG_404
+msgid "Public Domain"
+msgstr "Volné dílo"
+
 #. • MSG_900
 #.
 #. The following messages are for the Windows Store listing only and are not used by the application

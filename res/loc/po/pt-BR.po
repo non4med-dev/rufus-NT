@@ -1940,6 +1940,26 @@ msgstr "Escolha como o Rufus deve gravar esta imagem ISOHybrid.\n\nSim - Modo IS
 msgid "Choose how Rufus should write this EFI image.\n\nYes - ISO mode (recommended)\nNo - EFI System Partition (ESP) mode"
 msgstr "Escolha como o Rufus deve gravar esta imagem EFI.\n\nSim - Modo ISO (recomendado)\nNão - Modo de Partição do Sistema EFI (ESP)"
 
+#. • MSG_400
+msgid "Rufus-NT is not affiliated with nor endorsed by the Rufus project"
+msgstr "O Rufus-NT não é afiliado nem endossado pelo projeto Rufus"
+
+#. • MSG_401
+msgid "The original Rufus project can be found here"
+msgstr "O projeto Rufus original pode ser encontrado aqui"
+
+#. • MSG_402
+msgid "Copyright © 2011 - 2026 Pete Batard"
+msgstr "Direitos autorais © 2011 - 2026 Pete Batard"
+
+#. • MSG_403
+msgid "This project wouldn't have been possible without..."
+msgstr "Este projeto não teria sido possível sem..."
+
+#. • MSG_404
+msgid "Public Domain"
+msgstr "Domínio público"
+
 #. • MSG_900
 #.
 #. The following messages are for the Windows Store listing only and are not used by the application

@@ -1873,6 +1873,26 @@ msgstr "Pasirinkite, kaip „Rufus“ turėtų įrašyti šį „ISOHybrid“ at
 msgid "Choose how Rufus should write this EFI image.\n\nYes - ISO mode (recommended)\nNo - EFI System Partition (ESP) mode"
 msgstr "Pasirinkite, kaip „Rufus“ turėtų įrašyti šį EFI atvaizdą.\n\nTaip - ISO režimas (rekomenduojama)\nNe - EFI sistemos skaidinio (ESP) režimas"
 
+#. • MSG_400
+msgid "Rufus-NT is not affiliated with nor endorsed by the Rufus project"
+msgstr "Rufus-NT nėra susijęs su Rufus projektu ir nėra jo remiamas"
+
+#. • MSG_401
+msgid "The original Rufus project can be found here"
+msgstr "Originalų Rufus projektą rasite čia"
+
+#. • MSG_402
+msgid "Copyright © 2011 - 2026 Pete Batard"
+msgstr "Autorių teisės © 2011 - 2026 Pete Batard"
+
+#. • MSG_403
+msgid "This project wouldn't have been possible without..."
+msgstr "Šis projektas nebūtų buvęs įmanomas be..."
+
+#. • MSG_404
+msgid "Public Domain"
+msgstr "Viešasis domenas"
+
 #. • MSG_900
 #.
 #. The following messages are for the Windows Store listing only and are not used by the application

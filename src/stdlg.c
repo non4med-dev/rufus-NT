@@ -516,9 +516,10 @@ INT_PTR CALLBACK AboutCallback(HWND hDlg, UINT message, WPARAM wParam, LPARAM lP
 			about_blurb_format,
 			"The Reliable USB Formatting Utility (For Windows NT)",
 			APPLICATION_NAME " (" UPDATE_LEVEL ")",
-			"Rufus-NT is not affiliated with nor endorsed by the Rufus project",
-			"The original Rufus project can be found here",
-			"Copyright © 2011 - 2026 Pete Batard",
+			lmprintf(MSG_400 | MSG_RTF),
+			lmprintf(MSG_401 | MSG_RTF),
+			lmprintf(MSG_402 | MSG_RTF),
+			lmprintf(MSG_403 | MSG_RTF),
 			lmprintf(MSG_176 | MSG_RTF),
 			lmprintf(MSG_178 | MSG_RTF)
 		);

@@ -1940,6 +1940,26 @@ msgstr "Izvēlieties, kā Rufus ierakstīs šo ISOHybrid attēlu.\n\nJā - ISO r
 msgid "Choose how Rufus should write this EFI image.\n\nYes - ISO mode (recommended)\nNo - EFI System Partition (ESP) mode"
 msgstr "Izvēlieties, kā Rufus ierakstīs šo EFI attēlu.\n\nJā - ISO režīms (ieteicams)\nNē - EFI sistēmas nodalījuma (ESP) režīms"
 
+#. • MSG_400
+msgid "Rufus-NT is not affiliated with nor endorsed by the Rufus project"
+msgstr "Rufus-NT nav saistīts ar Rufus projektu un Rufus projekts to neatbalsta"
+
+#. • MSG_401
+msgid "The original Rufus project can be found here"
+msgstr "Oriģinālais Rufus projekts ir atrodams šeit"
+
+#. • MSG_402
+msgid "Copyright © 2011 - 2026 Pete Batard"
+msgstr "Autortiesības © 2011 - 2026 Pete Batard"
+
+#. • MSG_403
+msgid "This project wouldn't have been possible without..."
+msgstr "Šis projekts nebūtu bijis iespējams bez..."
+
+#. • MSG_404
+msgid "Public Domain"
+msgstr "Publiskais domēns"
+
 #. • MSG_900
 #.
 #. The following messages are for the Windows Store listing only and are not used by the application

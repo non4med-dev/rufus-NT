@@ -83,16 +83,17 @@ BEGIN
     PUSHBUTTON      "CLOSE",IDCANCEL,178,294,45,10
 END
 
-IDD_ABOUTBOX DIALOGEX 0, 0, 319, 237
+// Make place for wimlib and retro7zip credits
+IDD_ABOUTBOX DIALOGEX 0, 0, 319, 273
 STYLE DS_SETFONT | DS_MODALFRAME | WS_POPUP | WS_CAPTION | WS_SYSMENU
 CAPTION "About Rufus"
 FONT 9, "Segoe UI Symbol", 400, 0, 0x0
 BEGIN
     ICON            IDI_ICON,IDC_ABOUT_ICON,11,8,20,20
-    CONTROL         "",IDC_ABOUT_BLURB,"RichEdit20W",0x884,45,7,268,107
-    CONTROL         "",IDC_ABOUT_COPYRIGHTS,"RichEdit20W",WS_VSCROLL | WS_TABSTOP | 0x804,46,115,267,91,WS_EX_STATICEDGE
-    PUSHBUTTON      "License",IDC_ABOUT_LICENSE,46,216,50,12,WS_GROUP
-    DEFPUSHBUTTON   "OK",IDOK,253,216,50,12,WS_GROUP
+    CONTROL         "",IDC_ABOUT_BLURB,"RichEdit20W",0x884,45,7,268,143
+    CONTROL         "",IDC_ABOUT_COPYRIGHTS,"RichEdit20W",WS_VSCROLL | WS_TABSTOP | 0x804,46,151,267,91,WS_EX_STATICEDGE
+    PUSHBUTTON      "License",IDC_ABOUT_LICENSE,46,252,50,12,WS_GROUP
+    DEFPUSHBUTTON   "OK",IDOK,253,252,50,12,WS_GROUP
 END
 
 IDD_HASH DIALOGEX 0, 0, 301, 110
@@ -306,6 +307,7 @@ BEGIN
     "IDR_XT_HOGGER           RCDATA                  ""../res/hogger/hogger.exe""\r\n"
     "IDR_UEFI_NTFS           RCDATA                  ""../res/uefi/uefi-ntfs.img""\r\n"
     "IDR_SETUP_X64           RCDATA                  ""../res/setup/setup_x64.exe""\r\n"
+    "IDR_SETUP_ARM64         RCDATA                  ""../res/setup/setup_arm64.exe""\r\n"
     "IDR_WIMAPI7             RCDATA                  ""../res/wintogo/wimgapi.dll""\r\n"
     "IDR_NTAPI               RCDATA                  ""../res/wintogo/ntapi.dll""\r\n"
     "IDR_BCDBOOT             RCDATA                  ""../res/wintogo/bcdboot.exe""\r\n"
@@ -412,7 +414,7 @@ END
 //
 
 VS_VERSION_INFO VERSIONINFO
- FILEVERSION 1,0,0,4
+ FILEVERSION 1,0,0,1
  PRODUCTVERSION 4,7,0,0
  FILEFLAGSMASK 0x3fL
 #ifdef _DEBUG
@@ -436,9 +438,9 @@ BEGIN
             // Had to remove © as it doesn't exist in old fonts
             VALUE "LegalCopyright", "2011-2025 Pete Batard (GPL v3)"
             VALUE "LegalTrademarks", "https://www.gnu.org/licenses/gpl-3.0.html"
-            VALUE "Changelog", "Update 2: Cleanup and fixes"
+            VALUE "Changelog", "Update 1: Self-containability"
             VALUE "ProductName", "Rufus-NT"
-            VALUE "ProductVersion", "Update 2"
+            VALUE "ProductVersion", "Update 1"
         END
     END
     BLOCK "VarFileInfo"

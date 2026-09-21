@@ -1939,6 +1939,26 @@ msgstr "Chọn cách Rufus ghi ảnh ISOHybrid này.\n\nCó - Chế độ ISO (k
 msgid "Choose how Rufus should write this EFI image.\n\nYes - ISO mode (recommended)\nNo - EFI System Partition (ESP) mode"
 msgstr "Chọn cách Rufus ghi ảnh EFI này.\n\nCó - Chế độ ISO (khuyến nghị)\nKhông - Chế độ phân vùng hệ thống EFI (ESP)"
 
+#. • MSG_400
+msgid "Rufus-NT is not affiliated with nor endorsed by the Rufus project"
+msgstr "Rufus-NT không liên kết và cũng không được dự án Rufus chứng thực"
+
+#. • MSG_401
+msgid "The original Rufus project can be found here"
+msgstr "Có thể tìm thấy dự án Rufus gốc tại đây"
+
+#. • MSG_402
+msgid "Copyright © 2011 - 2026 Pete Batard"
+msgstr "Bản quyền © 2011 - 2026 Pete Batard"
+
+#. • MSG_403
+msgid "This project wouldn't have been possible without..."
+msgstr "Dự án này sẽ không thể thực hiện được nếu không có..."
+
+#. • MSG_404
+msgid "Public Domain"
+msgstr "Phạm vi công cộng"
+
 #. • MSG_900
 #.
 #. The following messages are for the Windows Store listing only and are not used by the application

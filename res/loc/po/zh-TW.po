@@ -1934,6 +1934,26 @@ msgstr "請選擇 Rufus 寫入此 ISOHybrid 映像檔的方式。\n\n是 - ISO �
 msgid "Choose how Rufus should write this EFI image.\n\nYes - ISO mode (recommended)\nNo - EFI System Partition (ESP) mode"
 msgstr "請選擇 Rufus 寫入此 EFI 映像檔的方式。\n\n是 - ISO 模式（建議）\n否 - EFI 系統分割區 (ESP) 模式"
 
+#. • MSG_400
+msgid "Rufus-NT is not affiliated with nor endorsed by the Rufus project"
+msgstr "Rufus-NT 與 Rufus 專案無關聯，也未獲 Rufus 專案背書"
+
+#. • MSG_401
+msgid "The original Rufus project can be found here"
+msgstr "原始 Rufus 專案可在此處找到"
+
+#. • MSG_402
+msgid "Copyright © 2011 - 2026 Pete Batard"
+msgstr "著作權所有 © 2011 - 2026 Pete Batard"
+
+#. • MSG_403
+msgid "This project wouldn't have been possible without..."
+msgstr "若沒有以下專案，本專案將無法實現……"
+
+#. • MSG_404
+msgid "Public Domain"
+msgstr "公有領域"
+
 #. • MSG_900
 #.
 #. The following messages are for the Windows Store listing only and are not used by the application
