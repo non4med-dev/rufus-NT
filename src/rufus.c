@@ -554,8 +554,8 @@ static BOOL SetFileSystemAndClusterSize(char* fs_name)
 			}
 		}
 
-		// exFAT requires optional FS updates on NT5 (port)
-		if (WindowsVersion.Version > WINDOWS_XP) {
+		// exFAT requires KB955704 on Windows XP
+		if (WindowsVersion.Version >= WINDOWS_XP) {
 			// exFAT
 			SelectedDrive.ClusterSize[FS_EXFAT].Allowed = 0x03FFFE00;
 			if (SelectedDrive.DiskSize < 256 * MB)	// < 256 MB
@@ -3091,6 +3091,8 @@ static INT_PTR CALLBACK MainCallback(HWND hDlg, UINT message, WPARAM wParam, LPA
 		wParam = BOOTCHECK_CANCEL;
 
 		if ((WindowsVersion.Version < WINDOWS_VISTA) &&
+			!((WindowsVersion.Version == WINDOWS_2003) &&
+				(WindowsVersion.Arch == IMAGE_FILE_MACHINE_AMD64)) &&
 			(partition_type == PARTITION_STYLE_GPT)) {
 			// GPT mountability warning for NT5 (port)
 			if (MessageBoxExU(hMainDialog, lmprintf(MSG_356), lmprintf(MSG_357),

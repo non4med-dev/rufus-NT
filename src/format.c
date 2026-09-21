@@ -81,6 +81,50 @@ extern char* archive_path;
 uint8_t *grub2_buf = NULL, *sec_buf = NULL;
 long grub2_len;
 
+// Simple check, I hope this survives in the real world
+static BOOL IsXpExFatAvailable(void)
+{
+	static const char* kb955704_keys[] = {
+		"SOFTWARE\\Microsoft\\Updates\\Windows XP\\SP3\\KB955704",
+		"SOFTWARE\\Microsoft\\Updates\\Windows XP\\SP2\\KB955704",
+		"SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\KB955704"
+	};
+	BOOL driver_present = FALSE, kb_registered = FALSE;
+	DWORD attributes;
+	HKEY key = NULL;
+	UINT i, length;
+	char windows_dir[MAX_PATH], driver_path[MAX_PATH];
+
+	if (WindowsVersion.Version != WINDOWS_XP)
+		return TRUE;
+
+	length = GetSystemWindowsDirectoryU(windows_dir, ARRAYSIZE(windows_dir));
+	if ((length != 0) && (length < ARRAYSIZE(windows_dir))) {
+		static_sprintf(driver_path, "%s\\System32\\drivers\\exfat.sys", windows_dir);
+		attributes = GetFileAttributesU(driver_path);
+		driver_present = (attributes != INVALID_FILE_ATTRIBUTES) &&
+			((attributes & FILE_ATTRIBUTE_DIRECTORY) == 0);
+	}
+
+	for (i = 0; i < ARRAYSIZE(kb955704_keys); i++) {
+		if (RegOpenKeyExA(HKEY_LOCAL_MACHINE, kb955704_keys[i], 0, KEY_READ, &key) == ERROR_SUCCESS) {
+			kb_registered = TRUE;
+			RegCloseKey(key);
+			break;
+		}
+	}
+
+	if (!driver_present) {
+		uprintf("Windows XP exFAT preflight failed: exfat.sys is missing%s",
+			kb_registered ? " (KB955704 is registered, but its driver installation is incomplete)" : " (KB955704 is not installed)");
+		return FALSE;
+	}
+
+	uprintf("Windows XP exFAT preflight passed: KB955704 exfat.sys is present%s",
+		kb_registered ? " and the update is registered" : "");
+	return TRUE;
+}
+
 /*
  * Convert the fmifs outputs messages (that use an OEM code page) to UTF-8
  */
@@ -1497,7 +1541,12 @@ DWORD WINAPI FormatThread(void* param)
 	char kolibri_dst[] = "?:\\MTLD_F32";
 	char grub4dos_dst[] = "?:\\grldr";
 
-	use_large_fat32 = (fs_type == FS_FAT32) && ((SelectedDrive.DiskSize > LARGE_FAT32_SIZE) || (force_large_fat32));
+	// Implement IsXpExFatAvailable
+	if ((WindowsVersion.Version == WINDOWS_XP) && (fs_type == FS_EXFAT) && !IsXpExFatAvailable()) {
+		ErrorStatus = RUFUS_ERROR(ERROR_NOT_SUPPORTED);
+		PostMessage(hMainDialog, UM_FORMAT_COMPLETED, (WPARAM)TRUE, 0);
+		ExitThread(0);
+	}
 	windows_to_go = (image_options & IMOP_WINTOGO) && (boot_type == BT_IMAGE) && HAS_WINTOGO(img_report) &&
 		(ComboBox_GetCurItemData(hImageOption) == IMOP_WIN_TO_GO);
 	large_drive = (SelectedDrive.DiskSize > (1*TB));

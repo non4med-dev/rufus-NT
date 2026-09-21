@@ -60,12 +60,7 @@
 #define WININET_TLS11_FLAG 0x00000200
 #define WININET_TLS12_FLAG 0x00000800
 #define WININET_TLS13_FLAG 0x00002000
-#ifndef INTERNET_OPEN_TYPE_DIRECT
-#define INTERNET_OPEN_TYPE_DIRECT               1
-#endif
-#ifndef INTERNET_OPTION_SECURE_PROTOCOLS
-#define INTERNET_OPTION_SECURE_PROTOCOLS        31
-#endif
+
 
 static BOOL tls_restart_required;
 
@@ -234,7 +229,7 @@ static __inline BOOL is_WOW64(void)
 // Open an Internet session
 // Lots of bullshit
 // My testing shows that without TLS 1.2, networking fails
-// So let's do something stupid, and not innitialize WinINet unless it's enabled
+// But let's keep TLS 1.0 enabled, just to see how it goes
 static HINTERNET GetInternetSession(const char* user_agent, BOOL bRetry)
 {
 	DWORD dwProtocols = GetConfiguredSecureProtocols() &
@@ -247,12 +242,12 @@ static HINTERNET GetInternetSession(const char* user_agent, BOOL bRetry)
 	HINTERNET hSession = NULL;
 	HRESULT hr = S_FALSE;
 	INetworkListManager* pNetworkListManager;
-	/*
-	if (tls_restart_required || !(dwProtocols & WININET_TLS12_FLAG)) {
-		SetLastError(ERROR_INTERNET_SECURITY_CHANNEL_ERROR);
+	// Disable networking on anything under Vista
+	if (WindowsVersion.Version < WINDOWS_VISTA) {
+		SetLastError(ERROR_NOT_SUPPORTED);
 		return NULL;
-	} */
-	// I will re-allow TLS 1.0. TLS 1.2 checks for Fido are in place, so it should be fine for the most part.
+	}
+	// Allow TLS 1.0 but there's a reason it was disabled before
 	if (tls_restart_required ||
 		!(dwProtocols & (WININET_TLS10_FLAG | WININET_TLS12_FLAG))) {
 		SetLastError(ERROR_INTERNET_SECURITY_CHANNEL_ERROR);
@@ -266,7 +261,7 @@ static HINTERNET GetInternetSession(const char* user_agent, BOOL bRetry)
 		for (i = 0; i <= WRITE_RETRIES; i++) {
 			hr = INetworkListManager_get_IsConnectedToInternet(pNetworkListManager, &InternetConnection);
 			// INetworkListManager may fail with ERROR_SERVICE_DEPENDENCY_FAIL if the DHCP service
-			// is not running, in which case we must fall back to using InternetGetConnectedState().
+			// is not running, in which case we gotta fallback to using InternetGetConnectedState().
 			// See https://github.com/pbatard/rufus/issues/1801.
 			if (hr == HRESULT_FROM_WIN32(ERROR_SERVICE_DEPENDENCY_FAIL)) {
 				InternetConnection = InternetGetConnectedState(&dwFlags, 0) ? VARIANT_TRUE : VARIANT_FALSE;
@@ -280,7 +275,7 @@ static HINTERNET GetInternetSession(const char* user_agent, BOOL bRetry)
 	/* VPN Fix for Windows 7 */
 	if (InternetConnection == VARIANT_FALSE) {
 		if (!InternetGetConnectedState(&dwFlags, 0)) {
-			// Ignore the disconnect check and attempt connection through active adapter (VPN)
+			// Ignore the disconnect check and attempt connection through active adapter
 			uprintf("Network manager reported offline, attempting connection anyway...");
 		}
 	}
@@ -288,14 +283,9 @@ static HINTERNET GetInternetSession(const char* user_agent, BOOL bRetry)
 		rufus_version[0], rufus_version[1], rufus_version[2],
 		WindowsVersion.Major, WindowsVersion.Minor, is_WOW64() ? "; WOW64" : "");
 	hSession = InternetOpenA((user_agent == NULL) ? default_agent : user_agent,
-		INTERNET_OPEN_TYPE_DIRECT, NULL, NULL, 0);
+		INTERNET_OPEN_TYPE_PRECONFIG, NULL, NULL, 0);
 	if (hSession == NULL)
 		return NULL;
-	if (!InternetSetOptionA(hSession, INTERNET_OPTION_SECURE_PROTOCOLS, &dwProtocols, sizeof(dwProtocols)) &&
-		(dwProtocols & WININET_TLS13_FLAG)) {
-		dwProtocols &= ~WININET_TLS13_FLAG;
-		InternetSetOptionA(hSession, INTERNET_OPTION_SECURE_PROTOCOLS, &dwProtocols, sizeof(dwProtocols));
-	}
 	// Set the timeouts
 	InternetSetOptionA(hSession, INTERNET_OPTION_CONNECT_TIMEOUT, (LPVOID)&dwTimeout, sizeof(dwTimeout));
 	InternetSetOptionA(hSession, INTERNET_OPTION_SEND_TIMEOUT, (LPVOID)&dwTimeout, sizeof(dwTimeout));
