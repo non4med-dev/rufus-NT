@@ -189,12 +189,15 @@ const char* error_message(errcode_t error_code)
 errcode_t ext2fs_print_progress(int64_t cur_value, int64_t max_value)
 {
 	static int64_t last_value = -1;
+	int64_t marker_count, marker_value;
 	if (max_value == 0)
 		return 0;
-	UpdateProgressWithInfo(OP_FORMAT, MSG_217, (uint64_t)((ext2_percent_start * max_value) + (ext2_percent_share * cur_value)), max_value);
-	cur_value = (int64_t)(((float)cur_value / (float)max_value) * min(ext2_max_marker, (float)max_value));
-	if (cur_value != last_value) {
-		last_value = cur_value;
+	marker_count = (max_value < (int64_t)ext2_max_marker) ? max_value : (int64_t)ext2_max_marker;
+	marker_value = (cur_value * marker_count) / max_value;
+	if (marker_value != last_value) {
+		last_value = marker_value;
+		UpdateProgressWithInfo(OP_FORMAT, MSG_217,
+			(uint64_t)((ext2_percent_start * max_value) + (ext2_percent_share * cur_value)), max_value);
 		uprintfs("+");
 	}
 	return IS_ERROR(ErrorStatus) ? EXT2_ET_CANCEL_REQUESTED : 0;
