@@ -832,6 +832,7 @@ extern INT_PTR CALLBACK UpdateCallback(HWND hDlg, UINT message, WPARAM wParam, L
 extern void SetFidoCheck(void);
 extern BOOL SetUpdateCheck(void);
 extern BOOL CheckForUpdates(BOOL force);
+extern BOOL NetworkStartupPreflight(BOOL log_tls_warning);
 // Experimental GPT setting (port)
 extern void RefreshPartitionScheme(void);
 extern void DownloadNewVersion(void);

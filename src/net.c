@@ -1,4 +1,4 @@
-/*
+﻿/*
  * Rufus: The Reliable USB Formatting Utility
  * Networking functionality (web file download, check for update, etc.)
  * Copyright © 2012-2025 Pete Batard <pete@akeo.ie>
@@ -52,9 +52,9 @@
 
 #include "settings.h"
 
-/* Maximum download chunk size in bytes (xp experiments) */
+// Maximum download chunk size
 #define DOWNLOAD_BUFFER_SIZE    (10*KB)
-/* Default delay between update checks */
+// Default delay between update checks
 #define DEFAULT_UPDATE_INTERVAL (24*3600)
 #define WININET_TLS10_FLAG 0x00000080
 #define WININET_TLS11_FLAG 0x00000200
@@ -63,6 +63,28 @@
 
 
 static BOOL tls_restart_required;
+static BOOL tls_startup_notice_logged;
+
+static BOOL EnsureTLS12Enabled(HWND hWnd);
+
+// Important note for anyone reading the code:
+// WinINet MUST get ONLY TLS 1.2 passed on.
+// The moment the configurations are mixed, it fails with [0x00002F7D]
+
+static BOOL WriteTlsDword(HKEY root, const char* path, const char* name, DWORD value)
+{
+	HKEY hKey;
+	DWORD disposition;
+	LONG status;
+
+	status = RegCreateKeyExA(root, path, 0, NULL, 0, KEY_QUERY_VALUE | KEY_SET_VALUE,
+		NULL, &hKey, &disposition);
+	if (status != ERROR_SUCCESS)
+		return FALSE;
+	status = RegSetValueExA(hKey, name, 0, REG_DWORD, (const BYTE*)&value, sizeof(value));
+	RegCloseKey(hKey);
+	return status == ERROR_SUCCESS;
+}
 
 static BOOL ReadTlsDword(HKEY root, const char* path, const char* name, DWORD* value)
 {
@@ -82,8 +104,24 @@ static BOOL ReadTlsDword(HKEY root, const char* path, const char* name, DWORD* v
 		(size == sizeof(*value));
 }
 
+static BOOL DeleteTlsValue(HKEY root, const char* path, const char* name)
+{
+	HKEY hKey;
+	LONG status;
+
+	status = RegOpenKeyExA(root, path, 0, KEY_SET_VALUE, &hKey);
+	if (status == ERROR_FILE_NOT_FOUND)
+		return TRUE;
+	if (status != ERROR_SUCCESS)
+		return FALSE;
+	status = RegDeleteValueA(hKey, name);
+	RegCloseKey(hKey);
+	return (status == ERROR_SUCCESS) || (status == ERROR_FILE_NOT_FOUND);
+}
+
 static DWORD GetConfiguredSecureProtocols(void)
 {
+	BOOL has_disabled_by_default;
 	DWORD protocols;
 	DWORD value;
 	const char* internet_settings =
@@ -106,22 +144,160 @@ static DWORD GetConfiguredSecureProtocols(void)
 		"SecureProtocols", &protocols)) {
 	}
 	else {
-		if (WindowsVersion.Version >= WINDOWS_VISTA)
+		if (WindowsVersion.Version >= WINDOWS_8)
+			protocols = WININET_TLS10_FLAG |
+				WININET_TLS11_FLAG |
+				WININET_TLS12_FLAG;
+		else if (WindowsVersion.Version >= WINDOWS_VISTA)
 			protocols = WININET_TLS10_FLAG;
 		else
 			protocols = WININET_TLS10_FLAG |
-			WININET_TLS11_FLAG |
-			WININET_TLS12_FLAG;
+				WININET_TLS11_FLAG |
+				WININET_TLS12_FLAG;
 	}
 
-	if ((protocols & WININET_TLS12_FLAG) &&
-		ReadTlsDword(HKEY_LOCAL_MACHINE, tls12_client,
-			"Enabled", &value) &&
-		(value == 0)) {
-		protocols &= ~WININET_TLS12_FLAG;
+	if (protocols & WININET_TLS12_FLAG) {
+		if (ReadTlsDword(HKEY_LOCAL_MACHINE, tls12_client, "Enabled", &value) &&
+			(value == 0))
+			protocols &= ~WININET_TLS12_FLAG;
+		has_disabled_by_default = ReadTlsDword(HKEY_LOCAL_MACHINE, tls12_client,
+			"DisabledByDefault", &value);
+		if (((WindowsVersion.Version == WINDOWS_7) && !has_disabled_by_default) ||
+			(has_disabled_by_default && (value != 0)))
+			protocols &= ~WININET_TLS12_FLAG;
 	}
 
 	return protocols;
+}
+
+BOOL NetworkStartupPreflight(BOOL log_tls_warning)
+{
+	DWORD flags = 0;
+	DWORD protocols;
+
+	if (WindowsVersion.Version < WINDOWS_VISTA)
+		return FALSE;
+	if (!InternetGetConnectedState(&flags, 0))
+		return FALSE;
+
+	protocols = GetConfiguredSecureProtocols() &
+		(WININET_TLS10_FLAG | WININET_TLS11_FLAG | WININET_TLS12_FLAG | WININET_TLS13_FLAG);
+	if (!(protocols & WININET_TLS12_FLAG)) {
+		if (log_tls_warning && !tls_startup_notice_logged) {
+			uprintf("TLS 1.2 must be enabled for networking functionality");
+			tls_startup_notice_logged = TRUE;
+		}
+		if (!log_tls_warning || !EnsureTLS12Enabled(hMainDialog))
+			return FALSE;
+		protocols = GetConfiguredSecureProtocols() &
+			(WININET_TLS10_FLAG | WININET_TLS11_FLAG | WININET_TLS12_FLAG | WININET_TLS13_FLAG);
+		if (!(protocols & WININET_TLS12_FLAG))
+			return FALSE;
+	}
+	return TRUE;
+}
+
+static BOOL ApplyWin7FidoProtocols(DWORD* previous_protocols, BOOL* had_previous_protocols)
+{
+	const char* internet_settings =
+		"SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Internet Settings";
+
+	*had_previous_protocols = ReadTlsDword(HKEY_CURRENT_USER, internet_settings,
+		"SecureProtocols", previous_protocols);
+	if (!WriteTlsDword(HKEY_CURRENT_USER, internet_settings, "SecureProtocols",
+		WININET_TLS12_FLAG))
+		return FALSE;
+	IGNORE_RETVAL(InternetSetOptionA(NULL, INTERNET_OPTION_SETTINGS_CHANGED, NULL, 0));
+	uprintf("Temporarily forcing TLS 1.2 for WinINet");
+	return TRUE;
+}
+
+static void RestoreWin7FidoProtocols(DWORD previous_protocols, BOOL had_previous_protocols)
+{
+	const char* internet_settings =
+		"SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Internet Settings";
+
+	if (had_previous_protocols)
+		IGNORE_RETVAL(WriteTlsDword(HKEY_CURRENT_USER, internet_settings,
+			"SecureProtocols", previous_protocols));
+	else
+		IGNORE_RETVAL(DeleteTlsValue(HKEY_CURRENT_USER, internet_settings, "SecureProtocols"));
+	IGNORE_RETVAL(InternetSetOptionA(NULL, INTERNET_OPTION_SETTINGS_CHANGED, NULL, 0));
+}
+
+static BOOL EnsureTLS12Enabled(HWND hWnd)
+{
+	DWORD value = 0, protocols;
+	int response;
+	const char* internet_settings =
+		"SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Internet Settings";
+	const char* wow64_internet_settings =
+		"SOFTWARE\\Wow6432Node\\Microsoft\\Windows\\CurrentVersion\\Internet Settings";
+	const char* policy_settings =
+		"SOFTWARE\\Policies\\Microsoft\\Windows\\CurrentVersion\\Internet Settings";
+	const char* tls12_client =
+		"SYSTEM\\CurrentControlSet\\Control\\SecurityProviders\\SCHANNEL\\Protocols\\TLS 1.2\\Client";
+
+	if (WindowsVersion.Version < WINDOWS_VISTA)
+		return FALSE;
+
+	protocols = GetConfiguredSecureProtocols() &
+		(WININET_TLS10_FLAG | WININET_TLS11_FLAG | WININET_TLS12_FLAG | WININET_TLS13_FLAG);
+	if (protocols & WININET_TLS12_FLAG)
+		return TRUE;
+
+	if (ReadTlsDword(HKEY_LOCAL_MACHINE, policy_settings, "SecureProtocols", &value) &&
+		!(value & WININET_TLS12_FLAG)) {
+		uprintf("Group Policy prevents Rufus from enabling TLS 1.2");
+		SetLastError(ERROR_INTERNET_SECURITY_CHANNEL_ERROR);
+		return FALSE;
+	}
+
+	response = MessageBoxA(hWnd,
+		"Rufus requires TLS 1.2 for networking functionality.\n\n"
+		"Would you like Rufus to enable TLS 1.2?",
+		"TLS 1.2 Required", MB_YESNO | MB_ICONWARNING);
+	if (response != IDYES)
+		return FALSE;
+
+	value = WININET_TLS12_FLAG;
+	if (ReadTlsDword(HKEY_CURRENT_USER, internet_settings, "SecureProtocols", &protocols))
+		value = protocols | WININET_TLS12_FLAG;
+	if (!WriteTlsDword(HKEY_CURRENT_USER, internet_settings, "SecureProtocols", value))
+		goto error;
+
+	value = WININET_TLS12_FLAG;
+	if (ReadTlsDword(HKEY_LOCAL_MACHINE, internet_settings, "SecureProtocols", &protocols))
+		value = protocols | WININET_TLS12_FLAG;
+	if (!WriteTlsDword(HKEY_LOCAL_MACHINE, internet_settings, "SecureProtocols", value))
+		goto error;
+
+	value = WININET_TLS12_FLAG;
+	if (ReadTlsDword(HKEY_LOCAL_MACHINE, wow64_internet_settings, "SecureProtocols", &protocols))
+		value = protocols | WININET_TLS12_FLAG;
+	if (!WriteTlsDword(HKEY_LOCAL_MACHINE, wow64_internet_settings, "SecureProtocols", value))
+		goto error;
+
+	if (!WriteTlsDword(HKEY_LOCAL_MACHINE, tls12_client, "Enabled", 1) ||
+		!WriteTlsDword(HKEY_LOCAL_MACHINE, tls12_client, "DisabledByDefault", 0))
+		goto error;
+
+	if (!InternetSetOptionA(NULL, INTERNET_OPTION_SETTINGS_CHANGED, NULL, 0))
+		uprintf("Could not notify WinINet of TLS settings change: %s", WindowsErrorString());
+
+	protocols = GetConfiguredSecureProtocols() &
+		(WININET_TLS10_FLAG | WININET_TLS11_FLAG | WININET_TLS12_FLAG | WININET_TLS13_FLAG);
+	if (!(protocols & WININET_TLS12_FLAG)) {
+		SetLastError(ERROR_INTERNET_SECURITY_CHANNEL_ERROR);
+		goto error;
+	}
+
+	uprintf("Enabled TLS 1.2 for WinINet");
+	return TRUE;
+
+error:
+	uprintf("Could not enable TLS 1.2: %s", WindowsErrorString());
+	return FALSE;
 }
 
 // Fido support and checks for Windows 7 and (experimentally) Vista
@@ -247,9 +423,10 @@ static HINTERNET GetInternetSession(const char* user_agent, BOOL bRetry)
 		SetLastError(ERROR_NOT_SUPPORTED);
 		return NULL;
 	}
-	// Allow TLS 1.0 but there's a reason it was disabled before
 	if (tls_restart_required ||
-		!(dwProtocols & (WININET_TLS10_FLAG | WININET_TLS12_FLAG))) {
+		((WindowsVersion.Version == WINDOWS_7) && !(dwProtocols & WININET_TLS12_FLAG)) ||
+		((WindowsVersion.Version != WINDOWS_7) &&
+		 !(dwProtocols & (WININET_TLS10_FLAG | WININET_TLS12_FLAG)))) {
 		SetLastError(ERROR_INTERNET_SECURITY_CHANNEL_ERROR);
 		return NULL;
 	}
@@ -283,9 +460,12 @@ static HINTERNET GetInternetSession(const char* user_agent, BOOL bRetry)
 		rufus_version[0], rufus_version[1], rufus_version[2],
 		WindowsVersion.Major, WindowsVersion.Minor, is_WOW64() ? "; WOW64" : "");
 	hSession = InternetOpenA((user_agent == NULL) ? default_agent : user_agent,
-		INTERNET_OPEN_TYPE_PRECONFIG, NULL, NULL, 0);
+		(WindowsVersion.Version <= WINDOWS_7) ? INTERNET_OPEN_TYPE_DIRECT : INTERNET_OPEN_TYPE_PRECONFIG,
+		NULL, NULL, 0);
 	if (hSession == NULL)
 		return NULL;
+	if (WindowsVersion.Version == WINDOWS_7)
+		IGNORE_RETVAL(InternetSetOptionA(hSession, INTERNET_OPTION_REFRESH, NULL, 0));
 	// Set the timeouts
 	InternetSetOptionA(hSession, INTERNET_OPTION_CONNECT_TIMEOUT, (LPVOID)&dwTimeout, sizeof(dwTimeout));
 	InternetSetOptionA(hSession, INTERNET_OPTION_SEND_TIMEOUT, (LPVOID)&dwTimeout, sizeof(dwTimeout));
@@ -1007,6 +1187,8 @@ static DWORD WINAPI DownloadISOThread(LPVOID param)
 	BYTE *compressed = NULL, *sig = NULL;
 	HANDLE hFile, hPipe;
 	DWORD dwExitCode = 99, dwCompressedSize, dwSize, dwAvail, dwPipeSize = 4096;
+	DWORD previous_secure_protocols = 0;
+	BOOL had_previous_secure_protocols = FALSE, win7_protocol_override = FALSE;
 	LARGE_INTEGER patch_pos;
 	char *version_line, *version_eol;
 	GUID guid;
@@ -1016,6 +1198,15 @@ static DWORD WINAPI DownloadISOThread(LPVOID param)
 	// Disable Fido on NT5 (port)
 	if (WindowsVersion.Version < WINDOWS_VISTA)
 		goto out;
+	if (!EnsureTLS12Enabled(hMainDialog))
+		goto out;
+	if (is_seven) {
+		if (!ApplyWin7FidoProtocols(&previous_secure_protocols, &had_previous_secure_protocols)) {
+			uprintf("Could not apply the Windows 7 TLS settings: %s", WindowsErrorString());
+			goto out;
+		}
+		win7_protocol_override = TRUE;
+	}
 
 	// Use a GUID as random unique string, else ill-intentioned security "researchers"
 	// may either spam our pipe or replace our script to fool antivirus solutions into
@@ -1415,6 +1606,8 @@ static DWORD WINAPI DownloadISOThread(LPVOID param)
 	}
 
 out:
+	if (win7_protocol_override)
+		RestoreWin7FidoProtocols(previous_secure_protocols, had_previous_secure_protocols);
 	if (icon_path[0] != 0)
 		DeleteFileU(icon_path);
 #if !defined(RUFUS_TEST)

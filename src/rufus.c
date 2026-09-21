@@ -1,4 +1,4 @@
-/*
+﻿/*
  * Rufus: The Reliable USB Formatting Utility
  * Copyright © 2011-2025 Pete Batard <pete@akeo.ie>
  *
@@ -2830,14 +2830,18 @@ static INT_PTR CALLBACK MainCallback(HWND hDlg, UINT message, WPARAM wParam, LPA
 		fScale = GetDeviceCaps(hDC, LOGPIXELSX) / 96.0f;
 		safe_release_dc(hDlg, hDC);
 		apply_localization(IDD_DIALOG, hDlg);
+		first_log_display = TRUE;
+		log_displayed = FALSE;
+		hMainDialog = hDlg;
+		hLogDialog = MyCreateDialog(hMainInstance, IDD_LOG, hDlg, (DLGPROC)LogCallback);
+		// Check prerequisites before even thinking about connecting to the internet
+		if (WindowsVersion.Version >= WINDOWS_VISTA)
+			IGNORE_RETVAL(NetworkStartupPreflight(TRUE));
 		// The AppStore version always enables Fido
 		if (appstore_version)
 			SetFidoCheck();
 		else
 			SetUpdateCheck();
-		first_log_display = TRUE;
-		log_displayed = FALSE;
-		hLogDialog = MyCreateDialog(hMainInstance, IDD_LOG, hDlg, (DLGPROC)LogCallback);
 		InitDialog(hDlg);
 		GetDevices(0);
 		if (WindowsVersion.Version == WINDOWS_2000) {

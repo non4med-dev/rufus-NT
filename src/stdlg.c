@@ -1667,6 +1667,8 @@ void SetFidoCheck(void)
 	// Disable FIDO checks on NT5 (port)
 	if (WindowsVersion.Version < WINDOWS_VISTA)
 		return;
+	if (!NetworkStartupPreflight(FALSE))
+		return;
 	// Detect if we can use Fido, which depends on:
 	// - Powershell being installed
 	// - Rufus running in AppStore mode or update check being enabled
