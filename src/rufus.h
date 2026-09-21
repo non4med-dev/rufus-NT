@@ -854,7 +854,7 @@ extern void* get_data_from_asn1(const uint8_t* buf, size_t buf_len, const char* 
 extern int sanitize_label(char* label);
 extern int IsHDD(DWORD DriveIndex, uint16_t vid, uint16_t pid, const char* strid);
 extern char* GetSignatureName(const char* path, const char* country_code, BOOL bSilent);
-extern int GetIssuerCertificateInfo(uint8_t* cert, cert_info_t* info);
+extern int GetIssuerCertificateInfo(uint8_t* cert, uint32_t cert_size, cert_info_t* info);
 extern uint64_t GetSignatureTimeStamp(const char* path);
 extern LONG ValidateSignature(HWND hDlg, const char* path);
 extern BOOL ValidateOpensslSignature(BYTE* pbBuffer, DWORD dwBufferLen, BYTE* pbSignature, DWORD dwSigLen);
@@ -900,7 +900,7 @@ extern sbat_entry_t* GetSbatEntries(char* sbatlevel);
 extern thumbprint_list_t* GetThumbprintEntries(char* thumbprints_txt);
 extern uint16_t GetPeArch(uint8_t* buf);
 extern uint8_t* GetPeSection(uint8_t* buf, const char* name, uint32_t* len);
-extern uint8_t* GetPeSignatureData(uint8_t* buf);
+extern uint8_t* GetPeSignatureData(uint8_t* buf, uint32_t len, uint32_t* cert_size);
 extern uint8_t* RvaToPhysical(uint8_t* buf, uint32_t rva);
 extern uint32_t FindResourceRva(const wchar_t* name, uint8_t* root, uint8_t* dir, uint32_t* len);
 extern DWORD ListDirectoryContent(StrArray* arr, char* dir, uint8_t type);

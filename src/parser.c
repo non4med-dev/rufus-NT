@@ -1815,33 +1815,66 @@ uint32_t FindResourceRva(const wchar_t* name, uint8_t* root, uint8_t* dir, uint3
 	return 0;
 }
 
-uint8_t* GetPeSignatureData(uint8_t* buf)
+// Validate PE security-directory and WIN_CERTIFICATE before exposing certificates
+uint8_t* GetPeSignatureData(uint8_t* buf, uint32_t len, uint32_t* cert_size)
 {
-	IMAGE_DOS_HEADER* dos_header = (IMAGE_DOS_HEADER*)buf;
+	IMAGE_DOS_HEADER* dos_header;
 	IMAGE_NT_HEADERS32* pe_header;
 	IMAGE_NT_HEADERS64* pe64_header;
 	IMAGE_DATA_DIRECTORY sec_dir;
 	WIN_CERTIFICATE* cert;
+	uint32_t nt_offset;
+	uint32_t optional_offset;
+	uint32_t required_size;
+	uint32_t cert_header_size = FIELD_OFFSET(WIN_CERTIFICATE, bCertificate);
 
-	if (buf == NULL || dos_header->e_magic != IMAGE_DOS_SIGNATURE)
+	// Clear until all PE bounds succeed
+	if (cert_size != NULL)
+		*cert_size = 0;
+	if (buf == NULL || len < sizeof(IMAGE_DOS_HEADER))
 		return NULL;
-
-	pe_header = (IMAGE_NT_HEADERS32*)&buf[dos_header->e_lfanew];
+	dos_header = (IMAGE_DOS_HEADER*)buf;
+	if (dos_header->e_magic != IMAGE_DOS_SIGNATURE || dos_header->e_lfanew < 0)
+		return NULL;
+	nt_offset = (uint32_t)dos_header->e_lfanew;
+	if (nt_offset > len || len - nt_offset < sizeof(DWORD) + sizeof(IMAGE_FILE_HEADER) + sizeof(WORD))
+		return NULL;
+	pe_header = (IMAGE_NT_HEADERS32*)&buf[nt_offset];
 	if (pe_header->Signature != IMAGE_NT_SIGNATURE)
 		return NULL;
-
-	if (pe_header->FileHeader.Machine == IMAGE_FILE_MACHINE_I386 || pe_header->FileHeader.Machine == IMAGE_FILE_MACHINE_ARM) {
+	optional_offset = nt_offset + FIELD_OFFSET(IMAGE_NT_HEADERS32, OptionalHeader);
+	if (optional_offset > len || pe_header->FileHeader.SizeOfOptionalHeader > len - optional_offset)
+		return NULL;
+	if (pe_header->OptionalHeader.Magic == IMAGE_NT_OPTIONAL_HDR32_MAGIC) {
+		required_size = FIELD_OFFSET(IMAGE_OPTIONAL_HEADER32, DataDirectory) +
+			(IMAGE_DIRECTORY_ENTRY_SECURITY + 1) * sizeof(IMAGE_DATA_DIRECTORY);
+		if (pe_header->FileHeader.SizeOfOptionalHeader < required_size)
+			return NULL;
 		sec_dir = pe_header->OptionalHeader.DataDirectory[IMAGE_DIRECTORY_ENTRY_SECURITY];
-	} else {
+	}
+	else if (pe_header->OptionalHeader.Magic == IMAGE_NT_OPTIONAL_HDR64_MAGIC) {
 		pe64_header = (IMAGE_NT_HEADERS64*)pe_header;
+		required_size = FIELD_OFFSET(IMAGE_OPTIONAL_HEADER64, DataDirectory) +
+			(IMAGE_DIRECTORY_ENTRY_SECURITY + 1) * sizeof(IMAGE_DATA_DIRECTORY);
+		if (pe_header->FileHeader.SizeOfOptionalHeader < required_size)
+			return NULL;
 		sec_dir = pe64_header->OptionalHeader.DataDirectory[IMAGE_DIRECTORY_ENTRY_SECURITY];
 	}
-	if (sec_dir.VirtualAddress == 0 || sec_dir.Size == 0)
+	else {
 		return NULL;
-
+	}
+	// Offset
+	if (sec_dir.VirtualAddress == 0 || sec_dir.Size < cert_header_size)
+		return NULL;
+	if (sec_dir.VirtualAddress > len || sec_dir.Size > len - sec_dir.VirtualAddress)
+		return NULL;
 	cert = (WIN_CERTIFICATE*)&buf[sec_dir.VirtualAddress];
-	if (cert->dwLength == 0 || cert->wCertificateType != WIN_CERT_TYPE_PKCS_SIGNED_DATA)
+	if (cert->dwLength < cert_header_size || cert->dwLength > sec_dir.Size ||
+		cert->dwLength > len - sec_dir.VirtualAddress ||
+		cert->wCertificateType != WIN_CERT_TYPE_PKCS_SIGNED_DATA)
 		return NULL;
-
+	// Propagate the validated certificate length to the PKI parser
+	if (cert_size != NULL)
+		*cert_size = cert->dwLength;
 	return (uint8_t*)cert;
 }

@@ -2340,7 +2340,8 @@ static BOOL IsRevokedByCert(cert_info_t* info)
 
 BOOL IsSignedBySecureBootAuthority(uint8_t* buf, uint32_t len)
 {
-	int i;
+	uint32_t i;
+	uint32_t cert_size = 0;
 	uint8_t* cert;
 	cert_info_t info;
 
@@ -2348,9 +2349,9 @@ BOOL IsSignedBySecureBootAuthority(uint8_t* buf, uint32_t len)
 		return FALSE;
 
 	// Get the signer/issuer info
-	cert = GetPeSignatureData(buf);
+	cert = GetPeSignatureData(buf, len, &cert_size);
 	// Secure Boot Authority is always an issuer
-	if (GetIssuerCertificateInfo(cert, &info) != 2)
+	if (GetIssuerCertificateInfo(cert, cert_size, &info) != 2)
 		return FALSE;
 	// Use local if remote isnt available
 	if (sb_active_certs == NULL) {
@@ -2370,11 +2371,11 @@ BOOL IsSignedBySecureBootAuthority(uint8_t* buf, uint32_t len)
 int IsBootloaderRevoked(uint8_t* buf, uint32_t len)
 {
 	uint32_t i;
+	uint32_t cert_size = 0;
 	uint8_t hash[SHA256_HASHSIZE];
 	IMAGE_DOS_HEADER* dos_header = (IMAGE_DOS_HEADER*)buf;
 	IMAGE_NT_HEADERS32* pe_header;
 	uint8_t* cert;
-	// Keep certificate details initialized when W2k cant build the issuer chain (port)
 	cert_info_t info = { 0 };
 	int r, revoked = 0;
 
@@ -2385,8 +2386,9 @@ int IsBootloaderRevoked(uint8_t* buf, uint32_t len)
 		return -2;
 
 	// Get the signer/issuer info
-	cert = GetPeSignatureData(buf);
-	r = GetIssuerCertificateInfo(cert, &info);
+	cert = GetPeSignatureData(buf, len, &cert_size);
+	// Pre XP fallback is inside GetIssuerCertificateInfo
+	r = GetIssuerCertificateInfo(cert, cert_size, &info);
 	if (r == 0)
 		uuprintf("  (Unsigned Bootloader)");
 	else if (r > 0)
@@ -2408,7 +2410,7 @@ int IsBootloaderRevoked(uint8_t* buf, uint32_t len)
 	if (revoked == 0 && IsRevokedBySvn(buf, len))
 		revoked = 4;
 	// Check for UEFI DBX certificate revocation
-	if (revoked == 0 && IsRevokedByCert(&info))
+	if (revoked == 0 && r > 0 && IsRevokedByCert(&info))
 		revoked = 5;
 
 	// If signed and not revoked, print the various Secure Boot "gotchas"

@@ -261,6 +261,392 @@ const char* WinPKIErrorString(void)
 	}
 }
 
+typedef struct {
+	const BYTE* data;
+	DWORD size;
+} PKI_DER_ITEM;
+
+// Please dont crash again
+static BOOL PkiDerRead(const BYTE** cursor, const BYTE* end, BYTE* tag, PKI_DER_ITEM* value, PKI_DER_ITEM* full)
+{
+	const BYTE* start;
+	DWORD length = 0;
+	DWORD count;
+	DWORD i;
+	BYTE first;
+
+	if (cursor == NULL || *cursor == NULL || end == NULL || tag == NULL || *cursor >= end)
+		return FALSE;
+	start = *cursor;
+	*tag = *(*cursor)++;
+	if (*cursor >= end)
+		return FALSE;
+	first = *(*cursor)++;
+	if ((first & 0x80) == 0) {
+		length = first;
+	}
+	else {
+		count = first & 0x7f;
+		if (count == 0 || count > 4 || (DWORD)(end - *cursor) < count)
+			return FALSE;
+		for (i = 0; i < count; i++) {
+			if (length > 0x00ffffff)
+				return FALSE;
+			length = (length << 8) | *(*cursor)++;
+		}
+	}
+	if ((DWORD)(end - *cursor) < length)
+		return FALSE;
+	if (value != NULL) {
+		value->data = *cursor;
+		value->size = length;
+	}
+	*cursor += length;
+	if (full != NULL) {
+		full->data = start;
+		full->size = (DWORD)(*cursor - start);
+	}
+	return TRUE;
+}
+
+// Recognize PKCS#7 SignedData without invoking CryptoAPI
+static BOOL PkiDerIsSignedDataOid(const PKI_DER_ITEM* oid)
+{
+	static const BYTE signed_data_oid[] = { 0x2a, 0x86, 0x48, 0x86, 0xf7, 0x0d, 0x01, 0x07, 0x02 };
+
+	return oid != NULL && oid->size == sizeof(signed_data_oid) &&
+		memcmp(oid->data, signed_data_oid, sizeof(signed_data_oid)) == 0;
+}
+
+static BOOL PkiDerEqual(const PKI_DER_ITEM* left, const PKI_DER_ITEM* right)
+{
+	return left != NULL && right != NULL && left->size == right->size &&
+		(left->size == 0 || memcmp(left->data, right->data, left->size) == 0);
+}
+
+static BOOL PkiSerialEqual(const PKI_DER_ITEM* left, const PKI_DER_ITEM* right)
+{
+	PKI_DER_ITEM a;
+	PKI_DER_ITEM b;
+
+	if (left == NULL || right == NULL)
+		return FALSE;
+	a = *left;
+	b = *right;
+	while (a.size > 1 && a.data[0] == 0) {
+		a.data++;
+		a.size--;
+	}
+	while (b.size > 1 && b.data[0] == 0) {
+		b.data++;
+		b.size--;
+	}
+	return PkiDerEqual(&a, &b);
+}
+
+typedef struct {
+	PKI_DER_ITEM encoded;
+	PKI_DER_ITEM serial;
+	PKI_DER_ITEM issuer;
+	PKI_DER_ITEM subject;
+} PKI_RAW_CERT;
+
+// Parse only X.509
+static BOOL PkiParseCertificate(const PKI_DER_ITEM* encoded, PKI_RAW_CERT* certificate)
+{
+	const BYTE* cursor;
+	const BYTE* end;
+	const BYTE* tbs_cursor;
+	const BYTE* tbs_end;
+	BYTE tag;
+	PKI_DER_ITEM item;
+	PKI_DER_ITEM tbs;
+
+	if (encoded == NULL || encoded->data == NULL || encoded->size == 0 || certificate == NULL)
+		return FALSE;
+	memset(certificate, 0, sizeof(*certificate));
+	cursor = encoded->data;
+	end = encoded->data + encoded->size;
+	if (!PkiDerRead(&cursor, end, &tag, &item, NULL) || tag != 0x30 || cursor != end)
+		return FALSE;
+	cursor = item.data;
+	end = item.data + item.size;
+	if (!PkiDerRead(&cursor, end, &tag, &tbs, NULL) || tag != 0x30)
+		return FALSE;
+	tbs_cursor = tbs.data;
+	tbs_end = tbs.data + tbs.size;
+	if (tbs_cursor < tbs_end && *tbs_cursor == 0xa0) {
+		if (!PkiDerRead(&tbs_cursor, tbs_end, &tag, &item, NULL))
+			return FALSE;
+	}
+	if (!PkiDerRead(&tbs_cursor, tbs_end, &tag, &certificate->serial, NULL) || tag != 0x02)
+		return FALSE;
+	if (!PkiDerRead(&tbs_cursor, tbs_end, &tag, &item, NULL) || tag != 0x30)
+		return FALSE;
+	if (!PkiDerRead(&tbs_cursor, tbs_end, &tag, &item, &certificate->issuer) || tag != 0x30)
+		return FALSE;
+	if (!PkiDerRead(&tbs_cursor, tbs_end, &tag, &item, NULL) || tag != 0x30)
+		return FALSE;
+	if (!PkiDerRead(&tbs_cursor, tbs_end, &tag, &item, &certificate->subject) || tag != 0x30)
+		return FALSE;
+	certificate->encoded = *encoded;
+	return TRUE;
+}
+
+// Convert ASN.1 string encodings needed for certificate common names
+static BOOL PkiCopyNameValue(BYTE tag, const PKI_DER_ITEM* value, char* output, DWORD output_size)
+{
+	DWORD i;
+	DWORD count;
+	DWORD codepoint;
+
+	if (value == NULL || output == NULL || output_size == 0)
+		return FALSE;
+	output[0] = 0;
+	if (tag == 0x1e) {
+		if ((value->size & 1) != 0)
+			return FALSE;
+		count = value->size / 2;
+		if (count >= output_size)
+			count = output_size - 1;
+		for (i = 0; i < count; i++) {
+			codepoint = ((DWORD)value->data[i * 2] << 8) | value->data[i * 2 + 1];
+			output[i] = (codepoint <= 0x7f) ? (char)codepoint : '?';
+		}
+		output[count] = 0;
+		return count != 0;
+	}
+	if (tag == 0x1c) {
+		if ((value->size & 3) != 0)
+			return FALSE;
+		count = value->size / 4;
+		if (count >= output_size)
+			count = output_size - 1;
+		for (i = 0; i < count; i++) {
+			codepoint = ((DWORD)value->data[i * 4] << 24) |
+				((DWORD)value->data[i * 4 + 1] << 16) |
+				((DWORD)value->data[i * 4 + 2] << 8) |
+				value->data[i * 4 + 3];
+			output[i] = (codepoint <= 0x7f) ? (char)codepoint : '?';
+		}
+		output[count] = 0;
+		return count != 0;
+	}
+	if (tag != 0x0c && tag != 0x12 && tag != 0x13 && tag != 0x14 &&
+		tag != 0x16 && tag != 0x1a)
+		return FALSE;
+	count = value->size;
+	if (count >= output_size)
+		count = output_size - 1;
+	for (i = 0; i < count; i++)
+		output[i] = (char)value->data[i];
+	output[count] = 0;
+	return count != 0;
+}
+
+// Extract a certificate common name directly from bounded DER
+static BOOL PkiGetCommonName(const PKI_DER_ITEM* name, char* output, DWORD output_size)
+{
+	static const BYTE common_name_oid[] = { 0x55, 0x04, 0x03 };
+	const BYTE* cursor;
+	const BYTE* end;
+	const BYTE* set_cursor;
+	const BYTE* set_end;
+	const BYTE* attr_cursor;
+	const BYTE* attr_end;
+	BYTE tag;
+	BYTE value_tag;
+	PKI_DER_ITEM sequence;
+	PKI_DER_ITEM set;
+	PKI_DER_ITEM attribute;
+	PKI_DER_ITEM oid;
+	PKI_DER_ITEM value;
+
+	if (name == NULL || name->data == NULL || name->size == 0 || output == NULL || output_size == 0)
+		return FALSE;
+	output[0] = 0;
+	cursor = name->data;
+	end = name->data + name->size;
+	if (!PkiDerRead(&cursor, end, &tag, &sequence, NULL) || tag != 0x30 || cursor != end)
+		return FALSE;
+	cursor = sequence.data;
+	end = sequence.data + sequence.size;
+	while (cursor < end) {
+		if (!PkiDerRead(&cursor, end, &tag, &set, NULL) || tag != 0x31)
+			return FALSE;
+		set_cursor = set.data;
+		set_end = set.data + set.size;
+		while (set_cursor < set_end) {
+			if (!PkiDerRead(&set_cursor, set_end, &tag, &attribute, NULL) || tag != 0x30)
+				return FALSE;
+			attr_cursor = attribute.data;
+			attr_end = attribute.data + attribute.size;
+			if (!PkiDerRead(&attr_cursor, attr_end, &tag, &oid, NULL) || tag != 0x06)
+				return FALSE;
+			if (!PkiDerRead(&attr_cursor, attr_end, &value_tag, &value, NULL))
+				return FALSE;
+			if (oid.size == sizeof(common_name_oid) &&
+				memcmp(oid.data, common_name_oid, sizeof(common_name_oid)) == 0)
+				return PkiCopyNameValue(value_tag, &value, output, output_size);
+		}
+	}
+	return FALSE;
+}
+
+static BOOL PkiFindRawCertificate(const PKI_DER_ITEM* certificates,
+	const PKI_DER_ITEM* issuer, const PKI_DER_ITEM* serial, PKI_RAW_CERT* result)
+{
+	const BYTE* cursor;
+	const BYTE* end;
+	BYTE tag;
+	PKI_DER_ITEM value;
+	PKI_DER_ITEM full;
+	PKI_RAW_CERT current;
+
+	if (certificates == NULL || certificates->data == NULL || result == NULL)
+		return FALSE;
+	cursor = certificates->data;
+	end = certificates->data + certificates->size;
+	while (cursor < end) {
+		if (!PkiDerRead(&cursor, end, &tag, &value, &full))
+			return FALSE;
+		if (tag != 0x30)
+			continue;
+		if (!PkiParseCertificate(&full, &current))
+			continue;
+		if (PkiDerEqual(&current.issuer, issuer) && PkiSerialEqual(&current.serial, serial)) {
+			*result = current;
+			return TRUE;
+		}
+	}
+	return FALSE;
+}
+
+static BOOL PkiFindRawIssuer(const PKI_DER_ITEM* certificates,
+	const PKI_RAW_CERT* signer, PKI_RAW_CERT* result)
+{
+	const BYTE* cursor;
+	const BYTE* end;
+	BYTE tag;
+	PKI_DER_ITEM value;
+	PKI_DER_ITEM full;
+	PKI_RAW_CERT current;
+
+	if (certificates == NULL || certificates->data == NULL || signer == NULL || result == NULL)
+		return FALSE;
+	cursor = certificates->data;
+	end = certificates->data + certificates->size;
+	while (cursor < end) {
+		if (!PkiDerRead(&cursor, end, &tag, &value, &full))
+			return FALSE;
+		if (tag != 0x30)
+			continue;
+		if (!PkiParseCertificate(&full, &current))
+			continue;
+		if (!PkiDerEqual(&current.subject, &signer->issuer))
+			continue;
+		if (current.encoded.size == signer->encoded.size &&
+			memcmp(current.encoded.data, signer->encoded.data, current.encoded.size) == 0)
+			continue;
+		*result = current;
+		return TRUE;
+	}
+	return FALSE;
+}
+
+// Pre-XP fallback that extracts signer metadata without CryptoAPI
+static int PkiGetIssuerCertificateInfoRaw(const CRYPT_DATA_BLOB* blob, cert_info_t* info)
+{
+	const BYTE* cursor;
+	const BYTE* end;
+	const BYTE* inner;
+	const BYTE* inner_end;
+	const BYTE* signer_cursor;
+	const BYTE* signer_end;
+	BYTE tag;
+	PKI_DER_ITEM item;
+	PKI_DER_ITEM oid;
+	PKI_DER_ITEM certificates;
+	PKI_DER_ITEM signer_infos;
+	PKI_DER_ITEM signer;
+	PKI_DER_ITEM sid;
+	PKI_DER_ITEM issuer_name;
+	PKI_DER_ITEM serial;
+	PKI_RAW_CERT signer_cert;
+	PKI_RAW_CERT issuer_cert;
+	PKI_RAW_CERT* selected_cert;
+	int result;
+
+	if (blob == NULL || blob->pbData == NULL || blob->cbData == 0 || info == NULL)
+		return 0;
+	memset(info, 0, sizeof(*info));
+	cursor = blob->pbData;
+	end = blob->pbData + blob->cbData;
+	if (!PkiDerRead(&cursor, end, &tag, &item, NULL) || tag != 0x30)
+		return 0;
+	inner = item.data;
+	inner_end = item.data + item.size;
+	if (!PkiDerRead(&inner, inner_end, &tag, &oid, NULL) || tag != 0x06 || !PkiDerIsSignedDataOid(&oid))
+		return 0;
+	if (!PkiDerRead(&inner, inner_end, &tag, &item, NULL) || tag != 0xa0)
+		return 0;
+	inner = item.data;
+	inner_end = item.data + item.size;
+	if (!PkiDerRead(&inner, inner_end, &tag, &item, NULL) || tag != 0x30)
+		return 0;
+	inner = item.data;
+	inner_end = item.data + item.size;
+	if (!PkiDerRead(&inner, inner_end, &tag, &item, NULL) || tag != 0x02)
+		return 0;
+	if (!PkiDerRead(&inner, inner_end, &tag, &item, NULL) || tag != 0x31)
+		return 0;
+	if (!PkiDerRead(&inner, inner_end, &tag, &item, NULL) || tag != 0x30)
+		return 0;
+	certificates.data = NULL;
+	certificates.size = 0;
+	if (inner < inner_end && *inner == 0xa0) {
+		if (!PkiDerRead(&inner, inner_end, &tag, &certificates, NULL))
+			return 0;
+	}
+	if (inner < inner_end && *inner == 0xa1) {
+		if (!PkiDerRead(&inner, inner_end, &tag, &item, NULL))
+			return 0;
+	}
+	if (!PkiDerRead(&inner, inner_end, &tag, &signer_infos, NULL) || tag != 0x31)
+		return 0;
+	if (certificates.data == NULL || certificates.size == 0)
+		return 0;
+	signer_cursor = signer_infos.data;
+	signer_end = signer_infos.data + signer_infos.size;
+	if (!PkiDerRead(&signer_cursor, signer_end, &tag, &signer, NULL) || tag != 0x30)
+		return 0;
+	inner = signer.data;
+	inner_end = signer.data + signer.size;
+	if (!PkiDerRead(&inner, inner_end, &tag, &item, NULL) || tag != 0x02)
+		return 0;
+	if (!PkiDerRead(&inner, inner_end, &tag, &sid, NULL) || tag != 0x30)
+		return 0;
+	cursor = sid.data;
+	end = sid.data + sid.size;
+	if (!PkiDerRead(&cursor, end, &tag, &item, &issuer_name) || tag != 0x30)
+		return 0;
+	if (!PkiDerRead(&cursor, end, &tag, &serial, NULL) || tag != 0x02)
+		return 0;
+	if (!PkiFindRawCertificate(&certificates, &issuer_name, &serial, &signer_cert))
+		return 0;
+	selected_cert = &signer_cert;
+	result = 1;
+	if (PkiFindRawIssuer(&certificates, &signer_cert, &issuer_cert)) {
+		selected_cert = &issuer_cert;
+		result = 2;
+	}
+	if (!PkiGetCommonName(&selected_cert->subject, info->name, sizeof(info->name)))
+		return 0;
+	if (!HashBuffer(HASH_SHA1, selected_cert->encoded.data, selected_cert->encoded.size, info->thumbprint))
+		return 0;
+	return result;
+}
+
 // Mostly from https://support.microsoft.com/en-us/kb/323809
 char* GetSignatureName(const char* path, const char* country_code, BOOL bSilent)
 {
@@ -388,10 +774,11 @@ out:
 // Fills the certificate's name and thumbprint.
 // Tries the issuer first, and if none is available, falls back to current cert.
 // Returns 0 for unsigned, -1 on error, 1 for signer or 2 for issuer.
-int GetIssuerCertificateInfo(uint8_t* cert, cert_info_t* info)
+int GetIssuerCertificateInfo(uint8_t* cert, uint32_t cert_size, cert_info_t* info)
 {
 	int ret = 0;
 	DWORD dwSize, dwEncoding, dwContentType, dwFormatType, dwSignerInfoSize = 0;
+	DWORD query_error;
 	WIN_CERTIFICATE* pWinCert = (WIN_CERTIFICATE*)cert;
 	CRYPT_DATA_BLOB signedDataBlob;
 	HCERTSTORE hStore = NULL;
@@ -404,15 +791,35 @@ int GetIssuerCertificateInfo(uint8_t* cert, cert_info_t* info)
 
 	if (info == NULL)
 		return -1;
-	if (pWinCert == NULL || pWinCert->dwLength == 0)
+	memset(info, 0, sizeof(*info));
+	if (pWinCert == NULL || cert_size < FIELD_OFFSET(WIN_CERTIFICATE, bCertificate))
 		return 0;
-
-	// Get message handle and store handle from the signed file.
-	signedDataBlob.cbData = pWinCert->dwLength;
+	if (pWinCert->dwLength < FIELD_OFFSET(WIN_CERTIFICATE, bCertificate) ||
+		pWinCert->dwLength > cert_size ||
+		pWinCert->wCertificateType != WIN_CERT_TYPE_PKCS_SIGNED_DATA)
+		return 0;
+	signedDataBlob.cbData = pWinCert->dwLength - FIELD_OFFSET(WIN_CERTIFICATE, bCertificate);
 	signedDataBlob.pbData = pWinCert->bCertificate;
 	if (!CryptQueryObject(CERT_QUERY_OBJECT_BLOB, &signedDataBlob,
 		CERT_QUERY_CONTENT_FLAG_PKCS7_SIGNED, CERT_QUERY_FORMAT_FLAG_BINARY,
 		0, &dwEncoding, &dwContentType, &dwFormatType, &hStore, &hMsg, NULL)) {
+		query_error = GetLastError();
+		if (hStore != NULL) {
+			CertCloseStore(hStore, 0);
+			hStore = NULL;
+		}
+		if (hMsg != NULL) {
+			CryptMsgClose(hMsg);
+			hMsg = NULL;
+		}
+		// >=XP native Crypto32 path, <=W2k Raw DER
+		if (WindowsVersion.Version <= WINDOWS_2000) {
+			ret = PkiGetIssuerCertificateInfoRaw(&signedDataBlob, info);
+			if (ret != 0)
+				goto out;
+		}
+		// Fallback for the fallback when it fails to fall back yyeyeyeyeyeey
+		SetLastError(query_error);
 		uprintf("PKI: Failed to get signature: %s", WinPKIErrorString());
 		goto out;
 	}
