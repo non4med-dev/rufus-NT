@@ -204,3 +204,5 @@ extern char* VhdMountImageAndGetSize(const char* path, uint64_t* disksize);
 extern void VhdUnmountImage(void);
 extern void VhdSaveImage(void);
 extern void IsoSaveImage(void);
+extern void WimApiCleanup(void);
+extern const char* GetLegacyBcdbootPath(void);

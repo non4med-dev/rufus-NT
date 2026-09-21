@@ -1,0 +1,13 @@
+Retro7zip
+=========
+
+This project includes the Win32c build of Retro7zip.
+
+7-Zip is Copyright (C) Igor Pavlov.
+Retro7zip is available from:
+https://github.com/dajhorn/retro7zip
+
+7-Zip and Retro7zip are distributed under their respective open-source licenses.
+See COPYRIGHT.txt and License.txt in this directory for the applicable copyright and license terms.
+
+Rufus-NT is not affiliated with or endorsed by Igor Pavlov or the Retro7zip project.

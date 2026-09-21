@@ -307,6 +307,12 @@ BEGIN
     "IDR_UEFI_NTFS           RCDATA                  ""../res/uefi/uefi-ntfs.img""\r\n"
     "IDR_SETUP_X64           RCDATA                  ""../res/setup/setup_x64.exe""\r\n"
     "IDR_SETUP_ARM64         RCDATA                  ""../res/setup/setup_arm64.exe""\r\n"
+    "IDR_WIMAPI7             RCDATA                  ""../res/wintogo/wimgapi.dll""\r\n"
+    "IDR_NTAPI               RCDATA                  ""../res/wintogo/ntapi.dll""\r\n"
+    "IDR_BCDBOOT             RCDATA                  ""../res/wintogo/bcdboot.exe""\r\n"
+    "IDR_WIMLIB_IMAGE_X      RCDATA                  ""../res/wintogo/wimlib/wimlib-imagex.exe""\r\n"
+    "IDR_LIBWIM15            RCDATA                  ""../res/wintogo/wimlib/libwim-15.dll""\r\n"
+    "IDR_RETRO7ZIP           RCDATA                  ""../res/retro7zip/7z.exe""\r\n"
     "IDR_MD5_BOOTIA32        RCDATA                  ""../res/md5/bootia32.efi""\r\n"
     "IDR_MD5_BOOTX64         RCDATA                  ""../res/md5/bootx64.efi""\r\n"
     "IDR_MD5_BOOTARM         RCDATA                  ""../res/md5/bootarm.efi""\r\n"
@@ -407,8 +413,8 @@ END
 //
 
 VS_VERSION_INFO VERSIONINFO
- FILEVERSION 4,7,2231,0
- PRODUCTVERSION 4,7,2231,0
+ FILEVERSION 1,0,0,1
+ PRODUCTVERSION 4,7,0,0
  FILEFLAGSMASK 0x3fL
 #ifdef _DEBUG
  FILEFLAGS 0x1L
@@ -426,13 +432,14 @@ BEGIN
             VALUE "Comments", "Unofficial fork of Rufus created to run on legacy Windows operating systems. https://github.com/non4med-dev/rufus-nt"
             VALUE "CompanyName", "Akeo Consulting"
             VALUE "FileDescription", "Rufus-NT"
-            VALUE "FileVersion", "4.7.2231"
+            VALUE "FileVersion", "4.7"
             VALUE "InternalName", "Rufus-NT"
             // Had to remove © as it doesn't exist in old fonts
             VALUE "LegalCopyright", "2011-2025 Pete Batard (GPL v3)"
             VALUE "LegalTrademarks", "https://www.gnu.org/licenses/gpl-3.0.html"
-            VALUE "Changelog", "Update 1: Rebrand and KEK2023 dbx signing"
-            VALUE "ProductName", "Rufus"
+            VALUE "Changelog", "Update 1: Self-containability"
+            VALUE "ProductName", "Rufus-NT"
+            VALUE "ProductVersion", "Update 1"
         END
     END
     BLOCK "VarFileInfo"
@@ -504,6 +511,12 @@ IDR_XT_HOGGER           RCDATA                  "../res/hogger/hogger.exe"
 IDR_UEFI_NTFS           RCDATA                  "../res/uefi/uefi-ntfs.img"
 IDR_SETUP_X64           RCDATA                  "../res/setup/setup_x64.exe"
 IDR_SETUP_ARM64         RCDATA                  "../res/setup/setup_arm64.exe"
+IDR_WIMAPI7             RCDATA                  "../res/wintogo/wimgapi.dll"
+IDR_NTAPI               RCDATA                  "../res/wintogo/ntapi.dll"
+IDR_BCDBOOT             RCDATA                  "../res/wintogo/bcdboot.exe"
+IDR_WIMLIB_IMAGE_X      RCDATA                  "../res/wintogo/wimlib/wimlib-imagex.exe"
+IDR_LIBWIM15            RCDATA                  "../res/wintogo/wimlib/libwim-15.dll"
+IDR_RETRO7ZIP           RCDATA                  "../res/retro7zip/7z.exe"
 IDR_MD5_BOOTIA32        RCDATA                  "../res/md5/bootia32.efi"
 IDR_MD5_BOOTX64         RCDATA                  "../res/md5/bootx64.efi"
 IDR_MD5_BOOTARM         RCDATA                  "../res/md5/bootarm.efi"

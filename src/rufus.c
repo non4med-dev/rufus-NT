@@ -4302,6 +4302,7 @@ extern int TestHashes(void);
 
 out:
 	CleanupWinToGoTemp();
+	WimApiCleanup();
 	_chdirU(cur_dir);
 	// Destroy the hogger mutex first, so that the cmdline app can exit and we can delete it
 	if (hogmutex != NULL) {

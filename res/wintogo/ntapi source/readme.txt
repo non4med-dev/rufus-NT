@@ -1,0 +1,1 @@
+cd into the directory using x86 Native Tools Command Prompt for VS 2022 and run build.cmd

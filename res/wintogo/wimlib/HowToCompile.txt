@@ -1,0 +1,13 @@
+A shit ton of dependencies I dont even remember
+Check wimlib's official website for the dependency list for 1.13.6
+
+Assuming you extract wimlib-1.13.6 to your C:\ directory:
+
+cd /cygdrive/c/wimlib-1.13.6
+
+./bootstrap
+
+./tools/make-windows-release i686
+
+i686-w64-mingw32-strip --strip-unneeded /cygdrive/c/wimlib-1.13.6/.libs/libwim-15.dll
+i686-w64-mingw32-strip --strip-unneeded /cygdrive/c/wimlib-1.13.6/.libs/wimlib-imagex.exe

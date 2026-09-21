@@ -78,28 +78,364 @@ static uint8_t wim_flags = 0;
 static uint32_t progress_report_mask;
 static uint64_t progress_offset = 0, progress_total = 100;
 static wchar_t wmount_path[MAX_PATH] = { 0 }, wmount_track[MAX_PATH] = { 0 };
-static char sevenzip_path[MAX_PATH], wimlib_path[MAX_PATH], physical_path[128] = "";
+static char sevenzip_path[MAX_PATH], sevenzip_dir[MAX_PATH], physical_path[128] = "";
+static char legacy_wimapi_dir[MAX_PATH] = "", legacy_wimapi7_path[MAX_PATH] = "";
+static char legacy_bcdboot_path[MAX_PATH] = "";
+static char legacy_wimlib_dir[MAX_PATH] = "", legacy_wimlib_path[MAX_PATH] = "";
+static char legacy_libwim_path[MAX_PATH] = "";
+static HMODULE legacy_wimapi7_module = NULL;
+static int legacy_wimapi_state = 0, sevenzip_state = 0, legacy_wimlib_state = 0;
 static const char vhd_footer_cookie[] = VHD_FOOTER_COOKIE;
 static int progress_op = OP_FILE_COPY, progress_msg = MSG_267;
 static BOOL count_files, legacy_wim_apply;
 static HANDLE mounted_handle = INVALID_HANDLE_VALUE;
+static BOOL WriteWinToGoResource(int resource_id, const char* description, const char* path);
 
 static BOOL Get7ZipPath(void)
 {
-	if ( (GetRegistryKeyStr(REGKEY_HKCU, "Software\\7-Zip\\Path", sevenzip_path, sizeof(sevenzip_path)))
-	  || (GetRegistryKeyStr(REGKEY_HKLM, "Software\\7-Zip\\Path", sevenzip_path, sizeof(sevenzip_path))) ) {
-		static_strcat(sevenzip_path, "\\7z.exe");
-		return (_accessU(sevenzip_path, 0) != -1);
+	if (sevenzip_state < 0)
+		return FALSE;
+
+	if (sevenzip_dir[0] == 0) {
+		if (GetTempFileNameU(temp_dir, "R7Z", 0, sevenzip_dir) == 0)
+			goto error;
+
+		DeleteFileU(sevenzip_dir);
+
+		if (!CreateDirectoryU(sevenzip_dir, NULL))
+			goto error;
+
+		static_sprintf(sevenzip_path, "%s\\7z.exe", sevenzip_dir);
 	}
+
+	if ((_accessU(sevenzip_path, 0) != 0) &&
+		!WriteWinToGoResource(
+			IDR_RETRO7ZIP,
+			"Retro7zip",
+			sevenzip_path))
+		goto error;
+
+	sevenzip_state = 1;
+	return TRUE;
+
+error:
+	sevenzip_state = -1;
 	return FALSE;
 }
 
-// wimlib-imagex (port)
+static BOOL WriteWinToGoResource(int resource_id,
+	const char* description, const char* path)
+{
+	BOOL r = FALSE;
+	BYTE* data;
+	DWORD size = 0;
+	HANDLE file = INVALID_HANDLE_VALUE;
+
+	data = GetResource(hMainInstance,
+		MAKEINTRESOURCEA(resource_id),
+		_RT_RCDATA, description, &size, FALSE);
+
+	if ((data == NULL) || (size == 0))
+		goto out;
+
+	file = CreateFileU(path,
+		GENERIC_WRITE, 0, NULL, CREATE_ALWAYS,
+		FILE_ATTRIBUTE_HIDDEN |
+		FILE_ATTRIBUTE_TEMPORARY, NULL);
+
+	if (file == INVALID_HANDLE_VALUE)
+		goto out;
+
+	r = WriteFileWithRetry(
+		file, data, size, NULL, WRITE_RETRIES) &&
+		FlushFileBuffers(file);
+
+out:
+	if (!r)
+		uprintf("Could not prepare %s: %s",
+			description, WindowsErrorString());
+
+	safe_closehandle(file);
+	return r;
+}
+
+static BOOL EnsureLegacyWinToGoRuntime(BOOL need_bcdboot)
+{
+	char ntapi_path[MAX_PATH];
+
+	if (WindowsVersion.Version >= WINDOWS_8)
+		return TRUE;
+
+	if (legacy_wimapi_state < 0)
+		return FALSE;
+
+	if (legacy_wimapi_dir[0] == 0) {
+		if (GetTempFileNameU(temp_dir, "RWA", 0,
+			legacy_wimapi_dir) == 0)
+			goto error;
+
+		DeleteFileU(legacy_wimapi_dir);
+
+		if (!CreateDirectoryU(legacy_wimapi_dir, NULL))
+			goto error;
+
+		static_sprintf(legacy_wimapi7_path,
+			"%s\\wimgapi.dll",
+			legacy_wimapi_dir);
+
+		static_sprintf(legacy_wimlib_dir,
+			"%s\\wimlib",
+			legacy_wimapi_dir);
+
+		static_sprintf(legacy_wimlib_path,
+			"%s\\wimlib-imagex.exe",
+			legacy_wimlib_dir);
+
+		static_sprintf(legacy_libwim_path,
+			"%s\\libwim-15.dll",
+			legacy_wimlib_dir);
+
+		static_sprintf(legacy_bcdboot_path,
+			"%s\\bcdboot.exe",
+			legacy_wimapi_dir);
+
+		static_sprintf(ntapi_path,
+			"%s\\ntapi.dll",
+			legacy_wimapi_dir);
+
+		if (!WriteWinToGoResource(
+			IDR_NTAPI,
+			"NTAPI",
+			ntapi_path) ||
+			!WriteWinToGoResource(
+				IDR_WIMAPI7,
+				"Windows 7 WIMGAPI",
+				legacy_wimapi7_path))
+			goto error;
+	}
+
+	if (need_bcdboot &&
+		(_accessU(legacy_bcdboot_path, 0) != 0) &&
+		!WriteWinToGoResource(
+			IDR_BCDBOOT,
+			"Windows To Go bcdboot",
+			legacy_bcdboot_path))
+		goto error;
+
+	return TRUE;
+
+error:
+	legacy_wimapi_state = -1;
+
+	uprintf(
+		"Could not initialize the bundled Windows To Go runtime: %s",
+		WindowsErrorString());
+
+	return FALSE;
+}
+
+static HMODULE GetWimApiHandle(void)
+{
+	if (WindowsVersion.Version >= WINDOWS_8)
+		return GetLibraryHandle("Wimgapi");
+
+	if (legacy_wimapi7_module != NULL)
+		return legacy_wimapi7_module;
+
+#if !defined(_M_IX86)
+
+	return GetLibraryHandle("Wimgapi");
+
+#else
+
+	if (!EnsureLegacyWinToGoRuntime(FALSE))
+		return NULL;
+
+	legacy_wimapi7_module =
+		LoadLibraryExU(
+			legacy_wimapi7_path,
+			NULL,
+			LOAD_WITH_ALTERED_SEARCH_PATH);
+
+	if (legacy_wimapi7_module == NULL)
+		goto error;
+
+	legacy_wimapi_state = 1;
+
+	uprintf(
+		"Using bundled Windows 7 WIMGAPI for Windows To Go");
+
+	return legacy_wimapi7_module;
+
+error:
+	legacy_wimapi_state = -1;
+
+	uprintf(
+		"Could not load the bundled Windows 7 WIMGAPI: %s",
+		WindowsErrorString());
+
+	return NULL;
+
+#endif
+}
+
+static BOOL EnsureLegacyWimlibRuntime(void)
+{
+	if (legacy_wimlib_state > 0)
+		return TRUE;
+
+	if ((legacy_wimlib_state < 0) ||
+		!EnsureLegacyWinToGoRuntime(FALSE))
+		return FALSE;
+
+	if (!CreateDirectoryU(legacy_wimlib_dir, NULL) &&
+		(GetLastError() != ERROR_ALREADY_EXISTS))
+		goto error;
+
+	if (!WriteWinToGoResource(
+		IDR_LIBWIM15,
+		"wimlib runtime",
+		legacy_libwim_path) ||
+		!WriteWinToGoResource(
+			IDR_WIMLIB_IMAGE_X,
+			"wimlib-imagex",
+			legacy_wimlib_path))
+		goto error;
+
+	legacy_wimlib_state = 1;
+	return TRUE;
+
+error:
+	legacy_wimlib_state = -1;
+
+	uprintf(
+		"Could not initialize the bundled wimlib runtime: %s",
+		WindowsErrorString());
+
+	return FALSE;
+}
+
+static void ResetWimApiPointers(void)
+{
+	pfWIMCreateFile = NULL;
+	pfWIMSetTemporaryPath = NULL;
+	pfWIMLoadImage = NULL;
+	pfWIMMountImage = NULL;
+	pfWIMUnmountImage = NULL;
+	pfWIMApplyImage = NULL;
+	pfWIMExtractImagePath = NULL;
+	pfWIMGetImageInformation = NULL;
+	pfWIMCloseHandle = NULL;
+	pfWIMRegisterMessageCallback = NULL;
+	pfWIMUnregisterMessageCallback = NULL;
+}
+
+void WimApiCleanup(void)
+{
+	if (legacy_wimapi7_module != NULL)
+		FreeLibrary(legacy_wimapi7_module);
+
+	legacy_wimapi7_module = NULL;
+
+	if ((legacy_wimapi_dir[0] != 0) &&
+		PathFileExistsU(legacy_wimapi_dir) &&
+		(SHDeleteDirectoryExU(
+			NULL, legacy_wimapi_dir,
+			FOF_NO_UI) != 0))
+
+		uprintf(
+			"Could not remove Windows To Go runtime directory '%s'",
+			legacy_wimapi_dir);
+
+	legacy_wimapi_dir[0] = 0;
+	legacy_wimapi7_path[0] = 0;
+	legacy_bcdboot_path[0] = 0;
+	legacy_wimlib_dir[0] = 0;
+	legacy_wimlib_path[0] = 0;
+	legacy_libwim_path[0] = 0;
+
+	legacy_wimapi_state = 0;
+	legacy_wimlib_state = 0;
+
+	if ((sevenzip_dir[0] != 0) &&
+		PathFileExistsU(sevenzip_dir) &&
+		(SHDeleteDirectoryExU(
+			NULL, sevenzip_dir,
+			FOF_NO_UI) != 0))
+
+		uprintf(
+			"Could not remove embedded 7-Zip directory '%s'",
+			sevenzip_dir);
+
+	sevenzip_dir[0] = 0;
+	sevenzip_path[0] = 0;
+	sevenzip_state = 0;
+
+	ResetWimApiPointers();
+}
+
+const char* GetLegacyBcdbootPath(void)
+{
+	return EnsureLegacyWinToGoRuntime(TRUE) ?
+		legacy_bcdboot_path : NULL;
+}
+
+
+#define WIM_INIT(proc) do { \
+	if (pf##proc == NULL) \
+		pf##proc = (proc##_t)GetProcAddress( \
+			GetWimApiHandle(), #proc); \
+} while (0)
+
+#define WIM_INIT_OR_OUT(proc) do { \
+	WIM_INIT(proc); \
+	if (pf##proc == NULL) { \
+		uprintf( \
+			"Unable to locate %s() in 'wimgapi.dll': %s", \
+			#proc, WindowsErrorString()); \
+		goto out; \
+	} \
+} while (0)
+
+static uint8_t AddWimApiCapabilities(uint8_t methods)
+{
+	if (GetWimApiHandle() == NULL)
+		return methods;
+
+	WIM_INIT(WIMCreateFile);
+	WIM_INIT(WIMSetTemporaryPath);
+	WIM_INIT(WIMLoadImage);
+	WIM_INIT(WIMApplyImage);
+	WIM_INIT(WIMExtractImagePath);
+	WIM_INIT(WIMGetImageInformation);
+	WIM_INIT(WIMRegisterMessageCallback);
+	WIM_INIT(WIMUnregisterMessageCallback);
+	WIM_INIT(WIMCloseHandle);
+
+	if (pfWIMCreateFile &&
+		pfWIMSetTemporaryPath &&
+		pfWIMLoadImage &&
+		pfWIMExtractImagePath &&
+		pfWIMGetImageInformation &&
+		pfWIMCloseHandle)
+
+		methods |= WIM_HAS_API_EXTRACT;
+
+	if ((methods & WIM_HAS_API_EXTRACT) &&
+		pfWIMApplyImage &&
+		pfWIMRegisterMessageCallback &&
+		pfWIMUnregisterMessageCallback)
+
+		methods |= WIM_HAS_API_APPLY;
+
+	return methods;
+}
+
 static BOOL GetWimlibPath(void)
 {
-	if (wimlib_path[0] == 0)
-		static_sprintf(wimlib_path, "%s\\%s\\wimlib-imagex.exe", app_data_dir, FILES_DIR);
-	return (_accessU(wimlib_path, 0) != -1);
+	return EnsureLegacyWimlibRuntime() &&
+		(_accessU(legacy_wimlib_path, 0) == 0) &&
+		(_accessU(legacy_libwim_path, 0) == 0);
 }
 
 // Capture WIM XML without shell redirection
@@ -136,9 +472,9 @@ static BOOL WimlibExtractMetadata(const char* image, const char* dst, BOOL bSile
 	si.hStdInput = null_input;
 	si.hStdOutput = output;
 	si.hStdError = null_output;
-	static_sprintf(cmdline, "\"%s\" info \"%s\" --xml", wimlib_path, image);
+	static_sprintf(cmdline, "\"%s\" info \"%s\" --xml", legacy_wimlib_path, image);
 	if (!CreateProcessU(NULL, cmdline, NULL, NULL, TRUE, NORMAL_PRIORITY_CLASS | CREATE_NO_WINDOW,
-		NULL, app_data_dir, &si, &pi)) {
+		NULL, legacy_wimlib_dir, &si, &pi)) {
 		if (!bSilent)
 			uprintf("Could not start wimlib-imagex: %s", WindowsErrorString());
 		goto out;
@@ -481,37 +817,37 @@ DWORD WINAPI WimProgressCallback(DWORD dwMsgId, WPARAM wParam, LPARAM lParam, PV
 // Returns a bitfield of the methods we can use (1 = Extract using wimgapi, 2 = Extract using 7-Zip, 4 = Apply using wimgapi)
 uint8_t WimExtractCheck(BOOL bSilent)
 {
-	PF_INIT(WIMCreateFile, Wimgapi);
-	PF_INIT(WIMSetTemporaryPath, Wimgapi);
-	PF_INIT(WIMLoadImage, Wimgapi);
-	PF_INIT(WIMApplyImage, Wimgapi);
-	PF_INIT(WIMExtractImagePath, Wimgapi);
-	PF_INIT(WIMGetImageInformation, Wimgapi);
-	PF_INIT(WIMRegisterMessageCallback, Wimgapi);
-	PF_INIT(WIMUnregisterMessageCallback, Wimgapi);
-	PF_INIT(WIMCloseHandle, Wimgapi);
-
-	if (pfWIMCreateFile && pfWIMSetTemporaryPath && pfWIMLoadImage && pfWIMExtractImagePath && pfWIMCloseHandle)
-		wim_flags |= WIM_HAS_API_EXTRACT;
+	wim_flags = 0;
 	if (Get7ZipPath())
 		wim_flags |= WIM_HAS_7Z_EXTRACT;
-	if ((wim_flags & WIM_HAS_API_EXTRACT) && pfWIMApplyImage && pfWIMRegisterMessageCallback && pfWIMUnregisterMessageCallback)
-		wim_flags |= WIM_HAS_API_APPLY;
-	wim_flags &= ~(WIM_HAS_WIMLIB_INFO | WIM_HAS_WIMLIB_APPLY);
-	if (GetWimlibPath())
-		wim_flags |= WIM_HAS_WIMLIB_INFO | WIM_HAS_WIMLIB_APPLY;
-
-	suprintf("WIM extraction method(s) supported: %s%s%s", (wim_flags & WIM_HAS_7Z_EXTRACT) ? "7-Zip" :
+	if ((WindowsVersion.Version < WINDOWS_8) &&
+		GetWimlibPath())
+		wim_flags |=
+		WIM_HAS_WIMLIB_INFO |
+		WIM_HAS_WIMLIB_APPLY;
+	else
+		wim_flags =
+		AddWimApiCapabilities(wim_flags);
+	suprintf("WIM extraction method(s) supported: %s%s%s",
+		(wim_flags & WIM_HAS_7Z_EXTRACT) ? "7-Zip" :
 		((wim_flags & WIM_HAS_API_EXTRACT) ? "" : "NONE"),
-		(WIM_HAS_EXTRACT(wim_flags) == (WIM_HAS_API_EXTRACT | WIM_HAS_7Z_EXTRACT)) ? ", " :
-		"", (wim_flags & WIM_HAS_API_EXTRACT) ? "wimgapi.dll" : "");
+		(WIM_HAS_EXTRACT(wim_flags) ==
+			(WIM_HAS_API_EXTRACT | WIM_HAS_7Z_EXTRACT)) ?
+		", " : "",
+		(wim_flags & WIM_HAS_API_EXTRACT) ?
+		"wimgapi.dll" : "");
 	suprintf("WIM apply method supported: %s%s%s",
-		(wim_flags & WIM_HAS_API_APPLY) ? "wimgapi.dll" : "",
-		((wim_flags & WIM_HAS_API_APPLY) && (wim_flags & WIM_HAS_WIMLIB_APPLY)) ? ", " : "",
-		(wim_flags & WIM_HAS_WIMLIB_APPLY) ? "wimlib-imagex.exe" :
-		((wim_flags & WIM_HAS_API_APPLY) ? "" : "NONE"));
+		(wim_flags & WIM_HAS_API_APPLY) ?
+		"wimgapi.dll" : "",
+		((wim_flags & WIM_HAS_API_APPLY) &&
+			(wim_flags & WIM_HAS_WIMLIB_APPLY)) ?
+		", " : "",
+		(wim_flags & WIM_HAS_WIMLIB_APPLY) ?
+		"wimlib-imagex.exe" :
+		((wim_flags & WIM_HAS_API_APPLY) ?
+			"" : "NONE"));
 	return wim_flags;
-} 
+}
 
 //
 // Looks like Microsoft's idea of "mount" for WIM images involves the creation
@@ -531,10 +867,10 @@ static DWORD WINAPI WimMountImageThread(LPVOID param)
 	mount_params_t* mp = (mount_params_t*)param;
 	wchar_t* wimage = utf8_to_wchar(mp->image);
 
-	PF_INIT_OR_OUT(WIMRegisterMessageCallback, Wimgapi);
-	PF_INIT_OR_OUT(WIMMountImage, Wimgapi);
-	PF_INIT_OR_OUT(WIMUnmountImage, Wimgapi);
-	PF_INIT_OR_OUT(WIMUnregisterMessageCallback, Wimgapi);
+	WIM_INIT_OR_OUT(WIMRegisterMessageCallback);
+	WIM_INIT_OR_OUT(WIMMountImage);
+	WIM_INIT_OR_OUT(WIMUnmountImage);
+	WIM_INIT_OR_OUT(WIMUnregisterMessageCallback);
 
 	if (wmount_path[0] != 0) {
 		uprintf("WimMountImage: An image is already mounted. Trying to unmount it...");
@@ -635,9 +971,9 @@ static DWORD WINAPI WimUnmountImageThread(LPVOID param)
 	mount_params_t* mp = (mount_params_t*)param;
 	wchar_t* wimage = utf8_to_wchar(mp->image);
 
-	PF_INIT_OR_OUT(WIMRegisterMessageCallback, Wimgapi);
-	PF_INIT_OR_OUT(WIMUnmountImage, Wimgapi);
-	PF_INIT_OR_OUT(WIMUnregisterMessageCallback, Wimgapi);
+	WIM_INIT_OR_OUT(WIMRegisterMessageCallback);
+	WIM_INIT_OR_OUT(WIMUnmountImage);
+	WIM_INIT_OR_OUT(WIMUnregisterMessageCallback);
 
 	if (wmount_path[0] == 0) {
 		uprintf("WimUnmountImage: No image is mounted");
@@ -762,11 +1098,11 @@ BOOL WimExtractFile_API(const char* image, int index, const char* src, const cha
 	wchar_t* wdst = utf8_to_wchar(dst);
 	wchar_t* wim_info;
 
-	PF_INIT_OR_OUT(WIMCreateFile, Wimgapi);
-	PF_INIT_OR_OUT(WIMSetTemporaryPath, Wimgapi);
-	PF_INIT_OR_OUT(WIMLoadImage, Wimgapi);
-	PF_INIT_OR_OUT(WIMExtractImagePath, Wimgapi);
-	PF_INIT_OR_OUT(WIMCloseHandle, Wimgapi);
+	WIM_INIT_OR_OUT(WIMCreateFile);
+	WIM_INIT_OR_OUT(WIMSetTemporaryPath);
+	WIM_INIT_OR_OUT(WIMLoadImage);
+	WIM_INIT_OR_OUT(WIMExtractImagePath);
+	WIM_INIT_OR_OUT(WIMCloseHandle);
 
 	suprintf("Opening: %s:[%d] (API)", image, index);
 	if (GetTempPathW(ARRAYSIZE(wtemp), wtemp) == 0) {
@@ -832,11 +1168,26 @@ BOOL WimExtractMetadata(const char* image, const char* dst, BOOL bSilent)
 {
 	uint8_t methods = WimExtractCheck(TRUE);
 
+	if (methods & WIM_HAS_WIMLIB_INFO) {
+		if (WimlibExtractMetadata(
+			image, dst, bSilent))
+			return TRUE;
+
+		if (IS_ERROR(ErrorStatus) &&
+			(SCODE_CODE(ErrorStatus) ==
+				ERROR_CANCELLED))
+			return FALSE;
+
+		methods =
+			AddWimApiCapabilities(methods);
+
+		wim_flags = methods;
+	}
+
 	if ((methods & WIM_HAS_API_EXTRACT) &&
-		WimExtractFile_API(image, 0, "[1].xml", dst, bSilent))
-		return TRUE;
-	if ((WindowsVersion.Version < WINDOWS_8) && (methods & WIM_HAS_WIMLIB_INFO) &&
-		WimlibExtractMetadata(image, dst, bSilent))
+		WimExtractFile_API(
+			image, 0, "[1].xml",
+			dst, bSilent))
 		return TRUE;
 	if (!bSilent)
 		uprintf("Could not read Windows image metadata");
@@ -904,17 +1255,17 @@ BOOL WimExtractFile_7z(const char* image, int index, const char* src, const char
 }
 
 // Extract a file from a WIM image
-BOOL WimExtractFile(const char* image, int index, const char* src, const char* dst, BOOL bSilent)
-{
-	if ((wim_flags == 0) && (!WIM_HAS_EXTRACT(WimExtractCheck(TRUE))))
-		return FALSE;
+BOOL WimExtractFile(const char* image, int index,
+	const char* src, const char* dst, BOOL bSilent) {
 	if ((image == NULL) || (src == NULL) || (dst == NULL))
 		return FALSE;
-
-	// Prefer 7-Zip as, unsurprisingly, it's faster than the Microsoft way,
-	// but allow fallback if 7-Zip doesn't succeed
-	return ( ((wim_flags & WIM_HAS_7Z_EXTRACT) && WimExtractFile_7z(image, index, src, dst, bSilent))
-		  || ((wim_flags & WIM_HAS_API_EXTRACT) && WimExtractFile_API(image, index, src, dst, bSilent)) );
+	if (wim_flags == 0) WimExtractCheck(TRUE);
+	// load wimgapi only if 7zip fails
+	if ((wim_flags & WIM_HAS_7Z_EXTRACT) && WimExtractFile_7z(image, index, src, dst, bSilent))
+		return TRUE;
+	if (!(wim_flags & WIM_HAS_API_EXTRACT))
+		wim_flags = AddWimApiCapabilities(wim_flags);
+	return ((wim_flags & WIM_HAS_API_EXTRACT) && WimExtractFile_API(image, index, src, dst, bSilent));
 }
 
 /// <summary>
@@ -935,9 +1286,9 @@ BOOL WimIsValidIndex(const char* image, int index)
 	wchar_t* wimage = utf8_to_wchar(image);
 	wchar_t* wim_info;
 
-	PF_INIT_OR_OUT(WIMCreateFile, Wimgapi);
-	PF_INIT_OR_OUT(WIMGetImageInformation, Wimgapi);
-	PF_INIT_OR_OUT(WIMCloseHandle, Wimgapi);
+	WIM_INIT_OR_OUT(WIMCreateFile);
+	WIM_INIT_OR_OUT(WIMGetImageInformation);
+	WIM_INIT_OR_OUT(WIMCloseHandle);
 
 	// Zero indexes are invalid
 	if (index == 0)
@@ -996,13 +1347,13 @@ static DWORD WINAPI WimApplyImageThread(LPVOID param)
 	wchar_t* wimage = utf8_to_wchar(mp->image);
 	wchar_t* wdst = utf8_to_wchar(mp->dst);
 
-	PF_INIT_OR_OUT(WIMRegisterMessageCallback, Wimgapi);
-	PF_INIT_OR_OUT(WIMCreateFile, Wimgapi);
-	PF_INIT_OR_OUT(WIMSetTemporaryPath, Wimgapi);
-	PF_INIT_OR_OUT(WIMLoadImage, Wimgapi);
-	PF_INIT_OR_OUT(WIMApplyImage, Wimgapi);
-	PF_INIT_OR_OUT(WIMCloseHandle, Wimgapi);
-	PF_INIT_OR_OUT(WIMUnregisterMessageCallback, Wimgapi);
+	WIM_INIT_OR_OUT(WIMRegisterMessageCallback);
+	WIM_INIT_OR_OUT(WIMCreateFile);
+	WIM_INIT_OR_OUT(WIMSetTemporaryPath);
+	WIM_INIT_OR_OUT(WIMLoadImage);
+	WIM_INIT_OR_OUT(WIMApplyImage);
+	WIM_INIT_OR_OUT(WIMCloseHandle);
+	WIM_INIT_OR_OUT(WIMUnregisterMessageCallback);
 
 	uprintf("Opening: %s:[%d]", mp->image, mp->index);
 
@@ -1318,7 +1669,7 @@ BOOL WimJoinSplitImage(const char* directory, const char* output_name,
 	cmdline = (char*)calloc(command_length, 1);
 	if (cmdline == NULL)
 		return FALSE;
-	safe_sprintf(cmdline, command_length, "\"%s\" join \"%s\"", wimlib_path, output_name);
+	safe_sprintf(cmdline, command_length, "\"%s\" join \"%s\"", legacy_wimlib_path, output_name);
 	for (i = 1; i <= part_count; i++) {
 		if (i == 1)
 			safe_sprintf(part_name, sizeof(part_name), "%s.swm", part_stem);
@@ -1359,10 +1710,10 @@ static DWORD WimlibApplyImage(const char* image, int index, const char* dst)
 	char cmdline[4 * MAX_PATH], target[MAX_PATH];
 
 	static_sprintf(target, "%s%s", dst, (dst[safe_strlen(dst) - 1] == '\\') ? "." : "\\.");
-	static_sprintf(cmdline, "\"%s\" apply \"%s\" %d \"%s\"", wimlib_path, image, index, target);
+	static_sprintf(cmdline, "\"%s\" apply \"%s\" %d \"%s\"", legacy_wimlib_path, image, index, target);
 	uprintf("Applying Windows image using wimlib-imagex...");
 	UpdateProgressWithInfo(OP_FILE_COPY, MSG_267, 0, 100);
-	command_result = RunWimlibCommand(cmdline, app_data_dir, FALSE);
+	command_result = RunWimlibCommand(cmdline, legacy_wimlib_dir, FALSE);
 	if (command_result != 0) {
 		if (command_result != ERROR_CANCELLED)
 			uprintf("wimlib-imagex failed with exit code %lu", command_result);
@@ -1388,14 +1739,25 @@ BOOL WimApplyImage(const char* image, int index, const char* dst)
 	mp.index = index;
 	mp.dst = dst;
 
-	// wimlib for < 8, wimgapi for 8+ (port) 
-	if ((WindowsVersion.Version < WINDOWS_8) && (methods & WIM_HAS_WIMLIB_APPLY)) {
-		command_result = WimlibApplyImage(image, index, dst);
+	// wimlib as default, 7's LIMITED wimgapi as fallback
+	if ((WindowsVersion.Version < WINDOWS_8) &&
+		(methods & WIM_HAS_WIMLIB_APPLY)) {
+		command_result =
+			WimlibApplyImage(
+				image, index, dst);
 		if (command_result == 0)
 			return TRUE;
-		if (command_result == ERROR_CANCELLED ||
-			(IS_ERROR(ErrorStatus) && SCODE_CODE(ErrorStatus) == ERROR_CANCELLED))
+		if ((command_result ==
+			ERROR_CANCELLED) ||
+			(IS_ERROR(ErrorStatus) &&
+				(SCODE_CODE(ErrorStatus) ==
+					ERROR_CANCELLED)))
 			return FALSE;
+		uprintf(
+			"Falling back to bundled Windows 7 WIMGAPI");
+		methods =
+			AddWimApiCapabilities(methods);
+		wim_flags = methods;
 	}
 
 	if (methods & WIM_HAS_API_APPLY) {

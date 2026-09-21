@@ -1,0 +1,18 @@
+wimlib 1.13.6
+===========
+
+This project includes wimlib, originally developed by Eric Biggers and other wimlib contributors.
+
+wimlib is free software licensed under the GNU General Public License version 3 or later.
+
+Original project:
+https://wimlib.net/
+https://github.com/ebiggers/wimlib
+
+The source code used by Rufus-NT can be found in this directory, in "wimlib-1.13.6".
+
+IT HAS BEEN MODIFIED!!! and is not endorsed by nor affiliated with the wimlib project. 
+The changes were made to bring basic support to Windows NT4 and Windows 2000.
+Most changes are marked with comments starting with "// port: "
+
+See the included COPYING.txt for the complete license terms.

@@ -908,9 +908,18 @@ out:
 /// <returns>TRUE on success, FALSE on error.</returns>
 BOOL SetupWinToGo(DWORD DriveIndex, const char* drive_name, BOOL use_esp)
 {
-	char* mounted_iso, * ms_efi = NULL, mounted_image_path[128], cmd[4 * MAX_PATH];
-	char deployment_dir[MAX_PATH], deployment_tool[MAX_PATH];
-	const char* selected_image = image_path;
+	char* mounted_iso,
+		* ms_efi = NULL,
+		* path_separator,
+		mounted_image_path[128],
+		cmd[4 * MAX_PATH];
+
+	char deployment_dir[MAX_PATH],
+		deployment_tool[MAX_PATH];
+
+	const char* bundled_bcdboot,
+		* selected_image = image_path;
+
 	BOOL legacy_host = (WindowsVersion.Version < WINDOWS_8);
 	ULONG cluster_size;
 
@@ -1003,15 +1012,20 @@ BOOL SetupWinToGo(DWORD DriveIndex, const char* drive_name, BOOL use_esp)
 	// bcdboot Windows To Go
 	uprintf("Enabling boot using command:");
 	if (legacy_host) {
-		static_sprintf(deployment_dir, "%s\\%s", app_data_dir, FILES_DIR);
-		static_sprintf(deployment_tool, "%s\\bcdboot.exe", deployment_dir);
-		if (!IsPeExecutable(deployment_tool)) {
-			uprintf("A compatible bcdboot.exe was not found in '%s'", deployment_dir);
+		bundled_bcdboot =
+			GetLegacyBcdbootPath();
+		if ((bundled_bcdboot == NULL) || !IsPeExecutable(bundled_bcdboot)) {
+			uprintf("Could not prepare the bundled Windows To Go bcdboot.exe");
 			ErrorStatus = RUFUS_ERROR(ERROR_NOT_SUPPORTED);
 			if (use_esp)
-				AltUnmountVolume(ms_efi, FALSE);
+				AltUnmountVolume(
+					ms_efi, FALSE);
 			return FALSE;
 		}
+		static_strcpy(deployment_tool,bundled_bcdboot);
+		static_strcpy(deployment_dir,deployment_tool);
+		path_separator = strrchr(deployment_dir, '\\');
+		if (path_separator != NULL)*path_separator = 0;
 		static_sprintf(cmd, "\"%s\" %s\\Windows /v /f %s /s %s", deployment_tool, drive_name,
 			HAS_BOOTMGR_BIOS(img_report) ? (HAS_BOOTMGR_EFI(img_report) ? "ALL" : "BIOS") : "UEFI",
 			(use_esp) ? ms_efi : drive_name);

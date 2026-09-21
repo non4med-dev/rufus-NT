@@ -8,9 +8,7 @@
 *.db-wal
 *.dep
 *.diff
-*.dll
 *.efi
-*.exe
 *.htm
 *.idb
 *.ipch
