@@ -306,7 +306,6 @@ BEGIN
     "IDR_XT_HOGGER           RCDATA                  ""../res/hogger/hogger.exe""\r\n"
     "IDR_UEFI_NTFS           RCDATA                  ""../res/uefi/uefi-ntfs.img""\r\n"
     "IDR_SETUP_X64           RCDATA                  ""../res/setup/setup_x64.exe""\r\n"
-    "IDR_SETUP_ARM64         RCDATA                  ""../res/setup/setup_arm64.exe""\r\n"
     "IDR_WIMAPI7             RCDATA                  ""../res/wintogo/wimgapi.dll""\r\n"
     "IDR_NTAPI               RCDATA                  ""../res/wintogo/ntapi.dll""\r\n"
     "IDR_BCDBOOT             RCDATA                  ""../res/wintogo/bcdboot.exe""\r\n"
@@ -413,7 +412,7 @@ END
 //
 
 VS_VERSION_INFO VERSIONINFO
- FILEVERSION 1,0,0,3
+ FILEVERSION 1,0,0,4
  PRODUCTVERSION 4,7,0,0
  FILEFLAGSMASK 0x3fL
 #ifdef _DEBUG
@@ -510,7 +509,6 @@ IDR_FD_EGA18_CPX        RCDATA                  "../res/freedos/EGA18.CPX"
 IDR_XT_HOGGER           RCDATA                  "../res/hogger/hogger.exe"
 IDR_UEFI_NTFS           RCDATA                  "../res/uefi/uefi-ntfs.img"
 IDR_SETUP_X64           RCDATA                  "../res/setup/setup_x64.exe"
-IDR_SETUP_ARM64         RCDATA                  "../res/setup/setup_arm64.exe"
 IDR_WIMAPI7             RCDATA                  "../res/wintogo/wimgapi.dll"
 IDR_NTAPI               RCDATA                  "../res/wintogo/ntapi.dll"
 IDR_BCDBOOT             RCDATA                  "../res/wintogo/bcdboot.exe"

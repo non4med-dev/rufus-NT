@@ -778,6 +778,7 @@ int GetIssuerCertificateInfo(uint8_t* cert, uint32_t cert_size, cert_info_t* inf
 {
 	int ret = 0;
 	DWORD dwSize, dwEncoding, dwContentType, dwFormatType, dwSignerInfoSize = 0;
+	DWORD cert_header_size = (DWORD)FIELD_OFFSET(WIN_CERTIFICATE, bCertificate);
 	DWORD query_error;
 	WIN_CERTIFICATE* pWinCert = (WIN_CERTIFICATE*)cert;
 	CRYPT_DATA_BLOB signedDataBlob;
@@ -792,9 +793,9 @@ int GetIssuerCertificateInfo(uint8_t* cert, uint32_t cert_size, cert_info_t* inf
 	if (info == NULL)
 		return -1;
 	memset(info, 0, sizeof(*info));
-	if (pWinCert == NULL || cert_size < FIELD_OFFSET(WIN_CERTIFICATE, bCertificate))
+	if (pWinCert == NULL || cert_size < cert_header_size)
 		return 0;
-	if (pWinCert->dwLength < FIELD_OFFSET(WIN_CERTIFICATE, bCertificate) ||
+	if (pWinCert->dwLength < cert_header_size ||
 		pWinCert->dwLength > cert_size ||
 		pWinCert->wCertificateType != WIN_CERT_TYPE_PKCS_SIGNED_DATA)
 		return 0;

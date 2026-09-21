@@ -133,7 +133,7 @@ BOOL enable_windows_to_go = TRUE;
 BOOL usb_debug, use_fake_units, preserve_timestamps = FALSE, fast_zeroing = FALSE, app_changed_size = FALSE;
 BOOL zero_drive = FALSE, list_non_usb_removable_drives = FALSE, enable_file_indexing, large_drive = FALSE;
 BOOL write_as_image = FALSE, write_as_esp = FALSE, use_vds = FALSE, ignore_boot_marker = FALSE;
-BOOL appstore_version = FALSE, is_vds_available = TRUE, persistent_log = FALSE, has_ffu_support = FALSE;
+BOOL is_vds_available = TRUE, persistent_log = FALSE, has_ffu_support = FALSE;
 BOOL expert_mode = FALSE, use_rufus_mbr = TRUE;
 float fScale = 1.0f;
 int dialog_showing = 0, selection_default = BT_IMAGE, persistence_unit_selection = -1, imop_win_sel = 0;
@@ -1642,7 +1642,7 @@ static DWORD WINAPI BootCheckThread(LPVOID param)
 				StrArrayAdd(&options, lmprintf(MSG_335), TRUE);
 				MAP_BIT(UNATTEND_DISABLE_BITLOCKER);
 				if (expert_mode) {
-					if (!appstore_version && img_report.win_version.build >= 26100) {
+					if (img_report.win_version.build >= 26100) {
 						StrArrayAdd(&options, lmprintf(MSG_350), TRUE);
 						MAP_BIT(UNATTEND_USE_MS2023_BOOTLOADERS);
 					}
@@ -2134,8 +2134,7 @@ static void InitDialog(HWND hDlg)
 		}
 	}
 	uprintf(APPLICATION_NAME " " APPLICATION_ARCH " " UPDATE_LEVEL "%s",
-		(ini_file != NULL) ? " (Portable)" :
-		(appstore_version ? " (AppStore version)" : ""));
+		(ini_file != NULL) ? " (Portable)" : "");
 	// Display a notice if running x86 emulation on ARM
 	// Oh, and https://devblogs.microsoft.com/oldnewthing/20220209-00/?p=106239 is *WRONG*:
 	// Get­Native­System­Info() will not tell you what the native system architecture is when
@@ -2837,11 +2836,7 @@ static INT_PTR CALLBACK MainCallback(HWND hDlg, UINT message, WPARAM wParam, LPA
 		// Check prerequisites before even thinking about connecting to the internet
 		if (WindowsVersion.Version >= WINDOWS_VISTA)
 			IGNORE_RETVAL(NetworkStartupPreflight(TRUE));
-		// The AppStore version always enables Fido
-		if (appstore_version)
-			SetFidoCheck();
-		else
-			SetUpdateCheck();
+		SetUpdateCheck();
 		InitDialog(hDlg);
 		GetDevices(0);
 		if (WindowsVersion.Version == WINDOWS_2000) {
@@ -2849,11 +2844,6 @@ static INT_PTR CALLBACK MainCallback(HWND hDlg, UINT message, WPARAM wParam, LPA
 		}
 		EnableControls(TRUE, FALSE);
 		UpdateImage(FALSE);
-		// Yeah you're right, we don't either.
-		/*
-		// The AppStore version does not need the internal check for updates
-		if (!appstore_version)
-			CheckForUpdates(FALSE); */
 		// Register MEDIA_INSERTED/MEDIA_REMOVED notifications for card readers
 		if (SUCCEEDED(SHGetSpecialFolderLocation(0, CSIDL_DESKTOP, &pidlDesktop))) {
 			NotifyEntry.pidl = pidlDesktop;
@@ -3556,17 +3546,6 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine
 	uprintf("Dat dir: '%s'", app_data_dir);
 	uprintf("Tmp dir: '%s'", temp_dir);
 
-	// Look for a rufus.app file in the current app directory
-	// Since Microsoft makes it downright impossible to pass an arg in the app manifest
-	// and the automated VS2019 package building process doesn't like renaming the .exe
-	// right under its nose (else we would use the same trick as for portable vs regular)
-	// we use yet another workaround to detect if we are running the AppStore version...
-	static_sprintf(tmp_path, "%srufus.app", app_dir);
-	if (PathFileExistsU(tmp_path)) {
-		appstore_version = TRUE;
-		goto skip_args_processing;
-	}
-
 	// We have to process the arguments before we acquire the lock and process the locale
 	PF_INIT(__wgetmainargs, Msvcrt);
 	if (pf__wgetmainargs != NULL) {
@@ -3585,12 +3564,6 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine
 				// on the commandline then, which the hogger makes more intuitive.
 				if ((strcmp(argv[i], "-g") == 0) || (strcmp(argv[i], "--gui") == 0))
 					disable_hogger = TRUE;
-				// Check for "/InvokerPRAID", which may *STUPIDLY* be added by Microsoft
-				// when starting an app that was installed from the Windows store...
-				if (stricmp(argv[i], "/InvokerPRAID") == 0) {
-					appstore_version = TRUE;
-					goto skip_args_processing;
-				}
 			}
 			// If our application name contains a 'p' (for "portable") create a 'rufus.ini'
 			// NB: argv[0] is populated in the previous loop
@@ -3688,10 +3661,6 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine
 	} else {
 		uprintf("Could not access UTF-16 args");
 	}
-
-skip_args_processing:
-	if (appstore_version)
-		uprintf("AppStore version detected");
 
 	// Look for a .ini file in the current app directory
 	static_sprintf(ini_path, "%srufus.ini", app_dir);

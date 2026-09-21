@@ -1547,6 +1547,8 @@ DWORD WINAPI FormatThread(void* param)
 		PostMessage(hMainDialog, UM_FORMAT_COMPLETED, (WPARAM)TRUE, 0);
 		ExitThread(0);
 	}
+	use_large_fat32 = (fs_type == FS_FAT32) &&
+		((SelectedDrive.DiskSize > LARGE_FAT32_SIZE) || force_large_fat32);
 	windows_to_go = (image_options & IMOP_WINTOGO) && (boot_type == BT_IMAGE) && HAS_WINTOGO(img_report) &&
 		(ComboBox_GetCurItemData(hImageOption) == IMOP_WIN_TO_GO);
 	large_drive = (SelectedDrive.DiskSize > (1*TB));

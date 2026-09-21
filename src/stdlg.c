@@ -46,7 +46,7 @@
 #include "license.h"
 
 /* Globals */
-extern BOOL is_x86_64, appstore_version;
+extern BOOL is_x86_64;
 extern char unattend_username[MAX_USERNAME_LENGTH], * sbat_level_txt, * sb_active_txt, * sb_revoked_txt;
 extern HICON hSmallIcon, hBigIcon;
 static HICON hMessageIcon = (HICON)INVALID_HANDLE_VALUE;
@@ -1671,7 +1671,6 @@ void SetFidoCheck(void)
 		return;
 	// Detect if we can use Fido, which depends on:
 	// - Powershell being installed
-	// - Rufus running in AppStore mode or update check being enabled
 	// - URL for the script being reachable
 	if ((ReadRegistryKey32(REGKEY_HKLM, "Software\\Microsoft\\PowerShell\\1\\Install") <= 0) &&
 		(ReadRegistryKey32(REGKEY_HKLM, "Software\\Microsoft\\PowerShell\\3\\Install") <= 0)) {

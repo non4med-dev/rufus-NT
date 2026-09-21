@@ -1475,7 +1475,7 @@ static BOOL WimlibApplyProgress(const char* line, int* progress)
 		percent = 0.0;
 	if (percent > 100.0)
 		percent = 100.0;
-	*progress = offset + (uint64_t)(((percent * span) / 100.0) + 0.5);
+	*progress = offset + (int)(((percent * span) / 100.0) + 0.5);
 	return TRUE;
 }
 
@@ -1878,12 +1878,15 @@ static DWORD WINAPI VhdSaveImageThread(void* param)
 	STOPGAP_CREATE_VIRTUAL_DISK_PARAMETERS vparams = { 0 };
 	VIRTUAL_DISK_PROGRESS vprogress = { 0 };
 	OVERLAPPED overlapped = { 0 };
+	uint64_t device_size;
 
 	if_not_assert(img_save->Type == VIRTUAL_STORAGE_TYPE_DEVICE_VHD ||
 		img_save->Type == VIRTUAL_STORAGE_TYPE_DEVICE_VHDX)
 		return ERROR_INVALID_PARAMETER;
 
 	UpdateProgressWithInfoInit(NULL, FALSE);
+
+	device_size = (uint64_t)img_save->DeviceSize;
 
 	// Keep 4.7's native writer for Win8+
 	if (WindowsVersion.Version >= WINDOWS_8) {
@@ -1964,9 +1967,9 @@ static DWORD WINAPI VhdSaveImageThread(void* param)
 			goto out;
 		}
 
-		while (total_written < img_save->DeviceSize) {
+		while (total_written < device_size) {
 			DWORD toRead = (DWORD)min((uint64_t)buffer_size,
-				img_save->DeviceSize - total_written);
+				device_size - total_written);
 
 			if (IS_ERROR(ErrorStatus) && (SCODE_CODE(ErrorStatus) == ERROR_CANCELLED)) {
 				r = ERROR_CANCELLED;
@@ -1998,7 +2001,7 @@ static DWORD WINAPI VhdSaveImageThread(void* param)
 			}
 
 			total_written += bytesWritten;
-			UpdateProgressWithInfo(OP_FORMAT, MSG_261, total_written, img_save->DeviceSize);
+			UpdateProgressWithInfo(OP_FORMAT, MSG_261, total_written, device_size);
 		}
 
 		safe_closehandle(hDst);

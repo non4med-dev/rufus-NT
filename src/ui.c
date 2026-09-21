@@ -45,7 +45,7 @@
 
 UINT_PTR UM_LANGUAGE_MENU_MAX = UM_LANGUAGE_MENU;
 HIMAGELIST hUpImageList, hDownImageList;
-extern BOOL use_vds, appstore_version;
+extern BOOL use_vds;
 extern int imop_win_sel;
 extern char *unattend_xml_path, *archive_path;
 int update_progress_type = UPT_PERCENT;
@@ -1289,12 +1289,6 @@ void CreateAdditionalControls(HWND hDlg)
 	SendMessage(hMultiToolbar, TB_BUTTONSTRUCTSIZE, (WPARAM)sizeof(TBBUTTON), 0);
 	memset(tbToolbarButtons, 0, sizeof(TBBUTTON) * ARRAYSIZE(tbToolbarButtons));
 	size = 2 * ARRAYSIZE(buttons_list) - 1;
-	if (appstore_version) {
-		// Remove the Update Settings button for the AppStore version
-		buttons_list[2] = buttons_list[3];
-		bitmaps_list[2] = bitmaps_list[3];
-		size -= 2;
-	}
 	for (i = 0; i < size; i++) {
 		if (i % 2 == 0) {
 			tbToolbarButtons[i].idCommand = buttons_list[i / 2];
