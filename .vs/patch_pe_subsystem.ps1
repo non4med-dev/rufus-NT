@@ -1,5 +1,5 @@
-# This exists, because VS2022 refuses to accept any subversion lower than 5.01 (XP) as a valid compiler flag.
-# This script downgrades the PE header to 5.00 during compilation
+# VS2022 cannot link directly for the Windows NT 4.0 subsystem, sooo...
+# Hold my beer son
 
 param(
     [Parameter(Mandatory = $true)][string]$Path,
@@ -25,8 +25,13 @@ if (($magic -ne 0x10B) -and ($magic -ne 0x20B)) {
     throw "Target contains an unsupported PE optional header: $Path"
 }
 
-# These subsystem-version fields have the same offsets in PE32 and PE32+. (port)
+$Major = 4
+$Minor = 0
+
+# PE32 and PE32+ use the same offsets for these fields
+[System.Array]::Copy([System.BitConverter]::GetBytes([UInt16]$Major), 0, $bytes, $optionalHeader + 40, 2)
+[System.Array]::Copy([System.BitConverter]::GetBytes([UInt16]$Minor), 0, $bytes, $optionalHeader + 42, 2)
 [System.Array]::Copy([System.BitConverter]::GetBytes([UInt16]$Major), 0, $bytes, $optionalHeader + 48, 2)
 [System.Array]::Copy([System.BitConverter]::GetBytes([UInt16]$Minor), 0, $bytes, $optionalHeader + 50, 2)
 [System.IO.File]::WriteAllBytes($Path, $bytes)
-Write-Host "PE subsystem version set to $Major.$Minor for $Path"
+Write-Host "PE operating-system and subsystem versions set to $Major.$Minor for $Path"

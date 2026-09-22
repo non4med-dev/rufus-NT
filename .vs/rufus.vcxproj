@@ -281,7 +281,7 @@
     <PostBuildEvent>
       <!-- Patch the Windows 2000 subsystem version before signing. (port) -->
       <Command>powershell.exe -NoProfile -ExecutionPolicy Bypass -File "$(ProjectDir)patch_pe_subsystem.ps1" "$(TargetPath)" 5 0</Command>
-      <Message>Setting Windows 2000 PE subsystem version</Message>
+      <Message>Setting Windows NT4.0 PE subsystem version</Message>
     </PostBuildEvent>
   </ItemDefinitionGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Release|ARM'">
