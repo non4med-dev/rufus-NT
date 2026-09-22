@@ -84,7 +84,7 @@ typedef ULONGLONG(WINAPI* PFN_GetTickCount64)(VOID);
 ULONGLONG XP_GetTickCount64(VOID)
 {
 	static PFN_GetTickCount64 pfnGetTickCount64 = NULL;
-	static BOOL resolved = FALSE;
+	static volatile LONG resolve_state = 0;
 	static volatile LONG fallback_init = 0;
 	static CRITICAL_SECTION fallback_lock;
 	static DWORD fallback_last = 0;
@@ -92,12 +92,16 @@ ULONGLONG XP_GetTickCount64(VOID)
 	DWORD tick;
 	ULONGLONG result;
 
-	if (!resolved) {
+	// Publish the optional API pointer before another NT4 worker can use it
+	if (InterlockedCompareExchange(&resolve_state, 1, 0) == 0) {
 		HMODULE hKernel = GetModuleHandleA("kernel32.dll");
-		if (hKernel) {
+		if (hKernel)
 			pfnGetTickCount64 = (PFN_GetTickCount64)GetProcAddress(hKernel, "GetTickCount64");
-		}
-		resolved = TRUE;
+		InterlockedExchange(&resolve_state, 2);
+	}
+	else {
+		while (InterlockedCompareExchange(&resolve_state, 2, 2) != 2)
+			Sleep(0);
 	}
 
 	if (pfnGetTickCount64) {
@@ -108,7 +112,8 @@ ULONGLONG XP_GetTickCount64(VOID)
 		InitializeCriticalSection(&fallback_lock);
 		fallback_last = GetTickCount();
 		InterlockedExchange(&fallback_init, 2);
-	} else {
+	}
+	else {
 		while (InterlockedCompareExchange(&fallback_init, 2, 2) != 2)
 			Sleep(0);
 	}

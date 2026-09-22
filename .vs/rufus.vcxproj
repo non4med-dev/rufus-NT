@@ -140,9 +140,9 @@
       <Message>Generating 'embedded.loc' file</Message>
     </PreBuildEvent>
     <PostBuildEvent>
-      <!-- Patch only the Windows 2000 Win32 output after linking. (port) -->
+      <!-- Patch only the Windows NT 4.0 Win32 output after linking. (port) -->
       <Command>powershell.exe -NoProfile -ExecutionPolicy Bypass -File "$(ProjectDir)patch_pe_subsystem.ps1" "$(TargetPath)" 5 0</Command>
-      <Message>Setting Windows 2000 PE subsystem version</Message>
+      <Message>Setting Windows NT4.0 PE subsystem version</Message>
     </PostBuildEvent>
   </ItemDefinitionGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Debug|ARM'">

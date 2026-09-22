@@ -12,6 +12,9 @@
 #undef GetModuleHandleExW
 #undef GetNativeSystemInfo
 #undef InitializeSListHead
+#undef HeapQueryInformation
+#undef InterlockedFlushSList
+#undef InterlockedPushEntrySList
 #undef IsWow64Process
 #undef SetThreadUILanguage
 #undef SHParseDisplayName
@@ -40,6 +43,26 @@ static FARPROC W2K_GetKernelProc(const char* name)
 {
 	HMODULE module = GetModuleHandleA("kernel32.dll");
 	return (module == NULL) ? NULL : GetProcAddress(module, name);
+}
+
+// A single process-wide lock is sufficient for the debug-runtime lists and avoids importing cmpxchg8b helpers
+static volatile LONG W2K_SListLock = 0;
+
+typedef struct {
+	PSLIST_ENTRY Next;
+	USHORT Depth;
+	USHORT Sequence;
+} W2K_SLIST_HEADER32;
+
+static VOID W2K_LockSList(VOID)
+{
+	while (InterlockedExchange(&W2K_SListLock, 1) != 0)
+		Sleep(0);
+}
+
+static VOID W2K_UnlockSList(VOID)
+{
+	InterlockedExchange(&W2K_SListLock, 0);
 }
 
 // Select an icon group entry by size and, when requested, by alpha depth
@@ -114,7 +137,7 @@ HICON W2K_LoadAlphaIconResource(HINSTANCE hInstance, int resourceId,
 {
 	BITMAPINFO bitmapInfo = { 0 };
 	const BITMAPINFOHEADER* sourceHeader;
-	BYTE *colorBits = NULL, *maskBits = NULL;
+	BYTE* colorBits = NULL, * maskBits = NULL;
 	const BYTE* sourceBits;
 	DWORD iconSize, colorSize, maskSize, maskStride;
 	HDC hDC = NULL;
@@ -172,7 +195,8 @@ HICON W2K_LoadAlphaIconResource(HINSTANCE hInstance, int resourceId,
 			colorBits[4 * i + 0] = 0;
 			colorBits[4 * i + 1] = 0;
 			colorBits[4 * i + 2] = 0;
-		} else {
+		}
+		else {
 			colorBits[4 * i + 0] = (BYTE)((sourceBits[4 * i + 0] * alpha +
 				blue * (255 - alpha) + 127) / 255);
 			colorBits[4 * i + 1] = (BYTE)((sourceBits[4 * i + 1] * alpha +
@@ -283,14 +307,15 @@ BOOL WINAPI W2K_GetModuleHandleExA(DWORD dwFlags, LPCSTR lpModuleName, HMODULE* 
 	if ((dwFlags & ~(GET_MODULE_HANDLE_EX_FLAG_PIN | GET_MODULE_HANDLE_EX_FLAG_UNCHANGED_REFCOUNT |
 		GET_MODULE_HANDLE_EX_FLAG_FROM_ADDRESS)) || (phModule == NULL) ||
 		((dwFlags & GET_MODULE_HANDLE_EX_FLAG_PIN) &&
-		(dwFlags & GET_MODULE_HANDLE_EX_FLAG_UNCHANGED_REFCOUNT))) {
+			(dwFlags & GET_MODULE_HANDLE_EX_FLAG_UNCHANGED_REFCOUNT))) {
 		SetLastError(ERROR_INVALID_PARAMETER);
 		return FALSE;
 	}
 	if (dwFlags & GET_MODULE_HANDLE_EX_FLAG_FROM_ADDRESS) {
 		if (!W2K_GetModuleFromAddress(lpModuleName, &module))
 			return FALSE;
-	} else {
+	}
+	else {
 		module = GetModuleHandleA(lpModuleName);
 		if (module == NULL)
 			return FALSE;
@@ -316,14 +341,15 @@ BOOL WINAPI W2K_GetModuleHandleExW(DWORD dwFlags, LPCWSTR lpModuleName, HMODULE*
 	if ((dwFlags & ~(GET_MODULE_HANDLE_EX_FLAG_PIN | GET_MODULE_HANDLE_EX_FLAG_UNCHANGED_REFCOUNT |
 		GET_MODULE_HANDLE_EX_FLAG_FROM_ADDRESS)) || (phModule == NULL) ||
 		((dwFlags & GET_MODULE_HANDLE_EX_FLAG_PIN) &&
-		(dwFlags & GET_MODULE_HANDLE_EX_FLAG_UNCHANGED_REFCOUNT))) {
+			(dwFlags & GET_MODULE_HANDLE_EX_FLAG_UNCHANGED_REFCOUNT))) {
 		SetLastError(ERROR_INVALID_PARAMETER);
 		return FALSE;
 	}
 	if (dwFlags & GET_MODULE_HANDLE_EX_FLAG_FROM_ADDRESS) {
 		if (!W2K_GetModuleFromAddress(lpModuleName, &module))
 			return FALSE;
-	} else {
+	}
+	else {
 		module = GetModuleHandleW(lpModuleName);
 		if (module == NULL)
 			return FALSE;
@@ -357,6 +383,78 @@ VOID WINAPI W2K_InitializeSListHead(PSLIST_HEADER ListHead)
 	else if (ListHead != NULL)
 		// Initialize an empty Windows 2000 SLIST header to zero. (port)
 		ZeroMemory(ListHead, sizeof(*ListHead));
+}
+
+BOOL WINAPI W2K_HeapQueryInformation(HANDLE HeapHandle,
+	HEAP_INFORMATION_CLASS HeapInformationClass, PVOID HeapInformation,
+	SIZE_T HeapInformationLength, PSIZE_T ReturnLength)
+{
+	typedef BOOL(WINAPI* Fn)(HANDLE, HEAP_INFORMATION_CLASS, PVOID, SIZE_T, PSIZE_T);
+	Fn fn = (Fn)W2K_GetKernelProc("HeapQueryInformation");
+
+	if (fn != NULL)
+		return fn(HeapHandle, HeapInformationClass, HeapInformation,
+			HeapInformationLength, ReturnLength);
+
+	// This is the only information class HeapQueryInformation documents as queryable
+	UNREFERENCED_PARAMETER(HeapHandle);
+	if (ReturnLength != NULL)
+		*ReturnLength = sizeof(ULONG);
+	if (HeapInformationClass != HeapCompatibilityInformation) {
+		SetLastError(ERROR_INVALID_PARAMETER);
+		return FALSE;
+	}
+	if ((HeapInformation == NULL) || (HeapInformationLength < sizeof(ULONG))) {
+		SetLastError(ERROR_INSUFFICIENT_BUFFER);
+		return FALSE;
+	}
+	*(PULONG)HeapInformation = 0;
+	return TRUE;
+}
+
+PSLIST_ENTRY WINAPI W2K_InterlockedFlushSList(PSLIST_HEADER ListHead)
+{
+	typedef PSLIST_ENTRY(WINAPI* Fn)(PSLIST_HEADER);
+	Fn fn = (Fn)W2K_GetKernelProc("InterlockedFlushSList");
+	W2K_SLIST_HEADER32* header = (W2K_SLIST_HEADER32*)(void*)ListHead;
+	PSLIST_ENTRY first;
+
+	if (fn != NULL)
+		return fn(ListHead);
+	if (ListHead == NULL)
+		return NULL;
+
+	// Preserve XP's flush contract
+	W2K_LockSList();
+	first = header->Next;
+	header->Next = NULL;
+	header->Depth = 0;
+	header->Sequence++;
+	W2K_UnlockSList();
+	return first;
+}
+
+PSLIST_ENTRY WINAPI W2K_InterlockedPushEntrySList(PSLIST_HEADER ListHead,
+	PSLIST_ENTRY ListEntry)
+{
+	typedef PSLIST_ENTRY(WINAPI* Fn)(PSLIST_HEADER, PSLIST_ENTRY);
+	Fn fn = (Fn)W2K_GetKernelProc("InterlockedPushEntrySList");
+	W2K_SLIST_HEADER32* header = (W2K_SLIST_HEADER32*)(void*)ListHead;
+	PSLIST_ENTRY first;
+
+	if (fn != NULL)
+		return fn(ListHead, ListEntry);
+	if ((ListHead == NULL) || (ListEntry == NULL))
+		return NULL;
+
+	W2K_LockSList();
+	first = header->Next;
+	ListEntry->Next = first;
+	header->Next = ListEntry;
+	header->Depth++;
+	header->Sequence++;
+	W2K_UnlockSList();
+	return first;
 }
 
 BOOL WINAPI W2K_IsWow64Process(HANDLE hProcess, PBOOL Wow64Process)
