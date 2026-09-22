@@ -516,10 +516,10 @@ INT_PTR CALLBACK AboutCallback(HWND hDlg, UINT message, WPARAM wParam, LPARAM lP
 			about_blurb_format,
 			"The Reliable USB Formatting Utility (For Windows NT)",
 			APPLICATION_NAME " (" UPDATE_LEVEL ")",
-			lmprintf(MSG_400 | MSG_RTF),
-			lmprintf(MSG_401 | MSG_RTF),
-			lmprintf(MSG_402 | MSG_RTF),
-			lmprintf(MSG_403 | MSG_RTF),
+			lmprintf(MSG_505 | MSG_RTF),
+			lmprintf(MSG_506 | MSG_RTF),
+			lmprintf(MSG_507 | MSG_RTF),
+			lmprintf(MSG_508 | MSG_RTF),
 			lmprintf(MSG_176 | MSG_RTF),
 			lmprintf(MSG_178 | MSG_RTF)
 		);
@@ -1447,7 +1447,7 @@ INT_PTR CALLBACK UpdateCallback(HWND hDlg, UINT message, WPARAM wParam, LPARAM l
 		hBeta = GetDlgItem(hDlg, IDC_INCLUDE_BETAS);
 		// Reuse setting slots for GPT and WTG (port)
 		if (WindowsVersion.Version < WINDOWS_VISTA)
-			SetWindowTextU(GetDlgItem(hDlg, IDS_UPDATE_FREQUENCY_TXT), lmprintf(MSG_355));
+			SetWindowTextU(GetDlgItem(hDlg, IDS_UPDATE_FREQUENCY_TXT), lmprintf(MSG_500));
 		if (WindowsVersion.Version < WINDOWS_8) {
 			hWindowsToGoLabel = GetDlgItem(hDlg, IDS_INCLUDE_BETAS_TXT);
 			SetWindowTextU(hWindowsToGoLabel, lmprintf(MSG_118));

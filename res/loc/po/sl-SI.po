@@ -1933,43 +1933,43 @@ msgstr "Ekstrahiranje arhivskih datotek: %s"
 msgid "Use Rufus MBR"
 msgstr "Uporabite Rufus MBR"
 
-#. • MSG_355
+#. • MSG_500
 msgid "Enable GPT"
 msgstr "Omogoči GPT"
 
-#. • MSG_356
+#. • MSG_501
 msgid "Windows XP cannot access drives that use the GPT partition scheme.\n\nRufus can still create this drive for use on another computer. Continue only if you are creating EFI-bootable media and the target computer supports UEFI.\n\nDo you want to continue?"
 msgstr "Windows XP ne more dostopati do pogonov, ki uporabljajo shemo particij GPT.\n\nRufus lahko kljub temu ustvari ta pogon za uporabo v drugem računalniku. Nadaljujte samo, če ustvarjate zagonski medij EFI in ciljni računalnik podpira UEFI.\n\nAli želite nadaljevati?"
 
-#. • MSG_357
+#. • MSG_502
 msgid "Rufus"
 msgstr "Rufus"
 
-#. • MSG_358
+#. • MSG_503
 msgid "Choose how Rufus should write this ISOHybrid image.\n\nYes - ISO mode (recommended)\nNo - EFI System Partition (ESP) mode"
 msgstr "Izberite, kako naj Rufus zapiše to sliko ISOHybrid.\n\nDa - način ISO (priporočeno)\nNe - način sistemske particije EFI (ESP)"
 
-#. • MSG_359
+#. • MSG_504
 msgid "Choose how Rufus should write this EFI image.\n\nYes - ISO mode (recommended)\nNo - EFI System Partition (ESP) mode"
 msgstr "Izberite, kako naj Rufus zapiše to sliko EFI.\n\nDa - način ISO (priporočeno)\nNe - način sistemske particije EFI (ESP)"
 
-#. • MSG_400
+#. • MSG_505
 msgid "Rufus-NT is not affiliated with nor endorsed by the Rufus project"
 msgstr "Rufus-NT ni povezan s projektom Rufus in ga projekt Rufus ne podpira"
 
-#. • MSG_401
+#. • MSG_506
 msgid "The original Rufus project can be found here"
 msgstr "Izvirni projekt Rufus najdete tukaj"
 
-#. • MSG_402
+#. • MSG_507
 msgid "Copyright © 2011 - 2026 Pete Batard"
 msgstr "Avtorske pravice © 2011 - 2026 Pete Batard"
 
-#. • MSG_403
+#. • MSG_508
 msgid "This project wouldn't have been possible without..."
 msgstr "Ta projekt ne bi bil mogoč brez..."
 
-#. • MSG_404
+#. • MSG_509
 msgid "Public Domain"
 msgstr "Javna domena"
 

@@ -60,7 +60,7 @@
 #define STR_NO_LABEL                "NO_LABEL"
 
 // Update level
-#define UPDATE_LEVEL                "Update 2"
+#define UPDATE_LEVEL                "Update 3"
 
 // Yes, there exist characters between these seemingly empty quotes!
 #define LEFT_TO_RIGHT_MARK          "‎"

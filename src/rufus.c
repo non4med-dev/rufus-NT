@@ -1493,7 +1493,7 @@ static DWORD WINAPI BootCheckThread(LPVOID param)
 					(partition_type == PARTITION_STYLE_GPT) && IS_FAT(fs_type)) {
 					if (WindowsVersion.Version < WINDOWS_VISTA) {
 						// Native ISO/ESP prompt as the custom one fails to render on NT5 (port)
-						i = MessageBoxExU(hMainDialog, lmprintf(MSG_358), lmprintf(MSG_274, "ISOHybrid"),
+						i = MessageBoxExU(hMainDialog, lmprintf(MSG_503), lmprintf(MSG_274, "ISOHybrid"),
 							MB_YESNOCANCEL | MB_ICONQUESTION | MB_IS_RTL, selected_langid);
 						if (i == IDCANCEL)
 							goto out;
@@ -1734,7 +1734,7 @@ static DWORD WINAPI BootCheckThread(LPVOID param)
 			char* choices[2] = { lmprintf(MSG_276, iso_image), lmprintf(MSG_277, "ISO → ESP") };
 			if (WindowsVersion.Version < WINDOWS_VISTA) {
 				// Native ISO/ESP prompt as the custom one fails to render on NT5 (port)
-				i = MessageBoxExU(hMainDialog, lmprintf(MSG_359), lmprintf(MSG_274, "ESP"),
+				i = MessageBoxExU(hMainDialog, lmprintf(MSG_504), lmprintf(MSG_274, "ESP"),
 					MB_YESNOCANCEL | MB_ICONQUESTION | MB_IS_RTL, selected_langid);
 				if (i == IDCANCEL)
 					goto out;
@@ -3090,7 +3090,7 @@ static INT_PTR CALLBACK MainCallback(HWND hDlg, UINT message, WPARAM wParam, LPA
 				(WindowsVersion.Arch == IMAGE_FILE_MACHINE_AMD64)) &&
 			(partition_type == PARTITION_STYLE_GPT)) {
 			// GPT mountability warning for NT5 (port)
-			if (MessageBoxExU(hMainDialog, lmprintf(MSG_356), lmprintf(MSG_357),
+			if (MessageBoxExU(hMainDialog, lmprintf(MSG_501), lmprintf(MSG_502),
 				MB_OKCANCEL | MB_ICONWARNING | MB_IS_RTL, selected_langid) != IDOK)
 				goto aborted_start;
 		}

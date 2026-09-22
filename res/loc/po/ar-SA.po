@@ -1,9 +1,9 @@
 msgid ""
 msgstr ""
-"Project-Id-Version: 4.5\n"
+"Project-Id-Version: 4.14\n"
 "Report-Msgid-Bugs-To: pete@akeo.ie\n"
-"POT-Creation-Date: 2024-04-26 10:29+0100\n"
-"PO-Revision-Date: 2024-04-29 10:22+0100\n"
+"POT-Creation-Date: 2026-04-14 08:09+0100\n"
+"PO-Revision-Date: 2026-04-14 13:45+0100\n"
 "Last-Translator: \n"
 "Language-Team: \n"
 "Language: ar_SA\n"
@@ -13,7 +13,7 @@ msgstr ""
 "X-Poedit-SourceCharset: UTF-8\n"
 "X-Rufus-LanguageName: Arabic (العربية)\n"
 "X-Rufus-LCID: 0x0401, 0x0801, 0x0c01, 0x1001, 0x1401, 0x1801, 0x1c01, 0x2001, 0x2401, 0x2801, 0x2c01, 0x3001, 0x3401, 0x3801, 0x3c01, 0x4001\n"
-"X-Generator: Poedit 3.4.2\n"
+"X-Generator: Poedit 3.9\n"
 
 #. • IDD_DIALOG → IDS_DRIVE_PROPERTIES_TXT
 msgid "Drive Properties"
@@ -310,7 +310,7 @@ msgstr "ت.ب"
 
 #. • MSG_025
 #.
-#. *Short* version of the pentabyte size suffix
+#. *Short* version of the petabyte size suffix
 msgid "PB"
 msgstr "ب.ب"
 
@@ -811,7 +811,7 @@ msgstr "التثبيت القياسي لنظام التشغيل Windows"
 #. http://en.wikipedia.org/wiki/Windows_To_Go in your language.
 #. Otherwise, you may add a parenthesis eg. "Windows To Go (<hint at what it does>)"
 msgid "Windows To Go"
-msgstr "Windows To Go"
+msgstr "ويندوز المحمول (Windows To Go)"
 
 #. • MSG_119
 msgid "advanced drive properties"
@@ -848,7 +848,7 @@ msgstr "لا استمرارية"
 
 #. • MSG_125
 #.
-#. Tooltips used for the peristence size slider and edit control
+#. Tooltips used for the persistence size slider and edit control
 msgid "Set the size of the persistent partition for live USB media. Setting the size to 0 disables the persistent partition."
 msgstr "حدد حجم التقسيم المستمر لجهاز ال USB الحي, تحديد الحجم بقيمة 0 سيعطل التقسيم المستمر."
 
@@ -890,17 +890,17 @@ msgstr "هذا القرص يستخدم من قبل برنامج آخر. هل ت�
 
 #. • MSG_133
 msgid ""
-"Rufus has detected that you are attempting to create a Windows To Go media based on a 1809 ISO.\n"
+"Rufus has detected that you are attempting to create a 'Windows To Go' media based on a 1809 ISO.\n"
 "\n"
 "Because of a *MICROSOFT BUG*, this media will crash during Windows boot (Blue Screen Of Death), unless you manually replace the file 'WppRecorder.sys' with a 1803 version.\n"
 "\n"
 "Also note that the reason Rufus cannot automatically fix this for you is that 'WppRecorder.sys' is a Microsoft copyrighted file, so we cannot legally embed a copy of the file in the application..."
 msgstr ""
-"لقد قام Rufus بإكتشاف أنك تحاول إنشاء وسائط Windows To Go بناءً على ISO 1809\n"
+"اكتشف برنامج روفوس Rufus أنك تحاول إنشاء وسائط \"Windows To Go\" باستخدام ملف ISO من إصدار 1809.\n"
 "\n"
-"بسبب عيب في Microsoft, سوف تتوقف الوسائط خلال إقلاع Windows (شاشة الموت الزرقاء) ما لم تقم يدوياً بإستبدال ملف 'WppRecorder.sys' بإصدار 1803.\n"
+"بسبب خلل برمجي في مايكروسوفت، ستتعطل هذه الوسائط أثناء تشغيل ويندوز (شاشة الموت الزرقاء)، ما لم تستبدل الملف \"WppRecorder.sys\" يدويًا بنسخة من إصدار 1803.\n"
 "\n"
-"يرجى العلم أن سبب عدم إمكانية Rufus من إصلاح المشكلة تلقائيا هو أن ملف 'WppRecorder.sys' محفوظ الحقوق ل Microsoft, لذلك لا يمكننا تضمين نسخة من الملف في التطبيق..."
+"يُرجى العلم أيضًا أن سبب عدم قدرة روفوس Rufus على إصلاح هذه المشكلة تلقائيًا هو أن الملف \"WppRecorder.sys\" محمي بحقوق الطبع والنشر لمايكروسوفت، لذا لا يمكننا قانونيًا تضمين نسخة منه في التطبيق."
 
 #. • MSG_134
 msgid ""
@@ -1798,6 +1798,14 @@ msgstr ""
 msgid "Unable to open or read '%s'"
 msgstr "غير قادر على فتح أو قراءة '%s'"
 
+#. • MSG_323
+msgid "Apply SkuSiPolicy.p7b on installation (See KB5042562)"
+msgstr "قم بتطبيق SkuSiPolicy.p7b عند التثبيت (ألق نظرة على KB5042562)"
+
+#. • MSG_324
+msgid "QoL improvements (Don't force Copilot, OneDrive, Outlook, Fast Startup, etc.)"
+msgstr "تحسينات جودة الحياة QoL (لا تفرض استخدام Copilot أو OneDrive أو Outlook أو Fast Startup، إلخ..)."
+
 #. • MSG_325
 msgid "Applying Windows customization: %s"
 msgstr "جاري تطبيق تخصيصات ويندوز: %s"
@@ -1848,13 +1856,13 @@ msgstr "سجل متواصل"
 
 #. • MSG_337
 msgid ""
-"An additional file ('diskcopy.dll') must be downloaded from Microsoft to install MS-DOS:\n"
+"An additional file ('%s') must be downloaded from Microsoft to use this feature:\n"
 "- Select 'Yes' to connect to the Internet and download it\n"
 "- Select 'No' to cancel the operation\n"
 "\n"
 "Note: The file will be downloaded in the application's directory and will be reused automatically if present."
 msgstr ""
-"يجب تنزيل ملف إضافي ('diskcopy.dll') من Microsoft لتثبيت MS-DOS:\n"
+"يجب تنزيل ملف إضافي ('%s') من مايكروسفت Microsoft لاستخدام هذه الميزة:\n"
 "- حدد \"نعم\" للاتصال بالإنترنت وتنزيله\n"
 "- اختر \"لا\" لإلغاء العملية\n"
 "\n"
@@ -1908,7 +1916,7 @@ msgstr ""
 
 #. • MSG_346
 msgid "Restrict Windows to S-Mode (INCOMPATIBLE with online account bypass)"
-msgstr "تقييد Windows على الوضع \"S\" (S-Mode، غير متوافق مع تجاوز الحساب عبر الإنترنت)"
+msgstr "تقييد Windows على الوضع \"S-Mode\" (غير متوافق مع تجاوز الحساب عبر الإنترنت)"
 
 #. • MSG_347
 msgid "Expert Mode"
@@ -1922,43 +1930,156 @@ msgstr "استخراج ملفات الأرشيف: %s"
 msgid "Use Rufus MBR"
 msgstr "استخدم Refus MBR"
 
+#. • MSG_350
+msgid "Use 'Windows CA 2023' signed bootloaders (Requires a compatible target PC)"
+msgstr "استخدم برامج الإقلاع المُوَقع \"Windows CA 2023\" (يتطلب أن يكون جهاز كمبيوتر المستهدف متوافقا)"
+
+#. • MSG_351
+msgid "Checking for UEFI bootloader revocation..."
+msgstr "جارٍ التحقق من إلغاء صلاحية برنامج الإقلاع UEFI bootloader..."
+
+#. • MSG_352
+msgid "Checking for UEFI DBX updates..."
+msgstr "جارٍ التحقق من وجود تحديثات لـ UEFI DBX..."
+
+#. • MSG_353
+msgid "DBX update available"
+msgstr "تحديث الـ DBX متوفر"
+
+#. • MSG_354
+msgid ""
+"Rufus has found an updated version of the DBX files used to perform UEFI Secure Boot revocation checks. Do you want to download this update?\n"
+"- Select 'Yes' to connect to the Internet and download this content\n"
+"- Select 'No' to cancel the operation\n"
+"\n"
+"Note: The files will be downloaded in the application's directory and will be reused automatically if present."
+msgstr ""
+"عثر روفوس Rufus على نسخة محدثة من ملفات DBX المستخدمة لإجراء فحوصات إلغاء التمهيد الآمن لـ UEFI. هل ترغب بتنزيل هذا التحديث؟\n"
+"- اختر «نعم» للاتصال بالإنترنت وتنزيل هذا المحتوى\n"
+"- اختر «لا» لإلغاء العملية\n"
+"\n"
+"ملاحظة: سيتم تنزيل الملفات في مجلد التطبيق، وسيتم إعادة استخدامها تلقائيًا في حال وجودها."
+
 #. • MSG_355
+msgid "⚠SILENTLY⚠ erase disk and install:"
+msgstr "⚠بصمت⚠ امسح القرص وقم بالتثبيت:"
+
+#. • MSG_356
+msgid ""
+"You have selected to use the \"silent\" Windows installation option.\n"
+"\n"
+"This is an advanced option, reserved for people who want to create media that does not prompt the user during Windows installation and therefore UNCONDITIONALLY ERASES the first detected disk on the target system. If you are not careful, using this option can result in IRREVERSIBLE DATA LOSS!\n"
+"\n"
+"If this is not what you want, please select 'No' to go back and uncheck the option.\n"
+"Otherwise, if you select 'Yes', you agree that the whole responsibility for any data loss will be entirely with YOU."
+msgstr ""
+"لقد اخترتَ استخدام خيار التثبيت الصامت لنظام ويندوز.\n"
+"\n"
+"حذار: هذا خيار متقدم، مخصص لمن يرغبون في إنشاء وسائط تثبيت لا تُطالب المستخدم بأي إجراء أثناء تثبيت ويندوز، وبالتالي ** تمسح القرص الأول المُكتشف على النظام المستهدف مسحًا تامًا **. في حال عدم توخي الحذر، قد يؤدي استخدام هذا الخيار إلى فقدان البيانات بشكل لا رجعة فيه!\n"
+"\n"
+"إذا لم يكن هذا ما تريده، يُرجى اختيار \"لا\" للعودة وإلغاء تحديد الخيار.\n"
+"\n"
+"أما إذا اخترتَ \"نعم\"، فأنتَ تُقرّ بأنك تتحمل كامل المسؤولية عن أي فقدان للبيانات."
+
+#. • MSG_358
+msgid "Unsupported image location"
+msgstr "موقع الصورة غير مدعوم"
+
+#. • MSG_359
+msgid ""
+"You cannot use an image that is located on the target drive, since that drive is going to be completely erased. It's the same thing as trying to saw the branch you are sitting on!\n"
+"\n"
+"Please move the image to a different location and try again."
+msgstr ""
+"لا يمكنك استخدام صورة موجودة على القرص المستهدف، لأن هذا القرص سيُمسح بالكامل. الأمر أشبه بمحاولة قطع الغصن الذي تجلس عليه!\n"
+"\n"
+"يرجى نقل الصورة إلى قرص آخر ثم المحاولة مرة أخرى."
+
+#. • MSG_360
+msgid "It is safe to leave this option enabled even if you have a TPM or more RAM, as this option only bypasses the setup requirements and does not actually prevent Windows from using all the hardware available."
+msgstr "من الآمن ترك هذا الخيار مفعلاً حتى لو لم يكن لديك وحدة TPM أو المزيد من ذاكرة الوصول العشوائي، لأن هذا الخيار يتجاوز متطلبات الإعداد فقط ولا يمنع نظام التشغيل Windows فعليًا من استخدام جميع الأجهزة المتاحة."
+
+#. • MSG_361
+msgid "For this option to work, network/Internet MUST be disconnected during installation!"
+msgstr "لكي يعمل هذا الخيار، يجب فصل شبكة الإنترنت أثناء التثبيت!"
+
+#. • MSG_362
+msgid "Automatically answer 'no' to the Windows setup questions relating to the sharing of data with Microsoft, instead of prompting the user."
+msgstr "قم بالإجابة تلقائيًا بـ \"لا\" على أسئلة إعداد ويندوز Windows المتعلقة بمشاركة البيانات مع مايكروسفت Microsoft، بدلاً من مطالبة المستخدم بذلك."
+
+#. • MSG_363
+msgid "You should leave this option enabled, unless you are okay with 'Windows To Go' accessing internal disks and silently performing irreversible file system upgrades."
+msgstr "يجب عليك ترك هذا الخيار مفعلاً، إلا إذا كنت موافقًا على وصول \"Windows To Go\" إلى الأقراص الداخلية والإجراء بصمت ترقيات نظام الملفات التي لا رجعة فيها."
+
+#. • MSG_364
+msgid "Automatically create a local account with the specified user name, using an empty password that will need to be changed on next logon."
+msgstr "إنشاء حساب محلي تلقائيًا باسم المستخدم المحدد، باستخدام كلمة مرور فارغة والتي يجب تغييرها عند تسجيل الدخول التالي."
+
+#. • MSG_365
+msgid "Duplicate the regional settings from this PC (keyboard, timezone, currency), instead of prompting the user."
+msgstr "قم بإستخدم نفس الإعدادات الإقليمية لهذا الكمبيوتر (لوحة المفاتيح، المنطقة الزمنية، العملة)، بدلاً من مطالبة المستخدم."
+
+#. • MSG_366
+msgid "Don't encrypt the system disk, unless explicitly requested by the user."
+msgstr "لا تقم بتشفير قرص النظام، إلا إذا طلب المستخدم ذلك صراحةً."
+
+#. • MSG_367
+msgid "Use this option only if you know what S-Mode is and understand that your system may be locked into S-Mode even after you completely erase and reinstall Windows."
+msgstr "حذار: استخدم هذا الخيار فقط إذا كنت تعرف ما هو الوضع S-Mode وتفهم أن نظامك قد يظل عالقًا في الوضع S-Mode حتى بعد مسح نظام التشغيل ويندوز Windows وإعادة تثبيته بالكامل."
+
+#. • MSG_368
+msgid "Use this option if the system you plan to install Windows on is using fully up-to-date Secure Boot certificates. If needed, you can look into using 'Mosby' to update your system."
+msgstr "استخدم هذا الخيار إذا كان النظام الذي تنوي تثبيت ويندوز عليه يستخدم شهادات التمهيد الآمن Secure Boot المحدثة بالكامل. إذا لزم الأمر، يمكنك البحث في استخدام \"موسبي\" Mosby لتحديث نظامك."
+
+#. • MSG_369
+msgid "Use this option if you want to revoke additional potentially unsafe Windows bootloaders, but with the potential of also preventing standard Windows media from booting."
+msgstr "استخدم هذا الخيار إذا كنت ترغب في إلغاء برامج اقلاع نظام التشغيل ويندوز الإضافية التي يحتمل أن تكون غير آمنة bootloaders، ولكن هذا يمكن أن يمنع وسائط ويندوز القياسية من الإقلاع أيضًا."
+
+#. • MSG_370
+msgid "\"Quality of Life\" enhancements: Disable most of the unwanted features Microsoft is trying to force onto end users."
+msgstr "تحسينات \"جودة الحياة\": تعطيل معظم الميزات غير المرغوب فيها التي تحاول مايكروسوفت فرضها على المستخدمين."
+
+#. • MSG_371
+msgid "If you use this option, please make sure to disconnect every disk from the target PC, except the one you want to install Windows on, as well as not leave the media plugged into any PC you don't want to erase."
+msgstr "إذا كنت تستخدم هذا الخيار، فيرجى التأكد من فصل كل الأقراص عن جهاز الكمبيوتر المستهدف، باستثناء القرص الذي تريد تثبيت نظام التشغيل ويندوز Windows عليه، وكذلك عدم ترك هذه الفلاشة موصولة بأي جهاز كمبيوتر لا تريد مسحه."
+
+#. • MSG_500
 msgid "Enable GPT"
 msgstr "تمكين GPT"
 
-#. • MSG_356
+#. • MSG_501
 msgid "Windows XP cannot access drives that use the GPT partition scheme.\n\nRufus can still create this drive for use on another computer. Continue only if you are creating EFI-bootable media and the target computer supports UEFI.\n\nDo you want to continue?"
 msgstr "يتعذر على Windows XP الوصول إلى محركات الأقراص التي تستخدم مخطط تقسيم GPT.\n\nلا يزال بإمكان Rufus إنشاء محرك الأقراص هذا لاستخدامه على كمبيوتر آخر. تابع فقط إذا كنت تنشئ وسائط قابلة للإقلاع بنمط EFI وكان الكمبيوتر الهدف يدعم UEFI.\n\nهل تريد المتابعة؟"
 
-#. • MSG_357
+#. • MSG_502
 msgid "Rufus"
 msgstr "Rufus"
 
-#. • MSG_358
+#. • MSG_503
 msgid "Choose how Rufus should write this ISOHybrid image.\n\nYes - ISO mode (recommended)\nNo - EFI System Partition (ESP) mode"
 msgstr "اختر كيفية كتابة Rufus لصورة ISOHybrid هذه.\n\nنعم - وضع ISO (موصى به)\nلا - وضع قسم نظام EFI ‏(ESP)"
 
-#. • MSG_359
+#. • MSG_504
 msgid "Choose how Rufus should write this EFI image.\n\nYes - ISO mode (recommended)\nNo - EFI System Partition (ESP) mode"
 msgstr "اختر كيفية كتابة Rufus لصورة EFI هذه.\n\nنعم - وضع ISO (موصى به)\nلا - وضع قسم نظام EFI ‏(ESP)"
 
-#. • MSG_400
+#. • MSG_505
 msgid "Rufus-NT is not affiliated with nor endorsed by the Rufus project"
 msgstr "Rufus-NT غير تابع لمشروع Rufus ولا يحظى بتأييده"
 
-#. • MSG_401
+#. • MSG_506
 msgid "The original Rufus project can be found here"
 msgstr "يمكن العثور على مشروع Rufus الأصلي هنا"
 
-#. • MSG_402
+#. • MSG_507
 msgid "Copyright © 2011 - 2026 Pete Batard"
 msgstr "حقوق النشر © 2011 - 2026 Pete Batard"
 
-#. • MSG_403
+#. • MSG_508
 msgid "This project wouldn't have been possible without..."
 msgstr "لم يكن هذا المشروع ليصبح ممكناً لولا..."
 
-#. • MSG_404
+#. • MSG_509
 msgid "Public Domain"
 msgstr "الملكية العامة"
 

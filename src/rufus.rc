@@ -414,7 +414,7 @@ END
 //
 
 VS_VERSION_INFO VERSIONINFO
- FILEVERSION 1,0,0,1
+ FILEVERSION 1,0,0,5
  PRODUCTVERSION 4,7,0,0
  FILEFLAGSMASK 0x3fL
 #ifdef _DEBUG
@@ -431,16 +431,16 @@ BEGIN
         BLOCK "000004b0"
         BEGIN
             VALUE "Comments", "Unofficial fork of Rufus created to run on legacy Windows operating systems. https://github.com/non4med-dev/rufus-nt"
-            VALUE "CompanyName", "Akeo Consulting"
+            VALUE "CompanyName", "non4med / Akeo Consulting"
             VALUE "FileDescription", "Rufus-NT"
-            VALUE "FileVersion", "4.7"
+            VALUE "FileVersion", "1.0.0.5"
             VALUE "InternalName", "Rufus-NT"
             // Had to remove © as it doesn't exist in old fonts
             VALUE "LegalCopyright", "2011-2025 Pete Batard (GPL v3)"
             VALUE "LegalTrademarks", "https://www.gnu.org/licenses/gpl-3.0.html"
-            VALUE "Changelog", "Update 1: Self-containability"
+            VALUE "Changelog", "Update 3 RC: Localization; Merged all localization updates committed after 4.7's release"
             VALUE "ProductName", "Rufus-NT"
-            VALUE "ProductVersion", "Update 1"
+            VALUE "ProductVersion", "Update 3 RC"
         END
     END
     BLOCK "VarFileInfo"

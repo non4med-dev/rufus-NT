@@ -1,17 +1,18 @@
+# Migrate from v5 to v6
 # Configuration for https://github.com/dessant/lock-threads
 name: '[cron] Lock stale issues'
-
 on:
   schedule:
     - cron: '33 22 * * *'
-
 jobs:
   lock:
     runs-on: ubuntu-latest
+    permissions:
+      issues: write
     steps:
-      - uses: dessant/lock-threads@v5
+      - uses: dessant/lock-threads@v6
         with:
-          github-token: ${{ secrets.GITHUB_TOKEN }}
+          github-token: ${{ github.token }}
           issue-inactive-days: '90'
           issue-comment: >
             This thread has been automatically locked since there has not been
