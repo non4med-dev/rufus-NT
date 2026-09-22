@@ -83,17 +83,19 @@ BEGIN
     PUSHBUTTON      "CLOSE",IDCANCEL,178,294,45,10
 END
 
-// Make place for wimlib and retro7zip credits
-IDD_ABOUTBOX DIALOGEX 0, 0, 319, 273
+IDD_ABOUTBOX DIALOGEX 0, 0, 286, 223
 STYLE DS_SETFONT | DS_MODALFRAME | WS_POPUP | WS_CAPTION | WS_SYSMENU
 CAPTION "About Rufus"
 FONT 9, "Segoe UI Symbol", 400, 0, 0x0
 BEGIN
     ICON            IDI_ICON,IDC_ABOUT_ICON,11,8,20,20
-    CONTROL         "",IDC_ABOUT_BLURB,"RichEdit20W",0x884,45,7,268,143
-    CONTROL         "",IDC_ABOUT_COPYRIGHTS,"RichEdit20W",WS_VSCROLL | WS_TABSTOP | 0x804,46,151,267,91,WS_EX_STATICEDGE
-    PUSHBUTTON      "License",IDC_ABOUT_LICENSE,46,252,50,12,WS_GROUP
-    DEFPUSHBUTTON   "OK",IDOK,253,252,50,12,WS_GROUP
+    CONTROL         "",IDC_ABOUT_BLURB,"RichEdit20W",0x884,49,7,226,160
+    PUSHBUTTON      "Rufus Changelog",IDC_ABOUT_RUFUS_CHANGELOG,54,174,108,14,WS_GROUP
+    PUSHBUTTON      "Rufus-NT Changelog",IDC_ABOUT_RUFUS_NT_CHANGELOG,167,174,108,14,WS_GROUP
+    PUSHBUTTON      "Additional Copyrights",IDC_ABOUT_COPYRIGHTS,54,191,221,14,WS_GROUP
+    PUSHBUTTON      "License",IDC_ABOUT_LICENSE,49,210,50,12,WS_GROUP
+    DEFPUSHBUTTON   "OK",IDOK,225,210,50,12,WS_GROUP
+    CONTROL         "",IDC_ABOUT_DETAILS,"RichEdit20W",ES_MULTILINE | ES_READONLY | ES_AUTOVSCROLL | WS_VSCROLL | WS_TABSTOP,297,7,226,209,WS_EX_STATICEDGE
 END
 
 IDD_HASH DIALOGEX 0, 0, 301, 110
@@ -414,7 +416,7 @@ END
 //
 
 VS_VERSION_INFO VERSIONINFO
- FILEVERSION 1,0,0,5
+ FILEVERSION 1,0,0,6
  PRODUCTVERSION 4,7,0,0
  FILEFLAGSMASK 0x3fL
 #ifdef _DEBUG
@@ -433,14 +435,14 @@ BEGIN
             VALUE "Comments", "Unofficial fork of Rufus created to run on legacy Windows operating systems. https://github.com/non4med-dev/rufus-nt"
             VALUE "CompanyName", "non4med / Akeo Consulting"
             VALUE "FileDescription", "Rufus-NT"
-            VALUE "FileVersion", "1.0.0.5"
+            VALUE "FileVersion", "1.0.0.6"
             VALUE "InternalName", "Rufus-NT"
             // Had to remove © as it doesn't exist in old fonts
             VALUE "LegalCopyright", "2011-2025 Pete Batard (GPL v3)"
             VALUE "LegalTrademarks", "https://www.gnu.org/licenses/gpl-3.0.html"
-            VALUE "Changelog", "Update 3 RC: Localization; Merged all localization updates committed after 4.7's release"
+            VALUE "Changelog", "Update 3: Reworked 'About Rufus', added Retro7zip and wimlib copyrights and licenses, localized copyrights, backported newest strings"
             VALUE "ProductName", "Rufus-NT"
-            VALUE "ProductVersion", "Update 3 RC"
+            VALUE "ProductVersion", "Update 3"
         END
     END
     BLOCK "VarFileInfo"
@@ -517,6 +519,8 @@ IDR_BCDBOOT             RCDATA                  "../res/wintogo/bcdboot.exe"
 IDR_WIMLIB_IMAGE_X      RCDATA                  "../res/wintogo/wimlib/wimlib-imagex.exe"
 IDR_LIBWIM15            RCDATA                  "../res/wintogo/wimlib/libwim-15.dll"
 IDR_RETRO7ZIP           RCDATA                  "../res/retro7zip/7z.exe"
+IDR_CHANGELOG            RCDATA                  "../ChangeLog.txt"
+IDR_RUFUS_NT_CHANGELOG   RCDATA                  "../Changelog-NT.txt"
 IDR_MD5_BOOTIA32        RCDATA                  "../res/md5/bootia32.efi"
 IDR_MD5_BOOTX64         RCDATA                  "../res/md5/bootx64.efi"
 IDR_MD5_BOOTARM         RCDATA                  "../res/md5/bootarm.efi"

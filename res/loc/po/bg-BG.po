@@ -2080,6 +2080,46 @@ msgstr "Този проект нямаше да бъде възможен без
 msgid "Public Domain"
 msgstr "Обществено достояние"
 
+#. • MSG_510
+msgid "Rufus Changelog"
+msgstr "Rufus — Промени"
+
+#. • MSG_511
+msgid "Rufus-NT Changelog"
+msgstr "Rufus-NT — Промени"
+
+#. • MSG_512
+msgid "UI redesign concept by Fahad Al-Riyami"
+msgstr "Концепция за преработка на интерфейса от Fahad Al-Riyami"
+
+#. • MSG_513
+msgid "Used with kind authorization"
+msgstr "Използвано с любезно разрешение"
+
+#. • MSG_514
+msgid "Rufus icon by PC Unleashed:"
+msgstr "Иконата на Rufus е от PC Unleashed:"
+
+#. • MSG_515
+msgid "Freeware"
+msgstr "Безплатен софтуер"
+
+#. • MSG_516
+msgid "Additional icons courtesy of Axialis Software:"
+msgstr "Допълнителни икони с любезното съдействие на Axialis Software:"
+
+#. • MSG_517
+msgid "CC BY-ND 4.0, when used as native resolution bitmaps"
+msgstr "CC BY-ND 4.0, когато се използват като растерни изображения с оригинална разделителна способност"
+
+#. • MSG_518
+msgid "Copyright"
+msgstr "Авторски права"
+
+#. • MSG_519
+msgid "and contributors"
+msgstr "и сътрудници"
+
 #. • MSG_900
 #.
 #. The following messages are for the Windows Store listing only and are not used by the application

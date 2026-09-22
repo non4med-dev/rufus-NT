@@ -1,0 +1,38 @@
+o Update 3 (2026.09.22)
+    Completely remade the 'About Rufus' window, adding the Changelog option you're reading right now ;)
+    Backported all language changes, typo fixes and new lines from upstream
+    Wrote proper credits and copyrights for "wimlib" and "Retro7zip", aswell as "7-zip"
+    Added localizations for "Additional Copyrights"
+o Update 2 (2026.09.21)
+    Improved ext2/ext3 formatting performance by reducing the amount of progress updates
+    Reworked networking, added a TLS1.2 enablement popup for Windows 7 at startup, enforced TLS 1.2
+    ... and with that fixed Fido ISO downloading, using external Powershell 7.2 (still impossible on Vista due to SSL issues)
+    Introduced a custom Raw DER fallback for DBX parsing on pre-Windows XP systems
+    Removed arm builds and microsoft store code
+    Fixed little logic errors, re-added accidentally deleted force_large_fat32 initialization
+o Update 1 (2026.09.21)
+    Backported, commented, improved and integrated wimlib 1.13.6 
+    Backported and integrated bcdboot.exe from Windows 8 DP and wimgapi.dll from Windows 7
+    Integrated Retro7zip in preparation for Windows NT4 support
+    Updated UEFI:NTFS adding RISC-V 64 support
+    Rebranded Rufus-Legacy as Rufus-NT, began implementing features from private experimental branch
+
+LEGACY
+
+o Rufus-Legacy RC2
+    Added basic Windows To Go creating functionality by extracting wimlib's files into Rufus' appdata folder
+    Enabled Windows 2000's font fix for Windows XP fixing its window size
+    Disabled SetDefaultDllDirectories on Windows Vista due to its faulty implementation (broke theming)
+    Made Windows To Go an optional feature, enabled in the Settings, replacing "Enable Beta Updates"
+o Rufus-Legacy RC1
+    Fido ISO downloading on Windows 7 (very unclear, and didn't always work)
+    Experimental GPT partitioning support for Windows 2000 and Windows XP 32-bit
+
+o Previous, local and experimental code
+    Restored VHD saving from 3.22's code
+    Restored Windows 7 and Vista functionality by using 3.22's code
+    Improved performance by optimizing buffer size
+    Implemented a simple Common Controls v6 fix for pre Windows XP systems
+    Optimized Rufus' update sequence, removed updates for Rufus itself
+    etc.etc.etc.
+    Set the foundation for what this project would become.

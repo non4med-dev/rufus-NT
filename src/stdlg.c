@@ -477,39 +477,237 @@ INT_PTR CALLBACK LicenseCallback(HWND hDlg, UINT message, WPARAM wParam, LPARAM 
 	return (INT_PTR)FALSE;
 }
 
+static void SetAboutControlDlu(HWND hDlg, int id, int x, int y, int w, int h)
+{
+	RECT rc = { x, y, x + w, y + h };
+	MapDialogRect(hDlg, &rc);
+	SetWindowPos(GetDlgItem(hDlg, id), NULL, rc.left, rc.top, rc.right - rc.left, rc.bottom - rc.top,
+		SWP_NOZORDER | SWP_NOACTIVATE);
+}
+
+static void MoveAboutControlDlu(HWND hDlg, int id, int x, int y)
+{
+	RECT rc = { x, y, x, y };
+	MapDialogRect(hDlg, &rc);
+	SetWindowPos(GetDlgItem(hDlg, id), NULL, rc.left, rc.top, 0, 0,
+		SWP_NOSIZE | SWP_NOZORDER | SWP_NOACTIVATE);
+}
+
+static void OffsetAboutControls(HWND hDlg, const int* ids, int count, int dx)
+{
+	int i;
+	RECT rc;
+
+	for (i = 0; i < count; i++) {
+		GetWindowRect(GetDlgItem(hDlg, ids[i]), &rc);
+		MapWindowPoints(NULL, hDlg, (POINT*)&rc, 2);
+		SetWindowPos(GetDlgItem(hDlg, ids[i]), NULL, rc.left + dx, rc.top,
+			rc.right - rc.left, rc.bottom - rc.top, SWP_NOZORDER | SWP_NOACTIVATE);
+	}
+}
+
+static int GetRichEditLongestLineWidth(HWND hCtrl, int first_line, int last_line)
+{
+	int i, len, line = 0, line_start, line_len, max_width = 0, padding = 0;
+	HDC hDC;
+	HFONT hFont, hOldFont = NULL;
+	SIZE size;
+	RECT rc, format_rc;
+	wchar_t* text;
+
+	len = GetWindowTextLengthW(hCtrl);
+	if (len <= 0)
+		return 0;
+	text = calloc(len + 1, sizeof(wchar_t));
+	if (text == NULL)
+		return 0;
+	if (GetWindowTextW(hCtrl, text, len + 1) <= 0) {
+		safe_free(text);
+		return 0;
+	}
+	hDC = GetDC(hCtrl);
+	if (hDC == NULL) {
+		safe_free(text);
+		return 0;
+	}
+	hFont = (HFONT)SendMessage(hCtrl, WM_GETFONT, 0, 0);
+	if (hFont != NULL)
+		hOldFont = SelectObject(hDC, hFont);
+	line_start = 0;
+	for (i = 0; i <= len; i++) {
+		if ((i != len) && (text[i] != L'\r') && (text[i] != L'\n'))
+			continue;
+		line_len = i - line_start;
+		if ((line >= first_line) && ((last_line < 0) || (line <= last_line)) &&
+			(line_len > 0) && GetTextExtentPoint32W(hDC, &text[line_start], line_len, &size))
+			max_width = max(max_width, size.cx);
+		while ((i + 1 < len) && ((text[i + 1] == L'\r') || (text[i + 1] == L'\n')))
+			i++;
+		line++;
+		line_start = i + 1;
+	}
+	if (hOldFont != NULL)
+		SelectObject(hDC, hOldFont);
+	safe_release_dc(hCtrl, hDC);
+	GetClientRect(hCtrl, &rc);
+	SendMessage(hCtrl, EM_GETRECT, 0, (LPARAM)&format_rc);
+	if ((format_rc.right > format_rc.left) && ((rc.right - rc.left) > (format_rc.right - format_rc.left)))
+		padding = (rc.right - rc.left) - (format_rc.right - format_rc.left);
+	safe_free(text);
+	return (max_width * 21 + 19) / 20 + max(padding, max((int)(6.0f * fScale), 6));
+}
+
+static int GetRichEditContentHeight(HWND hCtrl)
+{
+	int line_count, height;
+	HDC hDC;
+	HFONT hFont, hOldFont = NULL;
+	TEXTMETRIC tm = { 0 };
+
+	line_count = max((int)SendMessage(hCtrl, EM_GETLINECOUNT, 0, 0), 1);
+	hDC = GetDC(hCtrl);
+	if (hDC == NULL)
+		return line_count * max((int)(16.0f * fScale), 16);
+	hFont = (HFONT)SendMessage(hCtrl, WM_GETFONT, 0, 0);
+	if (hFont != NULL)
+		hOldFont = SelectObject(hDC, hFont);
+	GetTextMetrics(hDC, &tm);
+	if (hOldFont != NULL)
+		SelectObject(hDC, hOldFont);
+	safe_release_dc(hCtrl, hDC);
+	height = line_count * max(tm.tmHeight + tm.tmExternalLeading, 1);
+	return height + max((int)(6.0f * fScale), 6);
+}
+
+static void StripAboutButtonColon(char* text)
+{
+	size_t len;
+
+	if (text == NULL)
+		return;
+	len = strlen(text);
+	while ((len > 0) && ((text[len - 1] == ' ') || (text[len - 1] == '\t')))
+		text[--len] = 0;
+	if ((len > 0) && (text[len - 1] == ':')) {
+		text[--len] = 0;
+	} else if ((len >= 3) && ((uint8_t)text[len - 3] == 0xEF) &&
+		((uint8_t)text[len - 2] == 0xBC) && ((uint8_t)text[len - 1] == 0x9A)) {
+		text[len -= 3] = 0;
+	}
+	while ((len > 0) && ((text[len - 1] == ' ') || (text[len - 1] == '\t')))
+		text[--len] = 0;
+}
+
+static void SetAboutResourceText(HWND hCtrl, int res_id, const char* desc)
+{
+	DWORD size, alloc_size;
+	char* text;
+
+	size = GetResourceSize(hMainInstance, MAKEINTRESOURCEA(res_id), _RT_RCDATA, desc);
+	if (size == 0)
+		return;
+	alloc_size = size + 1;
+	text = (char*)GetResource(hMainInstance, MAKEINTRESOURCEA(res_id), _RT_RCDATA, desc, &alloc_size, TRUE);
+	if (text != NULL) {
+		SendMessageA(hCtrl, EM_SETTEXTEX, (WPARAM)&friggin_microsoft_unicode_amateurs, (LPARAM)text);
+		safe_free(text);
+	}
+}
+
+static void SetAboutDetailsText(HWND hCtrl, int panel_id)
+{
+	char copyright_text[8192];
+
+	SendMessage(hCtrl, WM_SETREDRAW, FALSE, 0);
+	if (panel_id == IDC_ABOUT_RUFUS_CHANGELOG) {
+		SetAboutResourceText(hCtrl, IDR_CHANGELOG, "ChangeLog.txt");
+	} else if (panel_id == IDC_ABOUT_RUFUS_NT_CHANGELOG) {
+		SetAboutResourceText(hCtrl, IDR_RUFUS_NT_CHANGELOG, "Changelog-NT.txt");
+	} else if (panel_id == IDC_ABOUT_COPYRIGHTS) {
+		static_sprintf(copyright_text, additional_copyrights_format,
+			lmprintf(MSG_512 | MSG_RTF), lmprintf(MSG_513 | MSG_RTF),
+			lmprintf(MSG_514 | MSG_RTF), lmprintf(MSG_515 | MSG_RTF),
+			lmprintf(MSG_516 | MSG_RTF), lmprintf(MSG_517 | MSG_RTF),
+			lmprintf(MSG_509 | MSG_RTF), lmprintf(MSG_518 | MSG_RTF),
+			lmprintf(MSG_518 | MSG_RTF), lmprintf(MSG_518 | MSG_RTF),
+			lmprintf(MSG_519 | MSG_RTF), lmprintf(MSG_509 | MSG_RTF),
+			lmprintf(MSG_509 | MSG_RTF), lmprintf(MSG_509 | MSG_RTF),
+			lmprintf(MSG_509 | MSG_RTF), lmprintf(MSG_509 | MSG_RTF),
+			lmprintf(MSG_509 | MSG_RTF));
+		SendMessageA(hCtrl, EM_SETTEXTEX, (WPARAM)&friggin_microsoft_unicode_amateurs, (LPARAM)copyright_text);
+	}
+	SendMessage(hCtrl, EM_SETSEL, 0, 0);
+	SendMessage(hCtrl, EM_SCROLL, SB_TOP, 0);
+	SendMessage(hCtrl, EM_SCROLLCARET, 0, 0);
+	SendMessage(hCtrl, WM_SETREDRAW, TRUE, 0);
+	RedrawWindow(hCtrl, NULL, NULL, RDW_INVALIDATE | RDW_FRAME | RDW_UPDATENOW);
+}
+
 /*
  * About dialog callback
  */
 INT_PTR CALLBACK AboutCallback(HWND hDlg, UINT message, WPARAM wParam, LPARAM lParam)
 {
-	int i, dy;
-	const int edit_id[2] = { IDC_ABOUT_BLURB, IDC_ABOUT_COPYRIGHTS };
-	char about_blurb[2048];
-	const char* edit_text[2] = { about_blurb, additional_copyrights };
-	HWND hEdit[2], hCtrl;
+	int i, button_h, bottom_h, gap, text_gap, button_gap, button_width, half_width;
+	int icon_margin, icon_gap, icon_side_margin, far_margin, icon_width, icon_height, icon_top, text_left, text_width;
+	int min_text_width, max_text_width, fixed_line_width, localized_line_width, localized_growth, bottom_gap, bottom_shift;
+	int max_blurb_h, blurb_h, details_h, details_width, max_details_h, details_bottom_margin;
+	int window_width, window_height, client_height, border_width, border_height, work_width;
+	const int main_id[] = { IDC_ABOUT_ICON, IDC_ABOUT_BLURB, IDC_ABOUT_RUFUS_CHANGELOG,
+		IDC_ABOUT_RUFUS_NT_CHANGELOG, IDC_ABOUT_COPYRIGHTS, IDC_ABOUT_LICENSE, IDOK };
+	const int panel_id[] = { IDC_ABOUT_RUFUS_CHANGELOG, IDC_ABOUT_RUFUS_NT_CHANGELOG, IDC_ABOUT_COPYRIGHTS };
+	char about_blurb[2048], copyright_text[256];
+	HWND hBlurb, hDetails;
 	TEXTRANGEW tr;
 	ENLINK* enl;
-	RECT rc;
-	REQRESIZE* rsz;
+	RECT rc, rc2, work_rc;
+	LONG_PTR style;
 	wchar_t wUrl[256];
-	static BOOL resized_already = TRUE;
+	static int active_panel = 0;
+	static int compact_client_width, compact_client_height, pane_width, pane_extra, details_top, about_button_h;
 
 	switch (message) {
 	case WM_INITDIALOG:
-		resized_already = FALSE;
-		// Execute dialog localization
+		active_panel = 0;
+		style = GetWindowLongPtr(hDlg, GWL_EXSTYLE);
+		style &= ~(WS_EX_LAYOUTRTL | WS_EX_RTLREADING | WS_EX_RIGHT | WS_EX_LEFTSCROLLBAR);
+		style |= WS_EX_NOINHERITLAYOUT;
+		SetWindowLongPtr(hDlg, GWL_EXSTYLE, style);
+		SetWindowPos(hDlg, NULL, 0, 0, 0, 0,
+			SWP_NOMOVE | SWP_NOSIZE | SWP_NOZORDER | SWP_NOACTIVATE | SWP_FRAMECHANGED);
+		for (i = 0; i < ARRAYSIZE(main_id); i++) {
+			style = GetWindowLongPtr(GetDlgItem(hDlg, main_id[i]), GWL_EXSTYLE);
+			style &= ~(WS_EX_LAYOUTRTL | WS_EX_RTLREADING | WS_EX_RIGHT | WS_EX_LEFTSCROLLBAR);
+			style |= WS_EX_NOINHERITLAYOUT;
+			SetWindowLongPtr(GetDlgItem(hDlg, main_id[i]), GWL_EXSTYLE, style);
+			if (main_id[i] != IDC_ABOUT_ICON)
+				SetWindowPos(GetDlgItem(hDlg, main_id[i]), NULL, 0, 0, 0, 0,
+					SWP_NOMOVE | SWP_NOSIZE | SWP_NOZORDER | SWP_NOACTIVATE | SWP_FRAMECHANGED);
+		}
+		style = GetWindowLongPtr(GetDlgItem(hDlg, IDC_ABOUT_DETAILS), GWL_EXSTYLE);
+		style &= ~(WS_EX_LAYOUTRTL | WS_EX_RTLREADING | WS_EX_RIGHT | WS_EX_LEFTSCROLLBAR);
+		style |= WS_EX_NOINHERITLAYOUT;
+		SetWindowLongPtr(GetDlgItem(hDlg, IDC_ABOUT_DETAILS), GWL_EXSTYLE, style);
+		SetWindowPos(GetDlgItem(hDlg, IDC_ABOUT_DETAILS), NULL, 0, 0, 0, 0,
+			SWP_NOMOVE | SWP_NOSIZE | SWP_NOZORDER | SWP_NOACTIVATE | SWP_FRAMECHANGED);
+		MoveAboutControlDlu(hDlg, IDC_ABOUT_ICON, right_to_left_mode ? 255 : 11, 8);
+		SetAboutControlDlu(hDlg, IDC_ABOUT_BLURB, right_to_left_mode ? 11 : 40, 7, 235, 160);
+		SetAboutControlDlu(hDlg, IDC_ABOUT_RUFUS_CHANGELOG, 54, 174, 108, 14);
+		SetAboutControlDlu(hDlg, IDC_ABOUT_RUFUS_NT_CHANGELOG, 167, 174, 108, 14);
+		SetAboutControlDlu(hDlg, IDC_ABOUT_COPYRIGHTS, 54, 191, 221, 14);
+		SetAboutControlDlu(hDlg, IDC_ABOUT_LICENSE, right_to_left_mode ? 225 : 49, 210, 50, 12);
+		SetAboutControlDlu(hDlg, IDOK, right_to_left_mode ? 11 : 225, 210, 50, 12);
+		SetAboutControlDlu(hDlg, IDC_ABOUT_DETAILS, 306, 7, 235, 209);
 		apply_localization(IDD_ABOUTBOX, hDlg);
 		SetTitleBarIcon(hDlg);
-		CenterDialog(hDlg, NULL);
-		// Resize the 'License' button
-		hCtrl = GetDlgItem(hDlg, IDC_ABOUT_LICENSE);
-		GetWindowRect(hCtrl, &rc);
-		MapWindowPoints(NULL, hDlg, (POINT*)&rc, 2);
-		dy = 0;
-		if (rc.bottom - rc.top < bh)
-			dy = (bh - (rc.bottom - rc.top)) / 2;
-		SetWindowPos(hCtrl, NULL, rc.left, rc.top - dy,
-			max(rc.right - rc.left, GetTextSize(hCtrl, NULL).cx + cbw), bh, SWP_NOZORDER);
+		SetWindowTextU(GetDlgItem(hDlg, IDC_ABOUT_RUFUS_CHANGELOG), lmprintf(MSG_510));
+		SetWindowTextU(GetDlgItem(hDlg, IDC_ABOUT_RUFUS_NT_CHANGELOG), lmprintf(MSG_511));
+		safe_strcpy(copyright_text, sizeof(copyright_text), lmprintf(MSG_178));
+		StripAboutButtonColon(copyright_text);
+		SetWindowTextU(GetDlgItem(hDlg, IDC_ABOUT_COPYRIGHTS), copyright_text);
+		for (i = 0; i < ARRAYSIZE(panel_id); i++)
+			ResizeButtonHeight(hDlg, panel_id[i]);
+		ResizeButtonHeight(hDlg, IDC_ABOUT_LICENSE);
 		ResizeButtonHeight(hDlg, IDOK);
 		static_sprintf(
 			about_blurb,
@@ -520,39 +718,131 @@ INT_PTR CALLBACK AboutCallback(HWND hDlg, UINT message, WPARAM wParam, LPARAM lP
 			lmprintf(MSG_506 | MSG_RTF),
 			lmprintf(MSG_507 | MSG_RTF),
 			lmprintf(MSG_508 | MSG_RTF),
-			lmprintf(MSG_176 | MSG_RTF),
-			lmprintf(MSG_178 | MSG_RTF)
+			lmprintf(MSG_176 | MSG_RTF)
 		);
-		for (i = 0; i < ARRAYSIZE(hEdit); i++) {
-			hEdit[i] = GetDlgItem(hDlg, edit_id[i]);
-			SendMessage(hEdit[i], EM_AUTOURLDETECT, 1, 0);
-			/* Can't use SetDlgItemText, because it only works with RichEdit20A... and VS insists
-			 * on reverting to RichEdit20W as soon as you edit the dialog. You can try all the W
-			 * methods you want, it JUST WON'T WORK unless you use EM_SETTEXTEX. Also see:
-			 * http://blog.kowalczyk.info/article/eny/Setting-unicode-rtf-text-in-rich-edit-control.html */
-			SendMessageA(hEdit[i], EM_SETTEXTEX, (WPARAM)&friggin_microsoft_unicode_amateurs, (LPARAM)edit_text[i]);
-			SendMessage(hEdit[i], EM_SETSEL, -1, -1);
-			SendMessage(hEdit[i], EM_SETEVENTMASK, 0, ENM_LINK | ((i == 0) ? ENM_REQUESTRESIZE : 0));
-			SendMessage(hEdit[i], EM_SETBKGNDCOLOR, 0, (LPARAM)GetSysColor(COLOR_BTNFACE));
+		hBlurb = GetDlgItem(hDlg, IDC_ABOUT_BLURB);
+		hDetails = GetDlgItem(hDlg, IDC_ABOUT_DETAILS);
+		style = GetWindowLongPtr(hBlurb, GWL_STYLE) & ~ES_AUTOHSCROLL;
+		SetWindowLongPtr(hBlurb, GWL_STYLE, style);
+		SetWindowPos(hBlurb, NULL, 0, 0, 0, 0,
+			SWP_NOMOVE | SWP_NOSIZE | SWP_NOZORDER | SWP_NOACTIVATE | SWP_FRAMECHANGED);
+		SendMessage(hBlurb, EM_AUTOURLDETECT, 1, 0);
+		SendMessageA(hBlurb, EM_SETTEXTEX, (WPARAM)&friggin_microsoft_unicode_amateurs, (LPARAM)about_blurb);
+		SendMessage(hBlurb, EM_SETSEL, 0, 0);
+		SendMessage(hBlurb, EM_SCROLLCARET, 0, 0);
+		SendMessage(hBlurb, EM_SETEVENTMASK, 0, ENM_LINK);
+		SendMessage(hBlurb, EM_SETBKGNDCOLOR, 0, (LPARAM)GetSysColor(COLOR_BTNFACE));
+		SendMessage(hDetails, EM_AUTOURLDETECT, 1, 0);
+		SendMessage(hDetails, EM_SETEVENTMASK, 0, ENM_LINK);
+		SendMessage(hDetails, EM_SETBKGNDCOLOR, 0, (LPARAM)GetSysColor(COLOR_BTNFACE));
+		ShowWindow(hDetails, SW_HIDE);
+
+		GetWindowRect(hDlg, &rc);
+		GetClientRect(hDlg, &rc2);
+		window_width = rc.right - rc.left;
+		window_height = rc.bottom - rc.top;
+		compact_client_width = rc2.right - rc2.left;
+		border_width = window_width - compact_client_width;
+		border_height = window_height - (rc2.bottom - rc2.top);
+		GetWindowRect(hBlurb, &rc);
+		MapWindowPoints(NULL, hDlg, (POINT*)&rc, 2);
+		details_top = rc.top;
+		min_text_width = max((int)(240.0f * fScale), 240);
+		GetWindowRect(GetDlgItem(hDlg, IDC_ABOUT_ICON), &rc2);
+		MapWindowPoints(NULL, hDlg, (POINT*)&rc2, 2);
+		icon_width = rc2.right - rc2.left;
+		icon_height = rc2.bottom - rc2.top;
+		icon_top = rc2.top;
+		icon_margin = right_to_left_mode ? compact_client_width - rc2.right : rc2.left;
+		icon_margin = max(icon_margin - max((int)(5.0f * fScale), 5), max((int)(4.0f * fScale), 4));
+		icon_gap = right_to_left_mode ? rc2.left - rc.right : rc.left - rc2.right;
+		icon_gap = max(icon_gap - max((int)(3.0f * fScale), 3), max((int)(4.0f * fScale), 4));
+		icon_side_margin = max((icon_margin + icon_gap - max((int)(4.0f * fScale), 4)) / 2,
+			max((int)(3.0f * fScale), 3));
+		icon_margin = icon_side_margin;
+		icon_gap = icon_side_margin;
+		far_margin = max((icon_margin + icon_width + icon_gap) * 7 / 10, max((int)(5.0f * fScale), 5));
+		GetWindowRect(GetDlgItem(hDlg, IDC_ABOUT_RUFUS_CHANGELOG), &rc2);
+		MapWindowPoints(NULL, hDlg, (POINT*)&rc2, 2);
+		button_h = rc2.bottom - rc2.top;
+		about_button_h = button_h;
+		GetWindowRect(GetDlgItem(hDlg, IDC_ABOUT_LICENSE), &rc2);
+		MapWindowPoints(NULL, hDlg, (POINT*)&rc2, 2);
+		bottom_h = rc2.bottom - rc2.top;
+		gap = max((int)(4.0f * fScale), 4);
+		text_gap = max((int)(2.0f * fScale), 2);
+		button_gap = max((int)(5.0f * fScale), 5);
+		fixed_line_width = GetRichEditLongestLineWidth(hBlurb, 0, 1);
+		localized_line_width = GetRichEditLongestLineWidth(hBlurb, 2, -1);
+		SystemParametersInfo(SPI_GETWORKAREA, 0, &work_rc, 0);
+		work_width = work_rc.right - work_rc.left;
+		max_text_width = work_width * 2 / 3 - border_width - icon_margin - icon_width - icon_gap - far_margin;
+		max_text_width = max(max_text_width, min_text_width);
+		text_width = max(min_text_width, fixed_line_width);
+		localized_growth = max(localized_line_width - text_width, 0);
+		text_width += localized_growth * 3 / 5;
+		text_width = min(text_width, max_text_width);
+		compact_client_width = icon_margin + icon_width + icon_gap + text_width + far_margin;
+		text_left = right_to_left_mode ? far_margin : icon_margin + icon_width + icon_gap;
+		SetWindowPos(GetDlgItem(hDlg, IDC_ABOUT_ICON), NULL,
+			right_to_left_mode ? compact_client_width - icon_margin - icon_width : icon_margin, icon_top,
+			icon_width, icon_height, SWP_NOZORDER | SWP_NOACTIVATE);
+		SetWindowPos(hBlurb, NULL, text_left, details_top, text_width, rc.bottom - rc.top,
+			SWP_NOZORDER | SWP_NOACTIVATE);
+		max_blurb_h = max((work_rc.bottom - work_rc.top) * 2 / 3 - border_height - details_top -
+			(2 * button_h + 6 * gap + bottom_h), button_h * 4);
+		blurb_h = GetRichEditContentHeight(hBlurb);
+		if (blurb_h > max_blurb_h) {
+			blurb_h = max_blurb_h;
+			style = GetWindowLongPtr(hBlurb, GWL_STYLE) | WS_VSCROLL;
+		} else {
+			style = GetWindowLongPtr(hBlurb, GWL_STYLE) & ~WS_VSCROLL;
 		}
-		// Need to send an explicit SetSel to avoid being positioned at the end of richedit control when tabstop is used
-		SendMessage(hEdit[1], EM_SETSEL, 0, 0);
-		SendMessage(hEdit[0], EM_REQUESTRESIZE, 0, 0);
-		break;
+		SetWindowLongPtr(hBlurb, GWL_STYLE, style);
+		SetWindowPos(hBlurb, NULL, text_left, details_top, text_width, blurb_h,
+			SWP_NOZORDER | SWP_NOACTIVATE | SWP_FRAMECHANGED);
+		rc2.left = text_left;
+		rc2.right = text_left + text_width;
+		rc2.top = details_top + blurb_h + text_gap;
+		button_width = text_width;
+		half_width = (button_width - button_gap) / 2;
+		SetWindowPos(GetDlgItem(hDlg, IDC_ABOUT_RUFUS_CHANGELOG), NULL,
+			right_to_left_mode ? rc2.left + half_width + button_gap : rc2.left, rc2.top,
+			half_width, button_h, SWP_NOZORDER | SWP_NOACTIVATE);
+		SetWindowPos(GetDlgItem(hDlg, IDC_ABOUT_RUFUS_NT_CHANGELOG), NULL,
+			right_to_left_mode ? rc2.left : rc2.left + half_width + button_gap, rc2.top,
+			button_width - half_width - button_gap, button_h, SWP_NOZORDER | SWP_NOACTIVATE);
+		rc2.top += button_h + gap;
+		SetWindowPos(GetDlgItem(hDlg, IDC_ABOUT_COPYRIGHTS), NULL, rc2.left, rc2.top,
+			button_width, button_h, SWP_NOZORDER | SWP_NOACTIVATE);
+		rc2.top += button_h + gap * 2;
+		bottom_shift = max((int)(4.0f * fScale), 4);
+		rc2.top += bottom_shift;
+		bottom_gap = gap * 2 + max((int)(4.0f * fScale), 4);
+		GetWindowRect(GetDlgItem(hDlg, IDC_ABOUT_LICENSE), &work_rc);
+		MapWindowPoints(NULL, hDlg, (POINT*)&work_rc, 2);
+		SetWindowPos(GetDlgItem(hDlg, IDC_ABOUT_LICENSE), NULL,
+			right_to_left_mode ? rc2.right - (work_rc.right - work_rc.left) : rc2.left, rc2.top,
+			work_rc.right - work_rc.left, bottom_h, SWP_NOZORDER | SWP_NOACTIVATE);
+		GetWindowRect(GetDlgItem(hDlg, IDOK), &work_rc);
+		MapWindowPoints(NULL, hDlg, (POINT*)&work_rc, 2);
+		SetWindowPos(GetDlgItem(hDlg, IDOK), NULL,
+			right_to_left_mode ? rc2.left : rc2.right - (work_rc.right - work_rc.left), rc2.top,
+			work_rc.right - work_rc.left, bottom_h, SWP_NOZORDER | SWP_NOACTIVATE);
+		client_height = rc2.top + bottom_h + bottom_gap + max((int)(2.0f * fScale), 2);
+		window_width = compact_client_width + border_width;
+		SetWindowPos(hDlg, NULL, 0, 0, window_width, client_height + border_height,
+			SWP_NOMOVE | SWP_NOZORDER | SWP_NOACTIVATE);
+		GetClientRect(hDlg, &rc2);
+		compact_client_width = rc2.right - rc2.left;
+		compact_client_height = rc2.bottom - rc2.top;
+		pane_width = max(compact_client_width * 3 / 4, (int)(180.0f * fScale));
+		pane_width = min(pane_width, max(work_width - window_width, 1));
+		pane_extra = pane_width;
+		CenterDialog(hDlg, NULL);
+		return (INT_PTR)TRUE;
 	case WM_NOTIFY:
-		switch (((LPNMHDR)lParam)->code) {
-		case EN_REQUESTRESIZE:
-			if (!resized_already) {
-				resized_already = TRUE;
-				GetWindowRect(GetDlgItem(hDlg, edit_id[0]), &rc);
-				dy = rc.bottom - rc.top;
-				rsz = (REQRESIZE*)lParam;
-				dy -= rsz->rc.bottom - rsz->rc.top;
-				ResizeMoveCtrl(hDlg, GetDlgItem(hDlg, edit_id[0]), 0, 0, 0, -dy, 1.0f);
-				ResizeMoveCtrl(hDlg, GetDlgItem(hDlg, edit_id[1]), 0, -dy, 0, dy, 1.0f);
-			}
-			break;
-		case EN_LINK:
+		if (((LPNMHDR)lParam)->code == EN_LINK) {
 			enl = (ENLINK*)lParam;
 			if (enl->msg == WM_LBUTTONUP) {
 				tr.lpstrText = wUrl;
@@ -562,7 +852,6 @@ INT_PTR CALLBACK AboutCallback(HWND hDlg, UINT message, WPARAM wParam, LPARAM lP
 				wUrl[ARRAYSIZE(wUrl) - 1] = 0;
 				ShellExecuteW(hDlg, L"open", wUrl, NULL, NULL, SW_SHOWNORMAL);
 			}
-			break;
 		}
 		break;
 	case WM_COMMAND:
@@ -574,6 +863,55 @@ INT_PTR CALLBACK AboutCallback(HWND hDlg, UINT message, WPARAM wParam, LPARAM lP
 			return (INT_PTR)TRUE;
 		case IDC_ABOUT_LICENSE:
 			MyDialogBox(hMainInstance, IDD_LICENSE, hDlg, LicenseCallback);
+			break;
+		case IDC_ABOUT_RUFUS_CHANGELOG:
+		case IDC_ABOUT_RUFUS_NT_CHANGELOG:
+		case IDC_ABOUT_COPYRIGHTS:
+			hDetails = GetDlgItem(hDlg, IDC_ABOUT_DETAILS);
+			if (active_panel == LOWORD(wParam)) {
+				ShowWindow(hDetails, SW_HIDE);
+				GetWindowRect(hDlg, &rc);
+				window_width = rc.right - rc.left;
+				if (right_to_left_mode) {
+					OffsetAboutControls(hDlg, main_id, ARRAYSIZE(main_id), -pane_extra);
+					rc.left += pane_extra;
+				}
+				SetWindowPos(hDlg, NULL, rc.left, rc.top, window_width - pane_extra,
+					rc.bottom - rc.top, SWP_NOZORDER | SWP_NOACTIVATE);
+				active_panel = 0;
+				break;
+			}
+			if (active_panel == 0) {
+				GetWindowRect(hDlg, &rc);
+				window_width = rc.right - rc.left;
+				if (right_to_left_mode)
+					rc.left -= pane_extra;
+				SetWindowPos(hDlg, NULL, rc.left, rc.top, window_width + pane_extra,
+					rc.bottom - rc.top, SWP_NOZORDER | SWP_NOACTIVATE);
+				if (right_to_left_mode)
+					OffsetAboutControls(hDlg, main_id, ARRAYSIZE(main_id), pane_extra);
+			}
+			active_panel = LOWORD(wParam);
+			details_bottom_margin = max((int)(10.0f * fScale), 10);
+			max_details_h = compact_client_height - details_top - details_bottom_margin;
+			details_width = pane_width;
+			style = GetWindowLongPtr(hDetails, GWL_STYLE) | WS_VSCROLL | ES_AUTOVSCROLL;
+			SetWindowLongPtr(hDetails, GWL_STYLE, style);
+			SetWindowPos(hDetails, NULL,
+				right_to_left_mode ? 0 : compact_client_width,
+				details_top, details_width, max_details_h, SWP_NOZORDER | SWP_NOACTIVATE | SWP_FRAMECHANGED);
+			SetAboutDetailsText(hDetails, active_panel);
+			details_h = GetRichEditContentHeight(hDetails);
+			ShowScrollBar(hDetails, SB_VERT, details_h > max_details_h);
+			details_h = min(details_h, max_details_h);
+			details_h = max(details_h, min(max_details_h, about_button_h * 3));
+			SetWindowPos(hDetails, NULL, 0, 0, details_width, details_h,
+				SWP_NOMOVE | SWP_NOZORDER | SWP_NOACTIVATE | SWP_FRAMECHANGED);
+			SendMessage(hDetails, EM_SETSEL, 0, 0);
+			SendMessage(hDetails, EM_SCROLL, SB_TOP, 0);
+			SendMessage(hDetails, EM_SCROLLCARET, 0, 0);
+			ShowWindow(hDetails, SW_SHOW);
+			SetFocus(hDetails);
 			break;
 		}
 		break;

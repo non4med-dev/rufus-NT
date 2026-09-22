@@ -2080,6 +2080,46 @@ msgstr "Šis projekts nebūtu bijis iespējams bez..."
 msgid "Public Domain"
 msgstr "Publiskais domēns"
 
+#. • MSG_510
+msgid "Rufus Changelog"
+msgstr "Rufus — Izmaiņas"
+
+#. • MSG_511
+msgid "Rufus-NT Changelog"
+msgstr "Rufus-NT — Izmaiņas"
+
+#. • MSG_512
+msgid "UI redesign concept by Fahad Al-Riyami"
+msgstr "Lietotāja saskarnes pārveides koncepcija: Fahad Al-Riyami"
+
+#. • MSG_513
+msgid "Used with kind authorization"
+msgstr "Izmantots ar laipnu atļauju"
+
+#. • MSG_514
+msgid "Rufus icon by PC Unleashed:"
+msgstr "Rufus ikona no PC Unleashed:"
+
+#. • MSG_515
+msgid "Freeware"
+msgstr "Bezmaksas programmatūra"
+
+#. • MSG_516
+msgid "Additional icons courtesy of Axialis Software:"
+msgstr "Papildu ikonas ar Axialis Software atļauju:"
+
+#. • MSG_517
+msgid "CC BY-ND 4.0, when used as native resolution bitmaps"
+msgstr "CC BY-ND 4.0, ja tiek izmantotas kā bitkartes sākotnējā izšķirtspējā"
+
+#. • MSG_518
+msgid "Copyright"
+msgstr "Autortiesības"
+
+#. • MSG_519
+msgid "and contributors"
+msgstr "un līdzautori"
+
 #. • MSG_900
 #.
 #. The following messages are for the Windows Store listing only and are not used by the application

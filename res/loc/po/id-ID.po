@@ -2074,6 +2074,46 @@ msgstr "Proyek ini tidak akan mungkin terwujud tanpa..."
 msgid "Public Domain"
 msgstr "Domain publik"
 
+#. • MSG_510
+msgid "Rufus Changelog"
+msgstr "Rufus — Perubahan"
+
+#. • MSG_511
+msgid "Rufus-NT Changelog"
+msgstr "Rufus-NT — Perubahan"
+
+#. • MSG_512
+msgid "UI redesign concept by Fahad Al-Riyami"
+msgstr "Konsep desain ulang antarmuka oleh Fahad Al-Riyami"
+
+#. • MSG_513
+msgid "Used with kind authorization"
+msgstr "Digunakan dengan izin"
+
+#. • MSG_514
+msgid "Rufus icon by PC Unleashed:"
+msgstr "Ikon Rufus oleh PC Unleashed:"
+
+#. • MSG_515
+msgid "Freeware"
+msgstr "Perangkat lunak gratis"
+
+#. • MSG_516
+msgid "Additional icons courtesy of Axialis Software:"
+msgstr "Ikon tambahan atas izin Axialis Software:"
+
+#. • MSG_517
+msgid "CC BY-ND 4.0, when used as native resolution bitmaps"
+msgstr "CC BY-ND 4.0, saat digunakan sebagai bitmap pada resolusi asli"
+
+#. • MSG_518
+msgid "Copyright"
+msgstr "Hak cipta"
+
+#. • MSG_519
+msgid "and contributors"
+msgstr "dan kontributor"
+
 #. • MSG_900
 #.
 #. The following messages are for the Windows Store listing only and are not used by the application

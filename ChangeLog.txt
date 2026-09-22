@@ -1,3 +1,8 @@
+﻿o ANYTHING AFTER 4.7 ARE SELECTIVE PATCHES BACKPORTED FROM NEWER VERSION!!!
+
+o Version 4.15 (2026.06.30)
+    Add RISC-V 64 support to UEFI:NTFS
+
 o Version 4.7 (2025.04.09)
     Add a mechanism to detect and download updated DBXs from the official UEFI repository
     Add ztsd compression support for disk images

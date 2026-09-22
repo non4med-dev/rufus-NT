@@ -78,6 +78,8 @@
 #define IDR_LIBWIM15                    508
 #define IDR_NTAPI                       509
 #define IDR_RETRO7ZIP                   510
+#define IDR_CHANGELOG                    511
+#define IDR_RUFUS_NT_CHANGELOG           512
 // The following should match the ArchType array values +600/+700
 #define IDR_MD5_BOOT                    600
 #define IDR_MD5_BOOTIA32                601
@@ -126,9 +128,12 @@
 #define IDC_ADVANCED_FORMAT_OPTIONS     1029
 #define IDC_ABOUT_LICENSE               1030
 #define IDC_ABOUT_ICON                  1031
-#define IDC_ABOUT_COPYRIGHTS            1032
+#define IDC_ABOUT_DETAILS               1032
 #define IDC_ABOUT_BLURB                 1033
 #define IDC_LICENSE_TEXT                1034
+#define IDC_ABOUT_RUFUS_CHANGELOG       1035
+#define IDC_ABOUT_RUFUS_NT_CHANGELOG    1036
+#define IDC_ABOUT_COPYRIGHTS            1037
 #define IDC_NOTIFICATION_ICON           1040
 #define IDC_NOTIFICATION_TEXT           1041
 #define IDC_NOTIFICATION_LINE           1042
@@ -636,14 +641,24 @@
 #define MSG_507                         3507
 #define MSG_508                         3508
 #define MSG_509                         3509
-#define MSG_MAX                         3510
+#define MSG_510                         3510
+#define MSG_511                         3511
+#define MSG_512                         3512
+#define MSG_513                         3513
+#define MSG_514                         3514
+#define MSG_515                         3515
+#define MSG_516                         3516
+#define MSG_517                         3517
+#define MSG_518                         3518
+#define MSG_519                         3519
+#define MSG_MAX                         3520
 
 // Next default values for new objects
 //
 #ifdef APSTUDIO_INVOKED
 #ifndef APSTUDIO_READONLY_SYMBOLS
 #define _APS_NO_MFC                     1
-#define _APS_NEXT_RESOURCE_VALUE        511
+#define _APS_NEXT_RESOURCE_VALUE        513
 #define _APS_NEXT_COMMAND_VALUE         40001
 #define _APS_NEXT_CONTROL_VALUE         1114
 #define _APS_NEXT_SYMED_VALUE           4000

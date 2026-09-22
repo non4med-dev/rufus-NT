@@ -61,6 +61,7 @@ embedded.loc
 /res/loc/pollock/.vs
 /res/loc/pollock/bin
 /res/loc/pollock/obj
+/res/loc/embedded.loc
 /rufus_files
 stamp-h1
 /.vs/rufus
