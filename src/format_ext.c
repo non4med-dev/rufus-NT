@@ -280,6 +280,11 @@ BOOL FormatExtFs(DWORD DriveIndex, uint64_t PartitionOffset, DWORD BlockSize, LP
 		ErrorStatus = RUFUS_ERROR(ERROR_INVALID_PARAMETER);
 		goto out;
 	}
+#ifdef RUFUS_TARGET_NT4
+	// Checkpoint for the complete NT4 ext2/ext3 operation
+	if (WindowsVersion.Version <= WINDOWS_NT4)
+		NT4_SetDiskFunction("FormatExtFs");
+#endif
 	if (strchr(volume_name, ' ') != NULL)
 		uprintf("Notice: Using physical device to access partition data");
 

@@ -1,0 +1,28 @@
+.386
+.model flat
+option casemap:none
+
+EXTERN _NT4_SetFilePointerEx@20:PROC
+EXTERN _NT4_GetFileSizeEx@8:PROC
+EXTERN _NT4_CoWaitForMultipleHandles@20:PROC
+EXTERN _NT4_WNetRestoreConnectionA@8:PROC
+EXTERN _NT4_ExpandEnvironmentStringsForUserW@16:PROC
+EXTERN _NT4_SHCreateDirectoryExW@12:PROC
+
+_DATA SEGMENT
+PUBLIC __imp__SetFilePointerEx@20
+PUBLIC __imp__GetFileSizeEx@8
+PUBLIC __imp__CoWaitForMultipleHandles@20
+PUBLIC __imp__WNetRestoreConnectionA@8
+PUBLIC __imp__ExpandEnvironmentStringsForUserW@16
+PUBLIC __imp__SHCreateDirectoryExW@12
+
+__imp__SetFilePointerEx@20 DD OFFSET _NT4_SetFilePointerEx@20
+__imp__GetFileSizeEx@8 DD OFFSET _NT4_GetFileSizeEx@8
+__imp__CoWaitForMultipleHandles@20 DD OFFSET _NT4_CoWaitForMultipleHandles@20
+__imp__WNetRestoreConnectionA@8 DD OFFSET _NT4_WNetRestoreConnectionA@8
+__imp__ExpandEnvironmentStringsForUserW@16 DD OFFSET _NT4_ExpandEnvironmentStringsForUserW@16
+__imp__SHCreateDirectoryExW@12 DD OFFSET _NT4_SHCreateDirectoryExW@12
+_DATA ENDS
+
+END

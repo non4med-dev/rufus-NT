@@ -598,6 +598,10 @@ static BOOL SetFileSystemAndClusterSize(char* fs_name)
 	SetClusterSizeLabels();
 
 	for (fs_index = 0; fs_index < FS_MAX; fs_index++) {
+#ifdef RUFUS_TARGET_NT4
+		if ((WindowsVersion.Version <= WINDOWS_NT4) && (fs_index == FS_FAT16))
+			continue;
+#endif
 		// Remove all cluster sizes that are below the sector size
 		if (SelectedDrive.ClusterSize[fs_index].Allowed != SINGLE_CLUSTERSIZE_DEFAULT) {
 			SelectedDrive.ClusterSize[fs_index].Allowed &= ~(SelectedDrive.SectorSize - 1);
@@ -624,6 +628,20 @@ static BOOL SetFileSystemAndClusterSize(char* fs_name)
 					ComboBox_AddStringU(hFileSystem, entry), fs_index));
 			}
 		}
+
+#ifdef RUFUS_TARGET_NT4
+		if ((WindowsVersion.Version <= WINDOWS_NT4) && (fs_index == FS_FAT32) &&
+			(SelectedDrive.ClusterSize[FS_FAT16].Allowed != 0) && allowed_filesystem[FS_FAT16]) {
+			if (default_fs == FS_UNKNOWN) {
+				entry = lmprintf(MSG_030, "FAT16");
+				default_fs = FS_FAT16;
+			} else {
+				entry = "FAT16";
+			}
+			IGNORE_RETVAL(ComboBox_SetItemData(hFileSystem,
+				ComboBox_AddStringU(hFileSystem, entry), FS_FAT16));
+		}
+#endif
 	}
 
 	// re-select existing FS if it's one we know
@@ -806,12 +824,19 @@ static void EnableQuickFormat(BOOL enable, BOOL remove_checkboxes)
 {
 	static UINT checked, state = 0;
 	HWND hCtrl = GetDlgItem(hMainDialog, IDC_QUICK_FORMAT);
+	BOOL quick_only = ((fs_type == FS_FAT32) &&
+		((SelectedDrive.DiskSize > LARGE_FAT32_SIZE) || force_large_fat32)) || (fs_type == FS_REFS);
+
+#ifdef RUFUS_TARGET_NT4
+	if ((WindowsVersion.Version <= WINDOWS_NT4) && (fs_type == FS_FAT32))
+		quick_only = TRUE;
+#endif
 
 	if ((boot_type == BT_IMAGE) && IS_DD_ONLY(img_report))
 		enable = FALSE;
 
 	// Disable/restore the quick format control depending on large FAT32 or ReFS
-	if (((fs_type == FS_FAT32) && ((SelectedDrive.DiskSize > LARGE_FAT32_SIZE) || (force_large_fat32))) || (fs_type == FS_REFS)) {
+	if (quick_only) {
 		enable = FALSE;
 		// Quick Format is the only option for the above
 		remove_checkboxes = FALSE;
@@ -898,7 +923,7 @@ void EnableControls(BOOL enable, BOOL remove_checkboxes)
 	// Only enable the following controls if a device is active
 	enable = (ComboBox_GetCurSel(hDeviceList) < 0) ? FALSE : enable;
 	EnableWindow(hImageOption, enable);
-	EnableWindow(hSaveToolbar, enable);
+	EnableWindow(hSaveToolbar, enable && (WindowsVersion.Version > WINDOWS_NT4));
 
 	// Enable or disable the Start button and the other boot options
 	enable = ((boot_type == BT_IMAGE) && (image_path == NULL)) ? FALSE : enable;
@@ -988,10 +1013,10 @@ BOOL CALLBACK LogCallback(HWND hDlg, UINT message, WPARAM wParam, LPARAM lParam)
 			hDC = GetDC(NULL);
 			lfHeight = -MulDiv(9, GetDeviceCaps(hDC, LOGPIXELSY), 72);
 			safe_release_dc(NULL, hDC);
-			// Use Lucida Console as fallback on NT5 (port)
+			// Yey!!! Tahoma!!!
 			hf = CreateFontA(lfHeight, 0, 0, 0, FW_NORMAL, FALSE, FALSE, FALSE,
 				DEFAULT_CHARSET, 0, 0, PROOF_QUALITY, 0,
-				(WindowsVersion.Version == WINDOWS_2000) ? "Lucida Console" : "Consolas");
+				(WindowsVersion.Version <= WINDOWS_XP) ? "Tahoma" : "Consolas");
 		}
 		SendDlgItemMessageA(hDlg, IDC_LOG_EDIT, WM_SETFONT, (WPARAM)hf, TRUE);
 		// Set 'Close Log' as the selected button
@@ -1302,9 +1327,7 @@ DWORD WINAPI ImageScanThread(LPVOID param)
 	memset(&img_report, 0, sizeof(img_report));
 	img_report.is_iso = (BOOLEAN)ExtractISO(image_path, "", TRUE);
 	img_report.is_bootable_img = IsBootableImage(image_path);
-	// Add Windows To Go setting check to the delay (port)
-	if (enable_windows_to_go && (img_report.wininst_index > 0 || img_report.is_windows_img) &&
-		(WindowsVersion.Version >= WINDOWS_8 || img_report.is_windows_img))
+	if (enable_windows_to_go && img_report.is_windows_img)
 		PopulateWindowsVersion();
 	ComboBox_ResetContent(hImageOption);
 	imop_win_sel = 0;
@@ -1672,6 +1695,10 @@ static DWORD WINAPI BootCheckThread(LPVOID param)
 			// Only hash DBX runs on W2k (port)
 			if (WindowsVersion.Version == WINDOWS_2000)
 				has_secureboot_signed_bootloader = TRUE;
+#ifdef RUFUS_TARGET_NT4
+			if (WindowsVersion.Version <= WINDOWS_NT4)
+				has_secureboot_signed_bootloader = TRUE;
+#endif
 			// Make sure we have at least one regular EFI bootloader that is formally signed
 			// for Secure Boot, since it doesn't make sense to report revocation otherwise.
 			for (i = 0; !has_secureboot_signed_bootloader && i < ARRAYSIZE(img_report.efi_boot_entry) &&
@@ -2104,8 +2131,9 @@ static void InitDialog(HWND hDlg)
 
 	// Create the font and brush for the progress messages
 	if (hInfoFont == NULL) {
+		// Ta ho ma ta ho ma ta ho ma
 		hInfoFont = CreateFontA(lfHeight, 0, 0, 0, FW_NORMAL, FALSE, FALSE, FALSE, DEFAULT_CHARSET,
-			0, 0, PROOF_QUALITY, 0, "Segoe UI");
+			0, 0, PROOF_QUALITY, 0, (WindowsVersion.Version <= WINDOWS_XP) ? "Tahoma" : "Segoe UI");
 	}
 
 	// Create the title bar icon
@@ -2208,13 +2236,14 @@ static void InitDialog(HWND hDlg)
 	StrArrayCreate(&modified_files, 8);
 	// Set various checkboxes
 	CheckDlgButton(hDlg, IDC_QUICK_FORMAT, BST_CHECKED);
-	CheckDlgButton(hDlg, IDC_EXTENDED_LABEL, BST_CHECKED);
+	// Disable autorun.inf/.ico creation by default
+	CheckDlgButton(hDlg, IDC_EXTENDED_LABEL, BST_UNCHECKED);
 
 	CreateAdditionalControls(hDlg);
 	SetSectionHeaders(hDlg, &hSectionHeaderFont);
 	PositionMainControls(hDlg);
 	AdjustForLowDPI(hDlg);
-	if (WindowsVersion.Version == WINDOWS_2000) {
+	if (WindowsVersion.Version <= WINDOWS_2000) {
 		// Fix dropdown menus on W2k (port)
 		W2K_RestoreComboBoxDropHeights(hDlg);
 	}
@@ -2269,6 +2298,42 @@ static void InitDialog(HWND hDlg)
 static void PrintStatusTimeout(const char* str, BOOL val)
 {
 	PrintStatus(STATUS_MSG_TIMEOUT, (val)?MSG_250:MSG_251, str);
+}
+
+static const char* GetLegacyGptWarning(void)
+{
+	static char warning[LOC_MESSAGE_SIZE];
+	const char *localized_warning = lmprintf(MSG_501), *host_name, *xp_name;
+	size_t prefix_length;
+
+	// Keep the existing localized Windows XP warning, but change one string depending on the Windows version
+	if (WindowsVersion.Version == WINDOWS_XP)
+		return localized_warning;
+
+	switch (WindowsVersion.Version) {
+	case WINDOWS_NT4:
+		host_name = "Windows NT 4.0";
+		break;
+	case WINDOWS_2000:
+		host_name = "Windows 2000";
+		break;
+	case WINDOWS_2003:
+		host_name = "Windows Server 2003";
+		break;
+	default:
+		host_name = "This version of Windows";
+		break;
+	}
+
+	// Every existing translation retains the product token "Windows XP"
+	// Replace only that token so the translated explanation remains untouched
+	xp_name = safe_strstr(localized_warning, "Windows XP");
+	if (xp_name == NULL)
+		return localized_warning;
+	prefix_length = (size_t)(xp_name - localized_warning);
+	safe_sprintf(warning, sizeof(warning), "%.*s%s%s", (int)prefix_length,
+		localized_warning, host_name, xp_name + sizeof("Windows XP") - 1);
+	return warning;
 }
 
 /*
@@ -2727,7 +2792,8 @@ static INT_PTR CALLBACK MainCallback(HWND hDlg, UINT message, WPARAM wParam, LPA
 			}
 			break;
 		case IDC_SAVE:
-			VhdSaveImage();
+			if (WindowsVersion.Version > WINDOWS_NT4)
+				VhdSaveImage();
 			break;
 		case IDM_SELECT:
 		case IDM_DOWNLOAD:
@@ -2840,7 +2906,7 @@ static INT_PTR CALLBACK MainCallback(HWND hDlg, UINT message, WPARAM wParam, LPA
 		SetUpdateCheck();
 		InitDialog(hDlg);
 		GetDevices(0);
-		if (WindowsVersion.Version == WINDOWS_2000) {
+		if (WindowsVersion.Version <= WINDOWS_2000) {
 			W2K_RestoreComboBoxDropHeights(hDlg);
 		}
 		EnableControls(TRUE, FALSE);
@@ -3085,12 +3151,15 @@ static INT_PTR CALLBACK MainCallback(HWND hDlg, UINT message, WPARAM wParam, LPA
 		// All subsequent aborts below translate to a user cancellation
 		wParam = BOOTCHECK_CANCEL;
 
+		// Warning comes before format
+		if (IsWindowsXpExFatHost() && (fs_type == FS_EXFAT) && !CheckXpExFatSupport())
+			goto aborted_start;
+
 		if ((WindowsVersion.Version < WINDOWS_VISTA) &&
 			!((WindowsVersion.Version == WINDOWS_2003) &&
 				(WindowsVersion.Arch == IMAGE_FILE_MACHINE_AMD64)) &&
 			(partition_type == PARTITION_STYLE_GPT)) {
-			// GPT mountability warning for NT5 (port)
-			if (MessageBoxExU(hMainDialog, lmprintf(MSG_501), lmprintf(MSG_502),
+			if (MessageBoxExU(hMainDialog, GetLegacyGptWarning(), lmprintf(MSG_502),
 				MB_OKCANCEL | MB_ICONWARNING | MB_IS_RTL, selected_langid) != IDOK)
 				goto aborted_start;
 		}
@@ -3383,6 +3452,9 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine
 	BYTE *loc_data;
 	DWORD loc_size, u = 0, size = sizeof(u);
 	char tmp_path[MAX_PATH] = "", loc_file[MAX_PATH] = "", ini_path[MAX_PATH] = "", ini_flags[] = "rb";
+#ifdef RUFUS_TARGET_NT4
+	char nt4_disk_function[128] = "";
+#endif
 	char *tmp, *locale_name = NULL, **argv = NULL;
 	wchar_t **wenv, **wargv;
 	PF_TYPE_DECL(CDECL, int, __wgetmainargs, (int*, wchar_t***, wchar_t***, int, int*));
@@ -3435,6 +3507,11 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine
 		SetDefaultDllDirectories(LOAD_LIBRARY_SEARCH_SYSTEM32);
 
 	uprintf("*** " APPLICATION_NAME " init ***\n");
+	// Keep diagnostics even after Rufus first launches
+#ifdef RUFUS_TARGET_NT4
+	if (NT4_GetDiskDiagnostic("LastDiskFunction", nt4_disk_function, sizeof(nt4_disk_function)))
+		uprintf("Previous disk function: %s (NT4)", nt4_disk_function);
+#endif
 	its_a_me_mario = GetUserNameA((char*)(uintptr_t)&u, &size) && (u == 7104878);
 	// coverity[pointless_string_compare]
 	is_x86_64 = (strcmp(APPLICATION_ARCH, "x64") == 0);
@@ -3709,11 +3786,10 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine
 	enable_file_indexing = ReadSettingBool(SETTING_ENABLE_FILE_INDEXING);
 	enable_VHDs = !ReadSettingBool(SETTING_DISABLE_VHDS);
 	// Read Windows To Go setting
-	enable_windows_to_go = (WindowsVersion.Version >= WINDOWS_2000) &&
-		((WindowsVersion.Version >= WINDOWS_8) ||
-			!ReadSettingBool(SETTING_DISABLE_WINDOWS_TO_GO));
-	// enable_windows_to_go = (WindowsVersion.Version >= WINDOWS_8) ||
-		// !ReadSettingBool(SETTING_DISABLE_WINDOWS_TO_GO);
+	enable_windows_to_go = (WindowsVersion.Version >= WINDOWS_8) ||
+		((WindowsVersion.Version >= WINDOWS_NT4) &&
+			ReadSettingBool((WindowsVersion.Version <= WINDOWS_NT4) ?
+				SETTING_ENABLE_WINDOWS_TO_GO : SETTING_ENABLE_LEGACY_WINDOWS_TO_GO));
 
 	enable_extra_hashes = ReadSettingBool(SETTING_ENABLE_EXTRA_HASHES);
 	expert_mode = ReadSettingBool(SETTING_EXPERT_MODE);
@@ -4133,9 +4209,7 @@ extern int TestHashes(void);
 			}
 			// Alt-R => Remove all the registry keys that may have been created by Rufus
 			if ((msg.message == WM_SYSKEYDOWN) && (msg.wParam == 'R')) {
-				PrintStatus(STATUS_MSG_TIMEOUT, DeleteRegistryKey(REGKEY_HKCU, COMPANY_NAME "\\" APPLICATION_NAME) ? MSG_248 : MSG_249);
-				// Also try to delete the upper key (company name) if it's empty (don't care about the result)
-				DeleteRegistryKey(REGKEY_HKCU, COMPANY_NAME);
+				PrintStatus(STATUS_MSG_TIMEOUT, DeleteRegistryKey(REGKEY_HKCU, REGISTRY_KEY_NAME) ? MSG_248 : MSG_249);
 				continue;
 			}
 			// Alt-S => Disable size limit for ISOs

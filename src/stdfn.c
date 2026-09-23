@@ -438,11 +438,11 @@ void GetWindowsVersion(windows_version_t* windows_version)
 			case WINDOWS_11: w = (ws ? "11" : "Server 2022");
 				break;
 			default:
-				// Reject anything older than W2k (port)
-				if (windows_version->Version < WINDOWS_2000)
+				// Preserve rejection of releases older than NT4
+				if (windows_version->Version < WINDOWS_NT4)
 					windows_version->Version = WINDOWS_UNDEFINED;
 				else
-					w = "12 or later";
+					w = (windows_version->Version == WINDOWS_NT4) ? "NT 4.0" : "12 or later";
 				break;
 			}
 		}
@@ -816,14 +816,18 @@ DWORD RunCommandWithProgress(const char* cmd, const char* dir, BOOL log, int msg
 			uprintf("Could not set commandline pipe: %s", WindowsErrorString());
 			goto out;
 		}
-		si.dwFlags = STARTF_USESHOWWINDOW | STARTF_USESTDHANDLES | STARTF_PREVENTPINNING | STARTF_TITLEISAPPID;
+		si.dwFlags = STARTF_USESHOWWINDOW | STARTF_USESTDHANDLES;
+		if (WindowsVersion.Version > WINDOWS_NT4)
+			si.dwFlags |= STARTF_PREVENTPINNING | STARTF_TITLEISAPPID;
 		si.wShowWindow = SW_HIDE;
 		si.hStdOutput = hOutputWrite;
 		si.hStdError = hOutputWrite;
 	}
 
+	// SW_HIDE above continues to hide console helpers on NT4
 	if (!CreateProcessU(NULL, cmd, NULL, NULL, TRUE,
-		NORMAL_PRIORITY_CLASS | CREATE_NO_WINDOW, NULL, dir, &si, &pi)) {
+		NORMAL_PRIORITY_CLASS | ((WindowsVersion.Version == WINDOWS_NT4) ? 0 : CREATE_NO_WINDOW),
+		NULL, dir, &si, &pi)) {
 		ret = GetLastError();
 		uprintf("Unable to launch command '%s': %s", cmd, WindowsErrorString());
 		goto out;

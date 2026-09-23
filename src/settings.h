@@ -39,8 +39,9 @@ extern char* ini_file;
 #define SETTING_DISABLE_RUFUS_MBR           "DisableRufusMBR"
 #define SETTING_DISABLE_SECURE_BOOT_NOTICE  "DisableSecureBootNotice"
 #define SETTING_DISABLE_VHDS                "DisableVHDs"
-// Allow Windows To Go to be hidden without changing its deployment implementation
 #define SETTING_DISABLE_WINDOWS_TO_GO       "DisableWindowsToGo"
+#define SETTING_ENABLE_LEGACY_WINDOWS_TO_GO "EnableLegacyWindowsToGo"
+#define SETTING_ENABLE_WINDOWS_TO_GO        "EnableWindowsToGo"
 #define SETTING_ENABLE_EXTRA_HASHES         "EnableExtraHashes"
 #define SETTING_ENABLE_FILE_INDEXING        "EnableFileIndexing"
 #define SETTING_ENABLE_RUNTIME_VALIDATION   "EnableRuntimeValidation"
@@ -51,7 +52,7 @@ extern char* ini_file;
 #define SETTING_FORCE_LARGE_FAT32_FORMAT    "ForceLargeFat32Formatting"
 #define SETTING_IGNORE_BOOT_MARKER          "IgnoreBootMarker"
 #define SETTING_INCLUDE_BETAS               "CheckForBetas"
-// "Include Betas" for NT6, "Enable GPT" on NT5
+// "Include Betas" for NT6, "Enable GPT" on NT4/5
 #define SETTING_EXPERIMENTAL_GPT            "EnableExperimentalGpt"
 #define SETTING_LAST_UPDATE                 "LastUpdateCheck"
 #define SETTING_LOCALE                      "Locale"

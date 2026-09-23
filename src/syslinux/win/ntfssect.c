@@ -25,6 +25,7 @@
 #include <string.h>
 
 #include "ntfssect.h"
+#include "../../nt4.h"
 
 /*** Macros */
 #define M_ERR(msg) (NtfsSectLastErrorMessage = (msg))

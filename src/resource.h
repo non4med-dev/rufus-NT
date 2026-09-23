@@ -651,7 +651,10 @@
 #define MSG_517                         3517
 #define MSG_518                         3518
 #define MSG_519                         3519
-#define MSG_MAX                         3520
+#define MSG_520                         3520
+#define MSG_521                         3521
+#define MSG_522                         3522
+#define MSG_MAX                         3523
 
 // Next default values for new objects
 //

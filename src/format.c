@@ -1,3 +1,14 @@
+// This code was the BIGGEST PAIN IN THE ASS to write
+// Half of it was trial and error, other half just pure luck
+// It has been reviewed and improved by ChatGPT Sol 5.6 atleast 30 times
+// Else I really doubt it'd ever even compile
+// 
+// The fact is, everything seems to work, and I hope this "seem" 
+// becomes a "does" in the long run, because I never want to see this file again
+//
+// If you, whoever you are, are trying to read and understand this code
+// may you be blessed with devine understanding from the heavens above
+
 /*
  * Rufus: The Reliable USB Formatting Utility
  * Formatting function calls
@@ -71,6 +82,457 @@ badblocks_report report = { 0 };
 static float format_percent = 0.0f;
 static int task_number = 0, actual_fs_type;
 static unsigned int sec_buf_pos = 0;
+#ifdef RUFUS_TARGET_NT4
+static BOOL nt4_format_cancel_pending = FALSE;
+static BOOL nt4_formatter_io_active = FALSE;
+static BOOL nt4_formatter_io_installed = FALSE;
+static HANDLE nt4_repeat_handle = INVALID_HANDLE_VALUE;
+static ULONGLONG nt4_repeat_offset = ~0ULL;
+static ULONG nt4_repeat_length = MAXDWORD;
+static LONG nt4_repeat_last_operation = 0;
+static ULONG nt4_repeat_count = 0;
+static BOOL nt4_repeat_reported = FALSE;
+static BOOL nt4_cancel_io_reported = FALSE;
+static DWORD nt4_hot_io_checkpoint_tick = 0;
+static ULONG nt4_hot_io_request_count = 0;
+
+#define NT4_FORMATTER_WRITE_CHUNK (64 * 1024)
+#define NT4_FORMATTER_READ_CHUNK  (64 * 1024)
+#define NT4_FORMATTER_NATIVE_READ_CHUNK (32 * 1024)
+
+static BOOL NT4_PatchImport(HMODULE module, LPCSTR import_module, LPCSTR import_name, PVOID replacement)
+{
+	BYTE* base;
+	PIMAGE_DOS_HEADER dos;
+	PIMAGE_NT_HEADERS nt;
+	PIMAGE_IMPORT_DESCRIPTOR descriptor;
+	PIMAGE_THUNK_DATA lookup, iat;
+	PIMAGE_IMPORT_BY_NAME name;
+	FARPROC expected;
+	DWORD old_protect, ignored_protect;
+	BOOL patched = FALSE;
+
+	if ((module == NULL) || (import_module == NULL) || (import_name == NULL) || (replacement == NULL))
+		return FALSE;
+	base = (BYTE*)module;
+	dos = (PIMAGE_DOS_HEADER)base;
+	if ((dos->e_magic != IMAGE_DOS_SIGNATURE) || (dos->e_lfanew <= 0))
+		return FALSE;
+	nt = (PIMAGE_NT_HEADERS)(base + dos->e_lfanew);
+	if (nt->Signature != IMAGE_NT_SIGNATURE)
+		return FALSE;
+	if (nt->OptionalHeader.DataDirectory[IMAGE_DIRECTORY_ENTRY_IMPORT].VirtualAddress == 0)
+		return FALSE;
+
+	descriptor = (PIMAGE_IMPORT_DESCRIPTOR)(base +
+		nt->OptionalHeader.DataDirectory[IMAGE_DIRECTORY_ENTRY_IMPORT].VirtualAddress);
+	expected = GetProcAddress(GetModuleHandleA(import_module), import_name);
+	for (; descriptor->Name != 0; descriptor++) {
+		if (safe_stricmp((LPCSTR)(base + descriptor->Name), import_module) != 0)
+			continue;
+		iat = (PIMAGE_THUNK_DATA)(base + descriptor->FirstThunk);
+		lookup = (descriptor->OriginalFirstThunk != 0) ?
+			(PIMAGE_THUNK_DATA)(base + descriptor->OriginalFirstThunk) : NULL;
+		for (; iat->u1.Function != 0; iat++, lookup = (lookup != NULL) ? lookup + 1 : NULL) {
+			BOOL match = FALSE;
+			if (lookup != NULL) {
+				if (!IMAGE_SNAP_BY_ORDINAL(lookup->u1.Ordinal)) {
+					name = (PIMAGE_IMPORT_BY_NAME)(base + lookup->u1.AddressOfData);
+					match = (lstrcmpA((LPCSTR)name->Name, import_name) == 0);
+				}
+			} else if (expected != NULL) {
+				match = ((FARPROC)(ULONG_PTR)iat->u1.Function == expected);
+			}
+			if (!match)
+				continue;
+			if (!VirtualProtect(&iat->u1.Function, sizeof(iat->u1.Function), PAGE_READWRITE, &old_protect))
+				continue;
+			iat->u1.Function = (ULONG_PTR)replacement;
+			VirtualProtect(&iat->u1.Function, sizeof(iat->u1.Function), old_protect, &ignored_protect);
+			FlushInstructionCache(GetCurrentProcess(), &iat->u1.Function, sizeof(iat->u1.Function));
+			patched = TRUE;
+		}
+	}
+	return patched;
+}
+
+// Split synchronous disk writes into aligned transfers accepted by NT4 USB storage drivers
+static BOOL WINAPI NT4_FormatterWriteFile(HANDLE file, LPCVOID buffer, DWORD size,
+	LPDWORD written, LPOVERLAPPED overlapped)
+{
+	BYTE* aligned_buffer;
+	const BYTE* source;
+	DWORD total = 0, chunk, done, saved_error, sector_size;
+	BOOL result = FALSE;
+
+	if (!nt4_formatter_io_active || (overlapped != NULL) || (size == 0) ||
+		(GetFileType(file) != FILE_TYPE_DISK))
+		return WriteFile(file, buffer, size, written, overlapped);
+	sector_size = max(SelectedDrive.SectorSize, 512);
+	if ((size % sector_size) != 0)
+		return WriteFile(file, buffer, size, written, overlapped);
+	aligned_buffer = (BYTE*)VirtualAlloc(NULL, NT4_FORMATTER_WRITE_CHUNK,
+		MEM_RESERVE | MEM_COMMIT, PAGE_READWRITE);
+	if (aligned_buffer == NULL)
+		return WriteFile(file, buffer, size, written, overlapped);
+
+	source = (const BYTE*)buffer;
+	while (total < size) {
+		chunk = min(NT4_FORMATTER_WRITE_CHUNK, size - total);
+		memcpy(aligned_buffer, source + total, chunk);
+		done = 0;
+		if (!WriteFile(file, aligned_buffer, chunk, &done, NULL)) {
+			saved_error = GetLastError();
+			total += done;
+			goto out;
+		}
+		total += done;
+		if (done != chunk) {
+			saved_error = ERROR_WRITE_FAULT;
+			goto out;
+		}
+	}
+	result = TRUE;
+	saved_error = ERROR_SUCCESS;
+out:
+	VirtualFree(aligned_buffer, 0, MEM_RELEASE);
+	if (written != NULL)
+		*written = total;
+	if (!result)
+		SetLastError(saved_error);
+	return result;
+}
+
+// Apply the same aligned transfer pattern to synchronous disk reads
+static BOOL WINAPI NT4_FormatterReadFile(HANDLE file, LPVOID buffer, DWORD size,
+	LPDWORD read, LPOVERLAPPED overlapped)
+{
+	BYTE* aligned_buffer;
+	BYTE* destination;
+	DWORD total = 0, chunk, done, saved_error, sector_size;
+	BOOL result = FALSE;
+
+	if (!nt4_formatter_io_active || (overlapped != NULL) || (size == 0) ||
+		(GetFileType(file) != FILE_TYPE_DISK))
+		return ReadFile(file, buffer, size, read, overlapped);
+	sector_size = max(SelectedDrive.SectorSize, 512);
+	if ((size % sector_size) != 0)
+		return ReadFile(file, buffer, size, read, overlapped);
+	aligned_buffer = (BYTE*)VirtualAlloc(NULL, NT4_FORMATTER_READ_CHUNK,
+		MEM_RESERVE | MEM_COMMIT, PAGE_READWRITE);
+	if (aligned_buffer == NULL)
+		return ReadFile(file, buffer, size, read, overlapped);
+
+	destination = (BYTE*)buffer;
+	while (total < size) {
+		chunk = min(NT4_FORMATTER_READ_CHUNK, size - total);
+		done = 0;
+		if (!ReadFile(file, aligned_buffer, chunk, &done, NULL)) {
+			saved_error = GetLastError();
+			total += done;
+			goto out;
+		}
+		if (done != 0)
+			memcpy(destination + total, aligned_buffer, done);
+		total += done;
+		if (done != chunk) {
+			result = TRUE;
+			saved_error = ERROR_SUCCESS;
+			goto out;
+		}
+	}
+	result = TRUE;
+	saved_error = ERROR_SUCCESS;
+out:
+	VirtualFree(aligned_buffer, 0, MEM_RELEASE);
+	if (read != NULL)
+		*read = total;
+	if (!result)
+		SetLastError(saved_error);
+	return result;
+}
+
+typedef LONG (WINAPI *NT4_NT_READ_FILE)(
+	HANDLE, HANDLE, PVOID, PVOID, PVOID, PVOID, ULONG, PLARGE_INTEGER, PULONG);
+typedef LONG (WINAPI *NT4_NT_WRITE_FILE)(
+	HANDLE, HANDLE, PVOID, PVOID, PVOID, PVOID, ULONG, PLARGE_INTEGER, PULONG);
+
+static NT4_NT_READ_FILE nt4_native_NtReadFile;
+static NT4_NT_WRITE_FILE nt4_native_NtWriteFile;
+
+// Match the native IO_STATUS_BLOCK layout used by x86 NT4
+typedef struct {
+	LONG Status;
+	ULONG Information;
+} NT4_IO_STATUS_BLOCK;
+
+static LONG NT4_FormatterDosErrorToStatus(DWORD error)
+{
+	switch (error) {
+	case ERROR_SUCCESS: return 0x00000000L;
+	case ERROR_INVALID_HANDLE: return (LONG)0xC0000008L;
+	case ERROR_INVALID_PARAMETER: return (LONG)0xC000000DL;
+	case ERROR_ACCESS_DENIED: return (LONG)0xC0000022L;
+	case ERROR_NOT_ENOUGH_MEMORY:
+	case ERROR_OUTOFMEMORY: return (LONG)0xC0000017L;
+	case ERROR_HANDLE_EOF: return (LONG)0xC0000011L;
+	case ERROR_CANCELLED: return (LONG)0xC0000120L;
+	case ERROR_CRC: return (LONG)0xC000003FL;
+	case ERROR_WRITE_PROTECT: return (LONG)0xC00000A2L;
+	case ERROR_NOT_READY: return (LONG)0xC00000A3L;
+	case ERROR_DISK_FULL: return (LONG)0xC000007FL;
+	case ERROR_SHARING_VIOLATION: return (LONG)0xC0000043L;
+	case ERROR_LOCK_VIOLATION: return (LONG)0xC0000054L;
+	case ERROR_READ_FAULT:
+	case ERROR_WRITE_FAULT:
+	case ERROR_GEN_FAILURE:
+	case ERROR_IO_DEVICE: return (LONG)0xC0000185L;
+	default: return (LONG)0xC0000001L;
+	}
+}
+
+static BOOL NT4_FormatterCancellationRequested(VOID)
+{
+	DWORD error_status = *(volatile DWORD*)&ErrorStatus;
+	return nt4_format_cancel_pending ||
+		(IS_ERROR(error_status) && (SCODE_CODE(error_status) == ERROR_CANCELLED));
+}
+
+static LONG NT4_FormatterCompleteCancelled(HANDLE event, PVOID io_status, LPCSTR operation)
+{
+	NT4_IO_STATUS_BLOCK* iosb = (NT4_IO_STATUS_BLOCK*)io_status;
+	char stage[96];
+	if (iosb != NULL) {
+		iosb->Status = (LONG)0xC0000120L;
+		iosb->Information = 0;
+	}
+	if (event != NULL)
+		SetEvent(event);
+	if (!nt4_cancel_io_reported) {
+		nt4_cancel_io_reported = TRUE;
+		wsprintfA(stage, "113 cancel delivered through %s", operation);
+		NT4_SetDiskStage(stage);
+	}
+	return (LONG)0xC0000120L;
+}
+
+// This was necessary when NT4 used to get stuck in a Read/Write loop during NTFS formatting
+// I will keep it anyways as it doesn't harm performance and just MIGHT be useful in the future
+static VOID NT4_FormatterTrackAlternation(HANDLE file, BOOL write_operation, ULONG length, ULONGLONG offset)
+{
+	LONG operation = write_operation ? 2 : 1;
+	char stage[160];
+
+	if ((nt4_repeat_handle == file) && (nt4_repeat_offset == offset) &&
+		(nt4_repeat_length == length) && (nt4_repeat_last_operation != operation) &&
+		(nt4_repeat_last_operation != 0)) {
+		nt4_repeat_count++;
+	} else {
+		nt4_repeat_handle = file;
+		nt4_repeat_offset = offset;
+		nt4_repeat_length = length;
+		nt4_repeat_count = 1;
+		nt4_repeat_reported = FALSE;
+	}
+	nt4_repeat_last_operation = operation;
+	if (!nt4_repeat_reported && (nt4_repeat_count >= 32)) {
+		nt4_repeat_reported = TRUE;
+		wsprintfA(stage, "112 repeated native R/W h=%08lX len=%lu off=%08lX:%08lX count=%lu",
+			(DWORD)(ULONG_PTR)file, length, (DWORD)(offset >> 32), (DWORD)offset, nt4_repeat_count);
+		NT4_SetDiskStage(stage);
+	}
+}
+
+// Flush at most one native I/O stage every five seconds
+static VOID NT4_FormatterMaybeCheckpointIo(BOOL write_operation, HANDLE file, ULONG length,
+	ULONGLONG offset, DWORD sector_size)
+{
+	DWORD now = GetTickCount();
+	char stage[176];
+
+	nt4_hot_io_request_count++;
+	if ((nt4_hot_io_checkpoint_tick != 0) &&
+		((DWORD)(now - nt4_hot_io_checkpoint_tick) < 5000))
+		return;
+	nt4_hot_io_checkpoint_tick = now;
+	wsprintfA(stage, "%s sampled h=%08lX t=%lu n=%lu len=%lu off=%08lX:%08lX unit=%lu",
+		write_operation ? "110 native-chunk W" : "108 native-chunk R",
+		(DWORD)(ULONG_PTR)file, GetCurrentThreadId(), nt4_hot_io_request_count, length,
+		(DWORD)(offset >> 32), (DWORD)offset, sector_size);
+	NT4_SetDiskStage(stage);
+}
+
+// Issue one native transfer with a private completion event
+static LONG NT4_FormatterNativeTransfer(BOOL write_operation, HANDLE file, PVOID buffer,
+	ULONG length, ULONGLONG offset, PULONG key, PULONG transferred)
+{
+	NT4_IO_STATUS_BLOCK iosb;
+	LARGE_INTEGER native_offset;
+	LONG status;
+	DWORD wait_result;
+	HANDLE io_event = CreateEventA(NULL, TRUE, FALSE, NULL);
+
+	if (io_event == NULL) {
+		if (transferred != NULL)
+			*transferred = 0;
+		return NT4_FormatterDosErrorToStatus(GetLastError());
+	}
+	iosb.Status = (LONG)0x00000103L;
+	iosb.Information = 0;
+	native_offset.QuadPart = offset;
+	status = write_operation ?
+		nt4_native_NtWriteFile(file, io_event, NULL, NULL, &iosb, buffer, length, &native_offset, key) :
+		nt4_native_NtReadFile(file, io_event, NULL, NULL, &iosb, buffer, length, &native_offset, key);
+	if (status == (LONG)0x00000103L) {
+		wait_result = WaitForSingleObject(io_event, INFINITE);
+		status = (wait_result == WAIT_OBJECT_0) ? iosb.Status :
+			((wait_result == WAIT_FAILED) ? NT4_FormatterDosErrorToStatus(GetLastError()) : (LONG)0xC0000001L);
+	}
+	if (transferred != NULL)
+		*transferred = iosb.Information;
+	CloseHandle(io_event);
+	return status;
+}
+
+// Preserve native request sizes while substituting page-aligned buffers
+static LONG WINAPI NT4_FormatterNtReadFile(HANDLE file, HANDLE event, PVOID apc_routine,
+	PVOID apc_context, PVOID io_status, PVOID buffer, ULONG length,
+	PLARGE_INTEGER byte_offset, PULONG key)
+{
+	NT4_IO_STATUS_BLOCK* iosb;
+	BYTE* bounce;
+	ULONGLONG offset;
+	DWORD sector_size;
+	ULONG done = 0, chunk, chunk_done, total = 0;
+	LONG status;
+
+	if (nt4_formatter_io_active && (io_status != NULL) && NT4_FormatterCancellationRequested())
+		return NT4_FormatterCompleteCancelled(event, io_status, "NtReadFile");
+	if (!nt4_formatter_io_active || apc_routine != NULL || io_status == NULL ||
+		buffer == NULL || byte_offset == NULL || byte_offset->HighPart < 0 ||
+		(GetFileType(file) != FILE_TYPE_DISK))
+		return nt4_native_NtReadFile(file, event, apc_routine, apc_context, io_status,
+			buffer, length, byte_offset, key);
+	sector_size = max(SelectedDrive.SectorSize, 512);
+	offset = (ULONGLONG)byte_offset->QuadPart;
+	if ((length == 0) || ((length % sector_size) != 0) || ((offset % sector_size) != 0))
+		return nt4_native_NtReadFile(file, event, apc_routine, apc_context, io_status,
+			buffer, length, byte_offset, key);
+	bounce = (BYTE*)VirtualAlloc(NULL, length, MEM_RESERVE | MEM_COMMIT, PAGE_READWRITE);
+	if (bounce == NULL)
+		return (LONG)0xC0000017L;
+	status = 0;
+	while (total < length) {
+		chunk = min((ULONG)NT4_FORMATTER_NATIVE_READ_CHUNK, length - total);
+		chunk_done = 0;
+		status = NT4_FormatterNativeTransfer(FALSE, file, bounce + total, chunk,
+			offset + total, key, &chunk_done);
+		total += chunk_done;
+		if ((status < 0) || (chunk_done != chunk))
+			break;
+	}
+	done = total;
+	if ((status == 0) && (done != 0))
+		memcpy(buffer, bounce, done);
+	VirtualFree(bounce, 0, MEM_RELEASE);
+	if (status >= 0) {
+		NT4_FormatterTrackAlternation(file, FALSE, length, offset);
+		NT4_FormatterMaybeCheckpointIo(FALSE, file,
+			min(length, (ULONG)NT4_FORMATTER_NATIVE_READ_CHUNK), offset, sector_size);
+	}
+	iosb = (NT4_IO_STATUS_BLOCK*)io_status;
+	iosb->Information = done;
+	iosb->Status = status;
+	if (event != NULL)
+		SetEvent(event);
+	return status;
+}
+
+static LONG WINAPI NT4_FormatterNtWriteFile(HANDLE file, HANDLE event, PVOID apc_routine,
+	PVOID apc_context, PVOID io_status, PVOID buffer, ULONG length,
+	PLARGE_INTEGER byte_offset, PULONG key)
+{
+	NT4_IO_STATUS_BLOCK* iosb;
+	BYTE* bounce;
+	ULONGLONG offset;
+	DWORD sector_size;
+	ULONG done = 0;
+	LONG status;
+
+	if (nt4_formatter_io_active && (io_status != NULL) && NT4_FormatterCancellationRequested())
+		return NT4_FormatterCompleteCancelled(event, io_status, "NtWriteFile");
+	if (!nt4_formatter_io_active || apc_routine != NULL || io_status == NULL ||
+		buffer == NULL || byte_offset == NULL || byte_offset->HighPart < 0 ||
+		(GetFileType(file) != FILE_TYPE_DISK))
+		return nt4_native_NtWriteFile(file, event, apc_routine, apc_context, io_status,
+			buffer, length, byte_offset, key);
+	sector_size = max(SelectedDrive.SectorSize, 512);
+	offset = (ULONGLONG)byte_offset->QuadPart;
+	if ((length == 0) || ((length % sector_size) != 0) || ((offset % sector_size) != 0))
+		return nt4_native_NtWriteFile(file, event, apc_routine, apc_context, io_status,
+			buffer, length, byte_offset, key);
+	bounce = (BYTE*)VirtualAlloc(NULL, length, MEM_RESERVE | MEM_COMMIT, PAGE_READWRITE);
+	if (bounce == NULL)
+		return (LONG)0xC0000017L;
+	memcpy(bounce, buffer, length);
+	status = NT4_FormatterNativeTransfer(TRUE, file, bounce, length, offset, key, &done);
+	VirtualFree(bounce, 0, MEM_RELEASE);
+	if (status >= 0) {
+		NT4_FormatterTrackAlternation(file, TRUE, length, offset);
+		NT4_FormatterMaybeCheckpointIo(TRUE, file, length, offset, sector_size);
+	}
+	iosb = (NT4_IO_STATUS_BLOCK*)io_status;
+	iosb->Information = done;
+	iosb->Status = status;
+	if (event != NULL)
+		SetEvent(event);
+	return status;
+}
+
+static BOOL NT4_PatchNativeFormatterImport(HMODULE module, LPCSTR name, PVOID replacement)
+{
+	return NT4_PatchImport(module, "ntdll.dll", name, replacement);
+}
+
+// Install only the hooks required for aligned NT4 formatter I/O
+static VOID NT4_InstallFormatterIoShim(VOID)
+{
+	static const char* modules[] = { "untfs.dll", "ulib.dll", "ifsutil.dll", "fmifs.dll" };
+	HMODULE module, ntdll;
+	UINT i;
+	BOOL patched, installed_any = FALSE;
+
+	if (nt4_formatter_io_installed)
+		return;
+	module = LoadLibraryA("untfs.dll");
+	if (module == NULL) {
+		uprintf("Could not load the NTFS formatter: %s (NT4)", WindowsErrorString());
+		return;
+	}
+	ntdll = GetModuleHandleA("ntdll.dll");
+	if (ntdll == NULL) {
+		uprintf("Could not access the native I/O runtime (NT4)");
+		return;
+	}
+	nt4_native_NtReadFile = (NT4_NT_READ_FILE)GetProcAddress(ntdll, "NtReadFile");
+	nt4_native_NtWriteFile = (NT4_NT_WRITE_FILE)GetProcAddress(ntdll, "NtWriteFile");
+	for (i = 0; i < ARRAYSIZE(modules); i++) {
+		module = GetModuleHandleA(modules[i]);
+		if (module == NULL)
+			continue;
+		patched = NT4_PatchImport(module, "KERNEL32.dll", "WriteFile", NT4_FormatterWriteFile);
+		patched |= NT4_PatchImport(module, "KERNEL32.dll", "ReadFile", NT4_FormatterReadFile);
+		if (nt4_native_NtReadFile != NULL)
+			patched |= NT4_PatchNativeFormatterImport(module, "NtReadFile", NT4_FormatterNtReadFile);
+		if (nt4_native_NtWriteFile != NULL)
+			patched |= NT4_PatchNativeFormatterImport(module, "NtWriteFile", NT4_FormatterNtWriteFile);
+		installed_any |= patched;
+	}
+	if (installed_any)
+		uprintf("Using compatible formatter I/O (NT4)");
+	nt4_formatter_io_installed = TRUE;
+}
+#endif
 extern const int nb_steps[FS_MAX];
 extern const char* md5sum_name[2];
 extern uint32_t dur_mins, dur_secs;
@@ -81,7 +543,7 @@ extern char* archive_path;
 uint8_t *grub2_buf = NULL, *sec_buf = NULL;
 long grub2_len;
 
-// Simple check, I hope this survives in the real world
+// Windows XP exFAT check
 static BOOL IsXpExFatAvailable(void)
 {
 	static const char* kb955704_keys[] = {
@@ -95,7 +557,7 @@ static BOOL IsXpExFatAvailable(void)
 	UINT i, length;
 	char windows_dir[MAX_PATH], driver_path[MAX_PATH];
 
-	if (WindowsVersion.Version != WINDOWS_XP)
+	if (!IsWindowsXpExFatHost())
 		return TRUE;
 
 	length = GetSystemWindowsDirectoryU(windows_dir, ARRAYSIZE(windows_dir));
@@ -123,6 +585,85 @@ static BOOL IsXpExFatAvailable(void)
 	uprintf("Windows XP exFAT preflight passed: KB955704 exfat.sys is present%s",
 		kb_registered ? " and the update is registered" : "");
 	return TRUE;
+}
+
+// Offer to download locale-based KB955704 from archive.org
+
+BOOL IsWindowsXpExFatHost(void)
+{
+	return (WindowsVersion.Version == WINDOWS_XP) ||
+		((WindowsVersion.Version == WINDOWS_2003) &&
+			(WindowsVersion.Arch == IMAGE_FILE_MACHINE_AMD64) &&
+			(safe_strncmp(WindowsVersion.VersionStr, "Windows XP_64", 13) == 0));
+}
+
+static const char* GetXpExFatUpdateLanguage(LANGID lang_id)
+{
+	switch (PRIMARYLANGID(lang_id)) {
+	case LANG_ARABIC: return "ARA";
+	case LANG_CHINESE:
+		return ((SUBLANGID(lang_id) == SUBLANG_CHINESE_SIMPLIFIED) ||
+			(SUBLANGID(lang_id) == SUBLANG_CHINESE_SINGAPORE)) ? "CHS" : "CHT";
+	case LANG_CZECH: return "CSY";
+	case LANG_DANISH: return "DAN";
+	case LANG_GERMAN: return "DEU";
+	case LANG_GREEK: return "ELL";
+	case LANG_ENGLISH: return "ENU";
+	case LANG_SPANISH: return "ESN";
+	case LANG_FINNISH: return "FIN";
+	case LANG_FRENCH: return "FRA";
+	case LANG_HEBREW: return "HEB";
+	case LANG_HUNGARIAN: return "HUN";
+	case LANG_ITALIAN: return "ITA";
+	case LANG_JAPANESE: return "JPN";
+	case LANG_KOREAN: return "KOR";
+	case LANG_DUTCH: return "NLD";
+	case LANG_NORWEGIAN: return "NOR";
+	case LANG_POLISH: return "PLK";
+	case LANG_PORTUGUESE:
+		return (SUBLANGID(lang_id) == SUBLANG_PORTUGUESE_BRAZILIAN) ? "PTB" : "PTG";
+	case LANG_RUSSIAN: return "RUS";
+	case LANG_SWEDISH: return "SVE";
+	case LANG_TURKISH: return "TRK";
+	default: return NULL;
+	}
+}
+
+static void OfferXpExFatUpdate(void)
+{
+	LANGID lang_id = GetUserDefaultLangID();
+	const char* package_language = GetXpExFatUpdateLanguage(lang_id);
+	BOOL is_xp_x64 = (WindowsVersion.Version == WINDOWS_2003) &&
+		(WindowsVersion.Arch == IMAGE_FILE_MACHINE_AMD64);
+	char locale_name[LOCALE_NAME_MAX_LENGTH], message[768], url[256];
+
+	static_strcpy(locale_name, ToLocaleName(lang_id));
+	if ((package_language == NULL) ||
+		(is_xp_x64 && (strcmp(package_language, "ENU") != 0) &&
+			(strcmp(package_language, "JPN") != 0)) ||
+		(!is_xp_x64 && (WindowsVersion.Arch != IMAGE_FILE_MACHINE_I386))) {
+		static_strcpy(message, lmprintf(MSG_522, lang_id, locale_name));
+		MessageBoxExU(hMainDialog, message, lmprintf(MSG_520),
+			MB_OK | MB_ICONINFORMATION | MB_IS_RTL, selected_langid);
+		return;
+	}
+
+	static_strcpy(message, lmprintf(MSG_521, lang_id, locale_name));
+	if (MessageBoxExU(hMainDialog, message, lmprintf(MSG_520),
+		MB_YESNO | MB_ICONQUESTION | MB_IS_RTL, selected_langid) == IDYES) {
+		static_sprintf(url, is_xp_x64 ?
+			"https://archive.org/download/winxp-exfat-driver/WindowsServer2003.WindowsXP-KB955704-x64-%s.exe" :
+			"https://archive.org/download/winxp-exfat-driver/WindowsXP-KB955704-x86-%s.exe", package_language);
+		ShellExecuteA(hMainDialog, "open", url, NULL, NULL, SW_SHOWNORMAL);
+	}
+}
+
+BOOL CheckXpExFatSupport(void)
+{
+	if (!IsWindowsXpExFatHost() || IsXpExFatAvailable())
+		return TRUE;
+	OfferXpExFatUpdate();
+	return FALSE;
 }
 
 /*
@@ -159,6 +700,13 @@ out:
 static BOOLEAN __stdcall FormatExCallback(FILE_SYSTEM_CALLBACK_COMMAND Command, DWORD Action, PVOID pData)
 {
 	char percent_str[8];
+#ifdef RUFUS_TARGET_NT4
+	// Dont return FALSE to stock NT4 FMIFS while it owns the USB formatter request
+	if (IS_ERROR(ErrorStatus) && (SCODE_CODE(ErrorStatus) == ERROR_CANCELLED)) {
+		nt4_format_cancel_pending = TRUE;
+		ErrorStatus = 0;
+	}
+#endif
 	if (IS_ERROR(ErrorStatus))
 		return FALSE;
 
@@ -240,6 +788,11 @@ static BOOLEAN __stdcall FormatExCallback(FILE_SYSTEM_CALLBACK_COMMAND Command, 
 		ErrorStatus = RUFUS_ERROR(ERROR_OFFSET_ALIGNMENT_VIOLATION);
 		break;
 	default:
+#ifdef RUFUS_TARGET_NT4
+		if ((WindowsVersion.Version <= WINDOWS_NT4) && (actual_fs_type == FS_NTFS)) {
+			break;
+		}
+#endif
 		uprintf("FormatExCallback: Received unhandled command 0x%02X - aborting", Command);
 		ErrorStatus = RUFUS_ERROR(ERROR_NOT_SUPPORTED);
 		break;
@@ -631,16 +1184,15 @@ out:
 	return r;
 }
 
-/*
- * Call on fmifs.dll's FormatEx() to format the drive
- */
 static BOOL FormatNative(DWORD DriveIndex, uint64_t PartitionOffset, DWORD ClusterSize, LPCSTR FSName, LPCSTR Label, DWORD Flags)
 {
 	BOOL r = FALSE;
+	BOOL strip_root_backslash = TRUE;
 	PF_DECL(FormatEx);
 	PF_DECL(EnableVolumeCompression);
 	char *locale, *VolumeName = NULL;
 	WCHAR* wVolumeName = NULL, *wLabel = utf8_to_wchar(Label), *wFSName = utf8_to_wchar(FSName);
+	MEDIA_TYPE fmifs_media_type = SelectedDrive.MediaType;
 	size_t i;
 
 	if ((strcmp(FSName, FileSystemLabel[FS_EXFAT]) == 0) && !((dur_mins == 0) && (dur_secs == 0))) {
@@ -651,6 +1203,34 @@ static BOOL FormatNative(DWORD DriveIndex, uint64_t PartitionOffset, DWORD Clust
 	uprintf("Formatting to %s (using IFS)", FSName);
 
 	VolumeName = GetLogicalName(DriveIndex, PartitionOffset, TRUE, TRUE);
+#ifdef RUFUS_TARGET_NT4
+	if ((WindowsVersion.Version <= WINDOWS_NT4) && (VolumeName != NULL)) {
+		if ((safe_strlen(VolumeName) == 7) && (safe_strnicmp(VolumeName, "\\\\?\\", 4) == 0) &&
+			(VolumeName[5] == ':') && (VolumeName[6] == '\\')) {
+			VolumeName[0] = VolumeName[4];
+			VolumeName[1] = ':';
+			VolumeName[2] = '\\';
+			VolumeName[3] = 0;
+		}
+		// The published NT4 FormatEx client takes a DOS drive root ("E:\\"),
+		// not the slashless "E:" required by later FMIFS releases
+		strip_root_backslash = !((safe_strlen(VolumeName) == 3) &&
+			(VolumeName[1] == ':') && (VolumeName[2] == '\\'));
+		// FMIFS uses 0x0B for removable media and 0x0C for hard-disk media.
+		// Do not use 0x08 here: that is the legacy floppy class and UNTFS rejects quick NTFS on this USB volume
+		if (GetDriveTypeA(VolumeName) == DRIVE_REMOVABLE)
+			fmifs_media_type = (MEDIA_TYPE)0x0B;
+		else
+			fmifs_media_type = (MEDIA_TYPE)0x0C;
+	}
+#endif
+#ifdef RUFUS_TARGET_NT4
+	if ((WindowsVersion.Version <= WINDOWS_NT4) &&
+		(strcmp(FSName, FileSystemLabel[FS_NTFS]) == 0) && (Flags & FP_QUICK)) {
+		uprintf("Using native NTFS formatter (NT4)");
+		ClusterSize = 0;
+	}
+#endif
 	wVolumeName = utf8_to_wchar(VolumeName);
 	if (wVolumeName == NULL) {
 		uprintf("Could not read volume name (%s)", VolumeName);
@@ -659,14 +1239,23 @@ static BOOL FormatNative(DWORD DriveIndex, uint64_t PartitionOffset, DWORD Clust
 	}
 	// Hey, nice consistency here, Microsoft! -  FormatEx() fails if wVolumeName has
 	// a trailing backslash, but EnableCompression() fails without...
-	wVolumeName[wcslen(wVolumeName)-1] = 0;		// Remove trailing backslash
+	if (strip_root_backslash)
+		wVolumeName[wcslen(wVolumeName)-1] = 0;		// Remove trailing backslash
 
 	// LoadLibrary("fmifs.dll") appears to changes the locale, which can lead to
 	// problems with tolower(). Make sure we restore the locale. For more details,
 	// see https://sourceforge.net/p/mingw/mailman/message/29269040/
 	locale = setlocale(LC_ALL, NULL);
+#ifdef RUFUS_TARGET_NT4
+#endif
 	PF_INIT_OR_OUT(FormatEx, fmifs);
 	PF_INIT(EnableVolumeCompression, fmifs);
+#ifdef RUFUS_TARGET_NT4
+	if ((WindowsVersion.Version <= WINDOWS_NT4) &&
+		(strcmp(FSName, FileSystemLabel[FS_NTFS]) == 0) && (Flags & FP_QUICK)) {
+		NT4_InstallFormatterIoShim();
+	}
+#endif
 	setlocale(LC_ALL, locale);
 
 	if (ClusterSize < 0x200) {
@@ -678,25 +1267,73 @@ static BOOL FormatNative(DWORD DriveIndex, uint64_t PartitionOffset, DWORD Clust
 	}
 	format_percent = 0.0f;
 	task_number = 0;
+#ifdef RUFUS_TARGET_NT4
+	// Reset this state for each FMIFS invocation so an earlier cancellation cannot alter a later format request
+	nt4_format_cancel_pending = FALSE;
+	nt4_repeat_handle = INVALID_HANDLE_VALUE;
+	nt4_repeat_offset = ~0ULL;
+	nt4_repeat_length = MAXDWORD;
+	nt4_repeat_last_operation = 0;
+	nt4_repeat_count = 0;
+	nt4_repeat_reported = FALSE;
+	nt4_cancel_io_reported = FALSE;
+	nt4_hot_io_checkpoint_tick = 0;
+	nt4_hot_io_request_count = 0;
+#endif
 
 	uprintf("%s format was selected", (Flags & FP_QUICK) ? "Quick" : "Slow");
 	for (i = 0; i < WRITE_RETRIES; i++) {
-		pfFormatEx(wVolumeName, SelectedDrive.MediaType, wFSName, wLabel,
+#ifdef RUFUS_TARGET_NT4
+		if ((WindowsVersion.Version <= WINDOWS_NT4) &&
+			(strcmp(FSName, FileSystemLabel[FS_NTFS]) == 0) && (Flags & FP_QUICK)) {
+			nt4_formatter_io_active = TRUE;
+			NT4_SetDiskFunction("FormatNative");
+		}
+#endif
+		pfFormatEx(wVolumeName, fmifs_media_type, wFSName, wLabel,
 			(Flags & FP_QUICK), ClusterSize, FormatExCallback);
+#ifdef RUFUS_TARGET_NT4
+		nt4_formatter_io_active = FALSE;
+		// Surface a deferred cancellation only after NT4 FMIFS has released its formatter and USB stack state
+		if (nt4_format_cancel_pending) {
+			ErrorStatus = RUFUS_ERROR(ERROR_CANCELLED);
+			break;
+		}
+#endif
 		if (!IS_ERROR(ErrorStatus) || (HRESULT_CODE(ErrorStatus) == ERROR_CANCELLED))
 			break;
-		uprintf("%s - Retrying...", WindowsErrorString());
+#ifdef RUFUS_TARGET_NT4
+		if ((WindowsVersion.Version <= WINDOWS_NT4) &&
+			(SCODE_CODE(ErrorStatus) == APPERR(ERROR_CANT_QUICK_FORMAT))) {
+			uprintf("%s", StrError(ErrorStatus, TRUE));
+			break;
+		}
+		if (WindowsVersion.Version <= WINDOWS_NT4)
+			uprintf("%s - Retrying...", StrError(ErrorStatus, TRUE));
+		else
+#endif
+			uprintf("%s - Retrying...", WindowsErrorString());
 		Sleep(WRITE_TIMEOUT);
 	}
 	if (IS_ERROR(ErrorStatus))
 		goto out;
 
 	if (Flags & FP_COMPRESSION) {
-		wVolumeName[wcslen(wVolumeName)] = '\\';	// Add trailing backslash back again
-		if (pfEnableVolumeCompression(wVolumeName, FPF_COMPRESSED)) {
-			uprintf("Enabled NTFS compression");
-		} else {
-			uprintf("Could not enable NTFS compression: %s", WindowsErrorString());
+#ifdef RUFUS_TARGET_NT4
+		if ((WindowsVersion.Version <= WINDOWS_NT4) &&
+			(strcmp(FSName, FileSystemLabel[FS_NTFS]) == 0) && (Flags & FP_QUICK)) {
+			// Do not issue a second FMIFS volume-control transaction after a successful NT4 USB format
+			// I pray and beg this is enough
+		} else
+#endif
+		{
+			if (strip_root_backslash)
+				wVolumeName[wcslen(wVolumeName)] = '\\';	// Add trailing backslash back again
+			if (pfEnableVolumeCompression(wVolumeName, FPF_COMPRESSED)) {
+				uprintf("Enabled NTFS compression");
+			} else {
+				uprintf("Could not enable NTFS compression: %s", WindowsErrorString());
+			}
 		}
 	}
 
@@ -723,6 +1360,14 @@ BOOL FormatPartition(DWORD DriveIndex, uint64_t PartitionOffset, DWORD UnitAlloc
 		return FALSE;
 	}
 	actual_fs_type = FSType;
+	// NT4 predates FAT32, use RUfus existing writer
+#ifdef RUFUS_TARGET_NT4
+	if ((WindowsVersion.Version <= WINDOWS_NT4) && (FSType == FS_FAT32)) {
+		uprintf("Using Rufus FAT32 formatter (NT4)");
+		return FormatLargeFAT32(DriveIndex, PartitionOffset, UnitAllocationSize,
+			FileSystemLabel[FSType], Label, Flags);
+	}
+#endif
 	if ((FSType == FS_FAT32) && ((SelectedDrive.DiskSize > LARGE_FAT32_SIZE) || (force_large_fat32) || (Flags & FP_LARGE_FAT32)))
 		return FormatLargeFAT32(DriveIndex, PartitionOffset, UnitAllocationSize, FileSystemLabel[FSType], Label, Flags);
 	else if (IS_EXT(FSType))
@@ -815,6 +1460,90 @@ out:
 	safe_free(pZeroBuf);
 	return r;
 }
+
+#ifdef RUFUS_TARGET_NT4
+static BOOL NT4_ZeroPartitionMetadataRange(HANDLE hPhysicalDrive, ULONGLONG offset,
+	ULONGLONG length, DWORD SectorSize)
+{
+	BYTE* zero_buffer = NULL;
+	DWORD chunk_size, chunk, written;
+	LARGE_INTEGER position;
+	BOOL r = FALSE;
+
+	if ((hPhysicalDrive == INVALID_HANDLE_VALUE) || (SectorSize == 0) ||
+		((offset % SectorSize) != 0) || ((length % SectorSize) != 0)) {
+		SetLastError(ERROR_INVALID_PARAMETER);
+		return FALSE;
+	}
+
+	chunk_size = (64 * KB / SectorSize) * SectorSize;
+	if (chunk_size == 0)
+		chunk_size = SectorSize;
+	zero_buffer = (BYTE*)VirtualAlloc(NULL, chunk_size,
+		MEM_RESERVE | MEM_COMMIT, PAGE_READWRITE);
+	if (zero_buffer == NULL)
+		return FALSE;
+	memset(zero_buffer, 0, chunk_size);
+
+	while (length != 0) {
+		chunk = (DWORD)((length > chunk_size) ? chunk_size : length);
+		position.QuadPart = offset;
+		if (!SetFilePointerEx(hPhysicalDrive, position, NULL, FILE_BEGIN))
+			goto out;
+		written = 0;
+		if (!WriteFileWithRetry(hPhysicalDrive, zero_buffer, chunk, &written, WRITE_RETRIES) ||
+			(written != chunk)) {
+			if (written != chunk && GetLastError() == ERROR_SUCCESS)
+				SetLastError(ERROR_WRITE_FAULT);
+			goto out;
+		}
+		offset += chunk;
+		length -= chunk;
+	}
+	r = TRUE;
+
+out:
+	VirtualFree(zero_buffer, 0, MEM_RELEASE);
+	return r;
+}
+
+static BOOL NT4_ClearPartitionMetadata(HANDLE hPhysicalDrive, LONGLONG DiskSize, DWORD SectorSize)
+{
+	ULONGLONG clear_bytes, disk_bytes, end_offset;
+
+	if ((DiskSize <= 0) || (SectorSize == 0)) {
+		SetLastError(ERROR_INVALID_PARAMETER);
+		return FALSE;
+	}
+	disk_bytes = (ULONGLONG)DiskSize;
+	clear_bytes = (ULONGLONG)MAX_SECTORS_TO_CLEAR * SectorSize;
+	if (clear_bytes > disk_bytes)
+		clear_bytes = (disk_bytes / SectorSize) * SectorSize;
+	if (clear_bytes == 0) {
+		SetLastError(ERROR_INVALID_PARAMETER);
+		return FALSE;
+	}
+
+	uprintf("Deleting existing partition metadata (NT4)");
+	NT4_SetDiskFunction("ClearPartitionMetadata");
+	NT4_SetDiskStage("120 clearing partition metadata (front)");
+	if (!NT4_ZeroPartitionMetadataRange(hPhysicalDrive, 0, clear_bytes, SectorSize))
+		return FALSE;
+
+	if (disk_bytes > clear_bytes) {
+		end_offset = ((disk_bytes - clear_bytes) / SectorSize) * SectorSize;
+		if (end_offset >= clear_bytes) {
+			NT4_SetDiskStage("121 clearing partition metadata (back)");
+			if (!NT4_ZeroPartitionMetadataRange(hPhysicalDrive, end_offset,
+				clear_bytes, SectorSize))
+				return FALSE;
+		}
+	}
+	NT4_SetDiskStage("122 partition metadata cleared");
+
+	return TRUE;
+}
+#endif
 
 /*
  * Process the Master Boot Record
@@ -949,8 +1678,8 @@ windows_mbr:
 
 notify:
 	// Tell the system we've updated the disk properties (W2k) (port)
-	if (((WindowsVersion.Version == WINDOWS_2000) && !RefreshDriveLayout(hPhysicalDrive)) ||
-		((WindowsVersion.Version != WINDOWS_2000) && !DeviceIoControl(hPhysicalDrive,
+	if (((WindowsVersion.Version <= WINDOWS_2000) && !RefreshDriveLayout(hPhysicalDrive)) ||
+		((WindowsVersion.Version > WINDOWS_2000) && !DeviceIoControl(hPhysicalDrive,
 			IOCTL_DISK_UPDATE_PROPERTIES, NULL, 0, NULL, 0, &size, NULL)))
 		uprintf("Failed to notify system about disk properties update: %s", WindowsErrorString());
 
@@ -1216,6 +1945,10 @@ static int sector_write(int fd, const void* _buf, unsigned int count)
 
 static DWORD GetDriveWriteBufferSize(void)
 {
+#ifdef RUFUS_TARGET_NT4
+	if (WindowsVersion.Version <= WINDOWS_NT4)
+		return 64 * KB;
+#endif
 	// Bound NT5 GPT writes to keep cooperative cancellation responsive (port)
 	return ((WindowsVersion.Version <= WINDOWS_XP) &&
 		(partition_type == PARTITION_STYLE_GPT)) ? (1 * MB) : DD_BUFFER_SIZE;
@@ -1235,12 +1968,14 @@ static BOOL WriteDrive(HANDLE hPhysicalDrive, BOOL bZeroDrive)
 	uint32_t zero_data, *cmp_buffer = NULL;
 	char* vhd_path = NULL;
 	int throttle_fast_zeroing = 0, read_bufnum = 0, proc_bufnum = 1;
+#ifdef RUFUS_TARGET_NT4
+	BOOL nt4_virtual_buffer = FALSE;
+#endif
 
 	if (SelectedDrive.SectorSize < 512) {
 		uprintf("Unexpected sector size (%d) - Aborting", SelectedDrive.SectorSize);
 		return FALSE;
 	}
-
 	// We poked the MBR and other stuff, so we need to rewind
 	li.QuadPart = 0;
 	if (!SetFilePointerEx(hPhysicalDrive, li, NULL, FILE_BEGIN))
@@ -1415,7 +2150,16 @@ static BOOL WriteDrive(HANDLE hPhysicalDrive, BOOL bZeroDrive)
 		// Our buffer size must be a multiple of the sector size and *ALIGNED* to the sector size
 		buf_size = ((GetDriveWriteBufferSize() + SelectedDrive.SectorSize - 1) /
 			SelectedDrive.SectorSize) * SelectedDrive.SectorSize;
-		buffer = (uint8_t*)_mm_malloc(buf_size * NUM_BUFFERS, SelectedDrive.SectorSize);
+#ifdef RUFUS_TARGET_NT4
+		if (WindowsVersion.Version <= WINDOWS_NT4) {
+			buffer = (uint8_t*)VirtualAlloc(NULL, buf_size * NUM_BUFFERS,
+				MEM_RESERVE | MEM_COMMIT, PAGE_READWRITE);
+			nt4_virtual_buffer = (buffer != NULL);
+		} else
+#endif
+		{
+			buffer = (uint8_t*)_mm_malloc(buf_size * NUM_BUFFERS, SelectedDrive.SectorSize);
+		}
 		if (buffer == NULL) {
 			ErrorStatus = RUFUS_ERROR(ERROR_NOT_ENOUGH_MEMORY);
 			uprintf("Could not allocate disk write buffer");
@@ -1505,7 +2249,15 @@ out:
 		CloseFileAsync(hSourceImage);
 	if (vhd_path != NULL)
 		VhdUnmountImage();
-	safe_mm_free(buffer);
+#ifdef RUFUS_TARGET_NT4
+	if (nt4_virtual_buffer) {
+		VirtualFree(buffer, 0, MEM_RELEASE);
+		buffer = NULL;
+	} else
+#endif
+	{
+		safe_mm_free(buffer);
+	}
 	safe_mm_free(cmp_buffer);
 	return ret;
 }
@@ -1524,7 +2276,12 @@ out:
 DWORD WINAPI FormatThread(void* param)
 {
 	int r;
-	BOOL ret, use_large_fat32, windows_to_go, actual_lock_drive = lock_drive, write_as_ext = FALSE;
+	BOOL ret, use_large_fat32, windows_to_go, actual_lock_drive = lock_drive,
+		write_as_ext = FALSE, nt4_forced_mount = FALSE;
+#ifdef RUFUS_TARGET_NT4
+	BOOL nt4_direct_pbr_handle = FALSE;
+	char nt4_mount_target[MAX_PATH] = { 0 };
+#endif
 	// Windows 11 and VDS (which I suspect is what fmifs.dll's FormatEx() is now calling behind the scenes)
 	// require us to unlock the physical drive to format the drive, else access denied is returned.
 	BOOL need_logical = FALSE, must_unlock_physical = (use_vds || WindowsVersion.Version >= WINDOWS_11);
@@ -1541,14 +2298,17 @@ DWORD WINAPI FormatThread(void* param)
 	char kolibri_dst[] = "?:\\MTLD_F32";
 	char grub4dos_dst[] = "?:\\grldr";
 
-	// Implement IsXpExFatAvailable
-	if ((WindowsVersion.Version == WINDOWS_XP) && (fs_type == FS_EXFAT) && !IsXpExFatAvailable()) {
-		ErrorStatus = RUFUS_ERROR(ERROR_NOT_SUPPORTED);
-		PostMessage(hMainDialog, UM_FORMAT_COMPLETED, (WPARAM)TRUE, 0);
-		ExitThread(0);
-	}
-	use_large_fat32 = (fs_type == FS_FAT32) &&
-		((SelectedDrive.DiskSize > LARGE_FAT32_SIZE) || force_large_fat32);
+	// NT4 FMIFS requires exclusive ownership of the volume
+#ifdef RUFUS_TARGET_NT4
+	if (WindowsVersion.Version <= WINDOWS_NT4)
+		must_unlock_physical = TRUE;
+#endif
+
+	use_large_fat32 = (fs_type == FS_FAT32) && ((SelectedDrive.DiskSize > LARGE_FAT32_SIZE) || (force_large_fat32));
+#ifdef RUFUS_TARGET_NT4
+	if ((WindowsVersion.Version <= WINDOWS_NT4) && (fs_type == FS_FAT32))
+		use_large_fat32 = TRUE;
+#endif
 	windows_to_go = (image_options & IMOP_WINTOGO) && (boot_type == BT_IMAGE) && HAS_WINTOGO(img_report) &&
 		(ComboBox_GetCurItemData(hImageOption) == IMOP_WIN_TO_GO);
 	large_drive = (SelectedDrive.DiskSize > (1*TB));
@@ -1610,7 +2370,6 @@ DWORD WINAPI FormatThread(void* param)
 		ErrorStatus = RUFUS_ERROR(APPERR(ERROR_CANT_ASSIGN_LETTER));
 		goto out;
 	}
-
 	// Unassign all drives letters
 	drive_name[0] = RemoveDriveLetters(DriveIndex, TRUE, FALSE);
 	if (drive_name[0] == 0) {
@@ -1630,12 +2389,24 @@ DWORD WINAPI FormatThread(void* param)
 		ErrorStatus = 0;
 		// If we couldn't delete partitions, Windows give us trouble unless we
 		// request access to the logical drive. Don't ask me why!
-		need_logical = TRUE;
+#ifdef RUFUS_TARGET_NT4
+		if ((WindowsVersion.Version <= WINDOWS_NT4) && !is_vds_available) {
+			need_logical = FALSE;
+		} else
+#endif
+		{
+			need_logical = TRUE;
+		}
 		// Also, since we couldn't clean the disk, we need to disable drive locking
 		actual_lock_drive = FALSE;
 	}
-
 	// An extra refresh of the (now empty) partition data here appears to be helpful
+	// Skip on NT4
+#ifdef RUFUS_TARGET_NT4
+	if (WindowsVersion.Version <= WINDOWS_NT4) {
+		uprintf("Using legacy disk layout (NT4)");
+	} else
+#endif
 	GetDrivePartitionData(SelectedDrive.DeviceNumber, fs_name, sizeof(fs_name), TRUE);
 
 	// Now get RW access to the physical drive
@@ -1650,22 +2421,30 @@ DWORD WINAPI FormatThread(void* param)
 	// drive, which causes a write error. To work around this, we must lock the logical drive.
 	// Also need to lock logical drive if we couldn't delete partitions, to keep Windows happy...
 	if (((boot_type == BT_IMAGE) && write_as_image) || (need_logical)) {
-		uprintf("Requesting logical volume handle...");
-		hLogicalVolume = GetLogicalHandle(DriveIndex, 0, TRUE, FALSE, !actual_lock_drive);
-		if (hLogicalVolume == INVALID_HANDLE_VALUE) {
-			uprintf("Could not access logical volume");
-			ErrorStatus = RUFUS_ERROR(ERROR_OPEN_FAILED);
-			goto out;
-		// If the call succeeds (and we don't get a NULL logical handle as returned for
-		// unpartitioned drives), try to unmount the volume.
-		} else if ((hLogicalVolume != NULL) && (!UnmountVolume(hLogicalVolume))) {
-			uprintf("Trying to continue regardless...");
+#ifdef RUFUS_TARGET_NT4
+		if ((WindowsVersion.Version <= WINDOWS_NT4) && write_as_image && !need_logical) {
+		} else
+#endif
+		{
+			uprintf("Requesting logical volume handle...");
+			hLogicalVolume = GetLogicalHandle(DriveIndex, 0, TRUE, FALSE, !actual_lock_drive);
+			if (hLogicalVolume == INVALID_HANDLE_VALUE) {
+				uprintf("Could not access logical volume");
+				ErrorStatus = RUFUS_ERROR(ERROR_OPEN_FAILED);
+				goto out;
+			} else if ((hLogicalVolume != NULL) && (!UnmountVolume(hLogicalVolume))) {
+				uprintf("Trying to continue regardless...");
+			}
 		}
 	}
 	CHECK_FOR_USER_CANCEL;
 
 	if (!zero_drive && !write_as_image) {
 		PrintInfoDebug(0, MSG_226);
+#ifdef RUFUS_TARGET_NT4
+		if (WindowsVersion.Version <= WINDOWS_NT4) {
+		} else
+#endif
 		AnalyzeMBR(hPhysicalDrive, "Drive", FALSE);
 		UpdateProgress(OP_ANALYZE_MBR, -1.0f);
 	}
@@ -1683,6 +2462,19 @@ DWORD WINAPI FormatThread(void* param)
 	// Note, Microsoft's way of cleaning partitions (IOCTL_DISK_CREATE_DISK, which is what we apply
 	// in InitializeDisk) is *NOT ENOUGH* to reset a disk and can render it inoperable for partitioning
 	// or formatting under Windows. See https://github.com/pbatard/rufus/issues/759 for details.
+
+#ifdef RUFUS_TARGET_NT4
+	// Raw image writing doesn't require cleaning
+	if ((WindowsVersion.Version <= WINDOWS_NT4) &&
+		((boot_type != BT_IMAGE) || (img_report.is_iso && !write_as_image))) {
+		if (!NT4_ClearPartitionMetadata(hPhysicalDrive, SelectedDrive.DiskSize,
+			SelectedDrive.SectorSize)) {
+			uprintf("Could not delete existing partition metadata: %s (NT4)", WindowsErrorString());
+			ErrorStatus = (LastWriteError != 0) ? LastWriteError : RUFUS_ERROR(ERROR_PARTITION_FAILURE);
+			goto out;
+		}
+	}
+#endif
 
 	// A second reset requence leaves NT5 disks unpartitionable (port)
 	if ((WindowsVersion.Version > WINDOWS_XP) &&
@@ -1722,7 +2514,12 @@ DWORD WINAPI FormatThread(void* param)
 				uprintf("Bad blocks: Check failed.");
 				if (!IS_ERROR(ErrorStatus))
 					ErrorStatus = RUFUS_ERROR(APPERR(ERROR_BADBLOCKS_FAILURE));
-				ClearMBRGPT(hPhysicalDrive, SelectedDrive.DiskSize, SelectedDrive.SectorSize, FALSE);
+#ifdef RUFUS_TARGET_NT4
+				if (WindowsVersion.Version <= WINDOWS_NT4)
+					IGNORE_RETVAL(NT4_ClearPartitionMetadata(hPhysicalDrive, SelectedDrive.DiskSize, SelectedDrive.SectorSize));
+				else
+#endif
+					IGNORE_RETVAL(ClearMBRGPT(hPhysicalDrive, SelectedDrive.DiskSize, SelectedDrive.SectorSize, FALSE));
 				fclose(log_fd);
 				DeleteFileU(logfile);
 				goto out;
@@ -1754,7 +2551,13 @@ DWORD WINAPI FormatThread(void* param)
 
 		// Especially after destructive badblocks test, you must zero the MBR/GPT completely
 		// before repartitioning. Else, all kind of bad things happen.
+#ifdef RUFUS_TARGET_NT4
+		if ((WindowsVersion.Version <= WINDOWS_NT4) ?
+			!NT4_ClearPartitionMetadata(hPhysicalDrive, SelectedDrive.DiskSize, SelectedDrive.SectorSize) :
+			!ClearMBRGPT(hPhysicalDrive, SelectedDrive.DiskSize, SelectedDrive.SectorSize, use_large_fat32)) {
+#else
 		if (!ClearMBRGPT(hPhysicalDrive, SelectedDrive.DiskSize, SelectedDrive.SectorSize, use_large_fat32)) {
+#endif
 			uprintf("unable to zero MBR/GPT");
 			if (!IS_ERROR(ErrorStatus))
 				ErrorStatus = RUFUS_ERROR(ERROR_WRITE_FAULT);
@@ -1809,8 +2612,16 @@ DWORD WINAPI FormatThread(void* param)
 	}
 	hLogicalVolume = INVALID_HANDLE_VALUE;
 
-	if (must_unlock_physical)
-		safe_unlockclose(hPhysicalDrive);
+	if (must_unlock_physical) {
+#ifdef RUFUS_TARGET_NT4
+		// NT4 never locked this physical handle, so close it directly before
+		// formatting so no unlock FSCTL reaches the legacy USB stack
+		if (WindowsVersion.Version <= WINDOWS_NT4)
+			safe_closehandle(hPhysicalDrive);
+		else
+#endif
+			safe_unlockclose(hPhysicalDrive);
+	}
 
 	if (use_vds) {
 		uprintf("Refreshing drive layout...");
@@ -1829,8 +2640,13 @@ DWORD WINAPI FormatThread(void* param)
 		RefreshLayout(DriveIndex);
 	}
 
-	// Wait for the logical drive we just created to appear
-	uprintf("Waiting for logical drive to reappear...");
+	// Stock NT4 requires an explicit DOS-device mapping
+#ifdef RUFUS_TARGET_NT4
+	if ((WindowsVersion.Version <= WINDOWS_NT4) && !write_as_esp && !write_as_ext)
+		uprintf("Mounting newly created partition (NT4)...");
+	else
+#endif
+		uprintf("Waiting for logical drive to reappear...");
 	Sleep(200);
 	if (write_as_esp || write_as_ext) {
 		// Can't format ESPs or ext2/ext3 partitions unless we mount them ourselves
@@ -1839,6 +2655,29 @@ DWORD WINAPI FormatThread(void* param)
 			ErrorStatus = RUFUS_ERROR(APPERR(ERROR_CANT_ASSIGN_LETTER));
 			goto out;
 		}
+	// IOCTL_DISK_SET_DRIVE_LAYOUT creates the partition on NT4, but NT4's mount manager
+	// does not necessarily publish a logical drive for the new still-unformatted partition 
+	// Waiting for a normal volume therefore times out even though the new MBR layout is already present
+	// Therefore, reuse Rufus's established native HarddiskN\PartitionN mapping so fmifs and the later file-copy path get a drive letter
+#ifdef RUFUS_TARGET_NT4
+	} else if (WindowsVersion.Version <= WINDOWS_NT4) {
+		volume_name = AltMountVolume(DriveIndex,
+			SelectedDrive.Partition[partition_index[PI_MAIN]].Offset, FALSE);
+		if (volume_name == NULL) {
+			uprintf("Could not create a DOS-device mapping for the new partition (NT4)");
+			ErrorStatus = RUFUS_ERROR(APPERR(ERROR_CANT_ASSIGN_LETTER));
+			goto out;
+		}
+		nt4_forced_mount = TRUE;
+		drive_name[0] = volume_name[0];
+		if (QueryDosDeviceA(volume_name, nt4_mount_target, sizeof(nt4_mount_target)) == 0) {
+			uprintf("Could not capture native partition target for '%s': %s (NT4)",
+				volume_name, WindowsErrorString());
+			ErrorStatus = RUFUS_ERROR(APPERR(ERROR_CANT_ASSIGN_LETTER));
+			goto out;
+		}
+		uprintf("Using '%c:' for formatting (NT4)", toupper(drive_name[0]));
+#endif
 	} else {
 		if (!WaitForLogical(DriveIndex, SelectedDrive.Partition[partition_index[PI_MAIN]].Offset)) {
 			if ((WindowsVersion.Version <= WINDOWS_XP) && (partition_type == PARTITION_STYLE_SFD)) {
@@ -1916,7 +2755,8 @@ DWORD WINAPI FormatThread(void* param)
 	}
 	Sleep(200);
 
-	if (!write_as_esp && !write_as_ext) {
+	// volume-GUID remount doesnt exist on NT4
+	if (!write_as_esp && !write_as_ext && !nt4_forced_mount) {
 		WaitForLogical(DriveIndex, 0);
 		// Try to continue
 		CHECK_FOR_USER_CANCEL;
@@ -1976,27 +2816,58 @@ DWORD WINAPI FormatThread(void* param)
 				goto out;
 			}
 		} else {
+#ifdef RUFUS_TARGET_NT4
+			if ((WindowsVersion.Version <= WINDOWS_NT4) && (fs_type == FS_FAT32) && use_large_fat32) {
+			} else
+#endif
+			{
 			// We still have a lock, which we need to modify the volume boot record
-			// => no need to reacquire the lock...
-			hLogicalVolume = GetLogicalHandle(DriveIndex, SelectedDrive.Partition[partition_index[PI_MAIN]].Offset, FALSE, TRUE, FALSE);
-			if ((hLogicalVolume == INVALID_HANDLE_VALUE) || (hLogicalVolume == NULL)) {
-				uprintf("Could not re-mount volume for partition boot record access");
-				ErrorStatus = RUFUS_ERROR(ERROR_OPEN_FAILED);
-				goto out;
+				// => no, need to reacquire the lock...
+#ifdef RUFUS_TARGET_NT4
+				if ((WindowsVersion.Version <= WINDOWS_NT4) && nt4_forced_mount) {
+					char nt4_volume_path[] = "\\\\.\\?:";
+					nt4_volume_path[4] = drive_name[0];
+					hLogicalVolume = CreateFileA(nt4_volume_path, GENERIC_READ | GENERIC_WRITE,
+						FILE_SHARE_READ, NULL, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, NULL);
+					if ((hLogicalVolume == INVALID_HANDLE_VALUE) &&
+						((GetLastError() == ERROR_SHARING_VIOLATION) || (GetLastError() == ERROR_ACCESS_DENIED)))
+						hLogicalVolume = CreateFileA(nt4_volume_path, GENERIC_READ | GENERIC_WRITE,
+							FILE_SHARE_READ | FILE_SHARE_WRITE, NULL, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, NULL);
+					if (hLogicalVolume != INVALID_HANDLE_VALUE) {
+						nt4_direct_pbr_handle = TRUE;
+					}
+				} else
+	#endif
+				{
+					hLogicalVolume = GetLogicalHandle(DriveIndex, SelectedDrive.Partition[partition_index[PI_MAIN]].Offset, FALSE, TRUE, FALSE);
+				}
+				if ((hLogicalVolume == INVALID_HANDLE_VALUE) || (hLogicalVolume == NULL)) {
+					uprintf("Could not re-mount volume for partition boot record access");
+					ErrorStatus = RUFUS_ERROR(ERROR_OPEN_FAILED);
+					goto out;
+				}
+				// NB: if you unmount the logical volume here, XP will report error:
+				// [0x00000456] The media in the drive may have changed
+				PrintInfoDebug(0, MSG_229);
+				if (!WritePBR(hLogicalVolume)) {
+					if (!IS_ERROR(ErrorStatus))
+						ErrorStatus = RUFUS_ERROR(ERROR_WRITE_FAULT);
+					goto out;
+				}
+#ifdef RUFUS_TARGET_NT4
+				if (nt4_direct_pbr_handle) {
+					safe_closehandle(hLogicalVolume);
+					nt4_direct_pbr_handle = FALSE;
+				} else
+	#endif
+				{
+					safe_unlockclose(hLogicalVolume);
+				}
 			}
-			// NB: if you unmount the logical volume here, XP will report error:
-			// [0x00000456] The media in the drive may have changed
-			PrintInfoDebug(0, MSG_229);
-			if (!WritePBR(hLogicalVolume)) {
-				if (!IS_ERROR(ErrorStatus))
-					ErrorStatus = RUFUS_ERROR(ERROR_WRITE_FAULT);
-				goto out;
-			}
-			// We must close and unlock the volume to write files to it
-			safe_unlockclose(hLogicalVolume);
 		}
 	} else {
-		if (IsChecked(IDC_EXTENDED_LABEL))
+		// Disable autorun.inf/.ico on NT4 permanently
+		if ((WindowsVersion.Version > WINDOWS_NT4) && IsChecked(IDC_EXTENDED_LABEL))
 			SetAutorun(drive_name);
 	}
 	CHECK_FOR_USER_CANCEL;
@@ -2004,8 +2875,14 @@ DWORD WINAPI FormatThread(void* param)
 	// We issue a complete remount of the filesystem on account of:
 	// - Ensuring the file explorer properly detects that the volume was updated
 	// - Ensuring that an NTFS system will be reparsed so that it becomes bootable
+#ifdef RUFUS_TARGET_NT4
+	if (WindowsVersion.Version <= WINDOWS_NT4) {
+	} else
+#endif
+	{
 	if (!RemountVolume(drive_name, FALSE))
 		goto out;
+	}
 	CHECK_FOR_USER_CANCEL;
 
 	if (boot_type != BT_NON_BOOTABLE) {
@@ -2089,20 +2966,33 @@ DWORD WINAPI FormatThread(void* param)
 		PrintInfoDebug(0, MSG_233);
 		if ((boot_type == BT_IMAGE) && (image_path != NULL) && (img_report.is_iso) && (!windows_to_go))
 			UpdateMD5Sum(drive_name, md5sum_name[img_report.has_md5sum ? img_report.has_md5sum - 1 : 0]);
-		if (IsChecked(IDC_EXTENDED_LABEL))
+		if ((WindowsVersion.Version > WINDOWS_NT4) && IsChecked(IDC_EXTENDED_LABEL))
 			SetAutorun(drive_name);
 		// Issue another complete remount before we exit, to ensure we're clean
+#ifdef RUFUS_TARGET_NT4
+		if (WindowsVersion.Version > WINDOWS_NT4)
+			RemountVolume(drive_name, TRUE);
+#else
 		RemountVolume(drive_name, TRUE);
+#endif
 		// NTFS fixup (WinPE/AIK images don't seem to boot without an extra checkdisk)
 		if ((boot_type == BT_IMAGE) && (img_report.is_iso) && (fs_type == FS_NTFS)) {
-			// Try to ensure that all messages from Checkdisk will be in English
-			if (PRIMARYLANGID(GetThreadUILanguage()) != LANG_ENGLISH) {
-				SetThreadUILanguage(MAKELANGID(LANG_ENGLISH, SUBLANG_ENGLISH_US));
-				if (PRIMARYLANGID(GetThreadUILanguage()) != LANG_ENGLISH)
-					uprintf("Note: CheckDisk messages may be localized");
+#ifdef RUFUS_TARGET_NT4
+			// NT4 CHKDSK would immediately reopen the freshly populated raw volume
+			// Leave modern image contents untouched
+			if (WindowsVersion.Version <= WINDOWS_NT4) {
+			} else
+#endif
+			{
+				// Try to ensure that all messages from Checkdisk will be in English
+				if (PRIMARYLANGID(GetThreadUILanguage()) != LANG_ENGLISH) {
+					SetThreadUILanguage(MAKELANGID(LANG_ENGLISH, SUBLANG_ENGLISH_US));
+					if (PRIMARYLANGID(GetThreadUILanguage()) != LANG_ENGLISH)
+						uprintf("Note: CheckDisk messages may be localized");
+				}
+				CheckDisk(drive_name[0]);
+				UpdateProgress(OP_FINALIZE, -1.0f);
 			}
-			CheckDisk(drive_name[0]);
-			UpdateProgress(OP_FINALIZE, -1.0f);
 		}
 	}
 
@@ -2116,40 +3006,89 @@ DWORD WINAPI FormatThread(void* param)
 
 	if (!IS_ERROR(ErrorStatus) && (WindowsVersion.Version <= WINDOWS_XP) &&
 		(partition_type == PARTITION_STYLE_GPT)) {
-		// Unmount the NT5 staging volume before committing the saved GPT metadata (port)
-		safe_unlockclose(hPhysicalDrive);
-		RemoveDriveLetters(DriveIndex, FALSE, TRUE);
-		hLogicalVolume = GetLogicalHandle(DriveIndex,
-			SelectedDrive.Partition[partition_index[PI_MAIN]].Offset, TRUE, TRUE, FALSE);
-		if ((hLogicalVolume == INVALID_HANDLE_VALUE) || (hLogicalVolume == NULL)) {
-			uprintf("Could not lock the staging volume for GPT finalization");
-			ErrorStatus = RUFUS_ERROR(ERROR_OPEN_FAILED);
-		} else {
-			IGNORE_RETVAL(FlushFileBuffers(hLogicalVolume));
-			if (!UnmountVolume(hLogicalVolume))
-				ErrorStatus = RUFUS_ERROR(ERROR_ACCESS_DENIED);
-			safe_unlockclose(hLogicalVolume);
-		}
-		if (!IS_ERROR(ErrorStatus)) {
-			hPhysicalDrive = GetPhysicalHandle(DriveIndex, TRUE, TRUE, FALSE);
+#ifdef RUFUS_TARGET_NT4
+		if ((WindowsVersion.Version <= WINDOWS_NT4) && nt4_forced_mount) {
+			// Keep both the existing physical handle and temporary DOS-device
+			// mapping untouched while committing GPT metadata
+			volume_name = NULL;
+			nt4_forced_mount = FALSE;
 			if ((hPhysicalDrive == INVALID_HANDLE_VALUE) || !FinalizeXpGpt(hPhysicalDrive))
 				ErrorStatus = RUFUS_ERROR(ERROR_PARTITION_FAILURE);
 			else {
-				// Report success without remounting a GPT layout as NT5 can't expose those anyway, informatively-aesthetic lol (port)
 				ErrorStatus = 0;
 				uprintf("GPT finalization completed; replug the drive on its target machine");
+			}
+		} else
+#endif
+		{
+			// Unmount the NT5 staging volume before committing the saved GPT metadata (port)
+			safe_unlockclose(hPhysicalDrive);
+			RemoveDriveLetters(DriveIndex, FALSE, TRUE);
+			hLogicalVolume = GetLogicalHandle(DriveIndex,
+				SelectedDrive.Partition[partition_index[PI_MAIN]].Offset, TRUE, TRUE, FALSE);
+			if ((hLogicalVolume == INVALID_HANDLE_VALUE) || (hLogicalVolume == NULL)) {
+				uprintf("Could not lock the staging volume for GPT finalization");
+				ErrorStatus = RUFUS_ERROR(ERROR_OPEN_FAILED);
+			} else {
+				IGNORE_RETVAL(FlushFileBuffers(hLogicalVolume));
+				if (!UnmountVolume(hLogicalVolume))
+					ErrorStatus = RUFUS_ERROR(ERROR_ACCESS_DENIED);
+				safe_unlockclose(hLogicalVolume);
+			}
+			if (!IS_ERROR(ErrorStatus)) {
+				hPhysicalDrive = GetPhysicalHandle(DriveIndex, TRUE, TRUE, FALSE);
+				if ((hPhysicalDrive == INVALID_HANDLE_VALUE) || !FinalizeXpGpt(hPhysicalDrive))
+					ErrorStatus = RUFUS_ERROR(ERROR_PARTITION_FAILURE);
+				else {
+					// Report success without remounting a GPT layout, as NT4/5 can't expose those anyway, informatively-aesthetic lol (port)
+					ErrorStatus = 0;
+					uprintf("GPT finalization completed; replug the drive on its target machine");
+				}
 			}
 		}
 	}
 
 out:
-	if ((write_as_esp || write_as_ext) && volume_name != NULL)
+#ifdef RUFUS_TARGET_NT4
+	if ((WindowsVersion.Version <= WINDOWS_NT4) && !IS_ERROR(ErrorStatus) &&
+		nt4_forced_mount && (volume_name != NULL)) {
+		char current_target[MAX_PATH] = { 0 };
+		BOOL mapping_ok = (QueryDosDeviceA(volume_name, current_target, sizeof(current_target)) != 0) &&
+			(nt4_mount_target[0] != 0) && (_stricmp(current_target, nt4_mount_target) == 0);
+
+		if (!mapping_ok && (nt4_mount_target[0] != 0)) {
+			uprintf("Restoring final mount mapping '%s' (NT4)", volume_name);
+			IGNORE_RETVAL(DefineDosDeviceA(DDD_REMOVE_DEFINITION | DDD_NO_BROADCAST_SYSTEM,
+				volume_name, NULL));
+			mapping_ok = DefineDosDeviceA(DDD_RAW_TARGET_PATH | DDD_NO_BROADCAST_SYSTEM,
+				volume_name, nt4_mount_target);
+		}
+		if (mapping_ok) {
+			// AltMountVolume returns static storage, so NULL it rather than free it
+			volume_name = NULL;
+			nt4_forced_mount = FALSE;
+		} else {
+			uprintf("Could not preserve the final drive mapping: %s (NT4)", WindowsErrorString());
+			ErrorStatus = RUFUS_ERROR(APPERR(ERROR_CANT_REMOUNT_VOLUME));
+		}
+	}
+#endif
+	if ((write_as_esp || write_as_ext || nt4_forced_mount) && volume_name != NULL)
 		AltUnmountVolume(volume_name, TRUE);
 	else
 		safe_free(volume_name);
 	safe_free(buffer);
-	safe_unlockclose(hLogicalVolume);
-	safe_unlockclose(hPhysicalDrive);	// This can take a while
+#ifdef RUFUS_TARGET_NT4
+	if (WindowsVersion.Version <= WINDOWS_NT4) {
+		safe_closehandle(hLogicalVolume);
+		safe_closehandle(hPhysicalDrive);
+		nt4_direct_pbr_handle = FALSE;
+	} else
+#endif
+	{
+		safe_unlockclose(hLogicalVolume);
+		safe_unlockclose(hPhysicalDrive);	// This can take a while
+	}
 	if ((boot_type == BT_IMAGE) && write_as_image) {
 		PrintInfo(0, MSG_320, lmprintf(MSG_307));
 		Sleep(200);
@@ -2176,6 +3115,11 @@ out:
 			free(volume_name);
 		}
 	}
+#ifdef RUFUS_TARGET_NT4
+	// Preserve diagnostics until an operation successfully completes
+	if ((WindowsVersion.Version <= WINDOWS_NT4) && !IS_ERROR(ErrorStatus))
+		NT4_ClearDiskDiagnostics();
+#endif
 	PostMessage(hMainDialog, UM_FORMAT_COMPLETED, (WPARAM)TRUE, 0);
 	ExitThread(0);
 }

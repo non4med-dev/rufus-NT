@@ -477,7 +477,8 @@ void PositionMainControls(HWND hDlg)
 		// Still need to adjust the width of the device selection dropdown
 		GetWindowRect(hDeviceList, &rc);
 		MapWindowPoints(NULL, hMainDialog, (POINT*)&rc, 2);
-		SetWindowPos(hDeviceList, GetDlgItem(hDlg, IDS_DEVICE_TXT), rc.left, rc.top, fw - ssw - sbw, rc.bottom - rc.top, 0);
+		SetWindowPos(hDeviceList, GetDlgItem(hDlg, IDS_DEVICE_TXT), rc.left, rc.top,
+			(WindowsVersion.Version <= WINDOWS_NT4) ? fw : fw - ssw - sbw, rc.bottom - rc.top, 0);
 	}
 
 	// Resize the full width controls
@@ -650,13 +651,19 @@ void ToggleAdvancedDeviceOptions(BOOL enable)
 		MoveCtrlY(hMainDialog, advanced_device_move_ids[i], shift);
 
 	// Hide or show the various advanced options
-	for (i = 0; i<ARRAYSIZE(advanced_device_toggle_ids); i++)
-		ShowWindow(GetDlgItem(hMainDialog, advanced_device_toggle_ids[i]), enable ? SW_SHOW : SW_HIDE);
+	for (i = 0; i<ARRAYSIZE(advanced_device_toggle_ids); i++) {
+		if ((WindowsVersion.Version <= WINDOWS_NT4) &&
+			(advanced_device_toggle_ids[i] == IDC_SAVE_TOOLBAR))
+			ShowWindow(hSaveToolbar, SW_HIDE);
+		else
+			ShowWindow(GetDlgItem(hMainDialog, advanced_device_toggle_ids[i]), enable ? SW_SHOW : SW_HIDE);
+	}
 
 	GetWindowRect(hDeviceList, &rc);
 	MapWindowPoints(NULL, hMainDialog, (POINT*)&rc, 2);
-	SetWindowPos(hDeviceList, GetDlgItem(hMainDialog, IDS_DEVICE_TXT), rc.left, rc.top, enable ? fw - ssw - sbw : fw, rc.bottom - rc.top, 0);
-	if (WindowsVersion.Version == WINDOWS_2000) {
+	SetWindowPos(hDeviceList, GetDlgItem(hMainDialog, IDS_DEVICE_TXT), rc.left, rc.top,
+		(enable && (WindowsVersion.Version > WINDOWS_NT4)) ? fw - ssw - sbw : fw, rc.bottom - rc.top, 0);
+	if (WindowsVersion.Version <= WINDOWS_2000) {
 		// Restore W2k's combo-box drop heights after resizing (port)
 		W2K_RestoreComboBoxDropHeights(hMainDialog);
 	}
@@ -913,9 +920,9 @@ void CreateSmallButtons(HWND hDlg)
 			hIconSave = CreateIconFromResourceEx(buffer, bufsize, TRUE, 0x30000, 0, 0, 0);
 	}
 
-	// Use icos for icons on NT5 (port)
+	// Use icos for icons on NT4/5 (port)
 	if (hIconSave == NULL) {
-		hIconSave = (WindowsVersion.Version == WINDOWS_2000) ?
+		hIconSave = (WindowsVersion.Version <= WINDOWS_2000) ?
 			W2K_LoadAlphaIconResource(hMainInstance, IDI_SAVE_16 + icon_offset,
 				i16, i16, GetSysColor(COLOR_BTNFACE)) :
 			(HICON)LoadImageA(hMainInstance, MAKEINTRESOURCEA(IDI_SAVE_16 + icon_offset),
@@ -943,6 +950,9 @@ void CreateSmallButtons(HWND hDlg)
 	tbToolbarButtons[0].iBitmap = 0;
 	SendMessage(hSaveToolbar, TB_ADDBUTTONS, (WPARAM)1, (LPARAM)&tbToolbarButtons);
 	SetAccessibleName(hSaveToolbar, lmprintf(MSG_313));
+	// Hide VHD saving on NT4 as its completely hopeless
+	if (WindowsVersion.Version <= WINDOWS_NT4)
+		ShowWindow(hSaveToolbar, SW_HIDE);
 
 	hHashToolbar = CreateWindowEx(0, TOOLBARCLASSNAME, NULL, TOOLBAR_STYLE,
 		0, 0, 0, 0, hMainDialog, (HMENU)IDC_HASH_TOOLBAR, hMainInstance, NULL);
@@ -956,7 +966,7 @@ void CreateSmallButtons(HWND hDlg)
 	}
 
 	if (hIconHash == NULL) {
-		hIconHash = (WindowsVersion.Version == WINDOWS_2000) ?
+		hIconHash = (WindowsVersion.Version <= WINDOWS_2000) ?
 			W2K_LoadAlphaIconResource(hMainInstance, IDI_HASH_16 + icon_offset,
 				i16, i16, GetSysColor(COLOR_BTNFACE)) :
 			(HICON)LoadImageA(hMainInstance, MAKEINTRESOURCEA(IDI_HASH_16 + icon_offset),
@@ -988,13 +998,14 @@ void CreateSmallButtons(HWND hDlg)
 static INT_PTR CALLBACK ProgressCallback(HWND hCtrl, UINT message, WPARAM wParam, LPARAM lParam)
 {
 	HDC hDC;
-	HPEN hOldPen;
+	HPEN hOldPen, hBorderPen;
 	HFONT hOldFont;
 	HBRUSH hOldBrush;
 	RECT rc, rc2;
 	PAINTSTRUCT ps;
 	SIZE size;
 	LONG full_right;
+	UINT text_flags;
 	wchar_t winfo[128];
 	static BOOL marquee_mode = FALSE;
 	static uint32_t pos = 0, min = 0, max = 0xFFFF;
@@ -1061,8 +1072,20 @@ static INT_PTR CALLBACK ProgressCallback(HWND hCtrl, UINT message, WPARAM wParam
 		GetClientRect(hCtrl, &rc);
 		rc2 = rc;
 		InflateRect(&rc, -1, -1);
-		hOldPen = (HPEN)SelectObject(hDC, GetStockObject(DC_PEN));
+		// NT4 has neither DC_PEN nor a functional SetDCPenColor
+		hBorderPen = NULL;
+		if (WindowsVersion.Version == WINDOWS_NT4) {
+			hBorderPen = CreatePen(PS_SOLID, 1, PROGRESS_BAR_BOX_COLOR);
+			hOldPen = (HPEN)SelectObject(hDC, (hBorderPen != NULL) ?
+				hBorderPen : GetStockObject(BLACK_PEN));
+		} else {
+			hOldPen = (HPEN)SelectObject(hDC, GetStockObject(DC_PEN));
+		}
 		hOldBrush = (HBRUSH)SelectObject(hDC, GetStockObject(NULL_BRUSH));
+		// ETO_NUMERICSLOCAL is newer than NT4
+		text_flags = ETO_CLIPPED | ETO_OPAQUE;
+		if (WindowsVersion.Version != WINDOWS_NT4)
+			text_flags |= ETO_NUMERICSLOCAL;
 		// TODO: Handle SetText message so we can avoid this call
 		GetWindowTextW(hProgress, winfo, ARRAYSIZE(winfo));
 		hOldFont = (hInfoFont != NULL) ? (HFONT)SelectObject(hDC, hInfoFont) : NULL;
@@ -1079,7 +1102,7 @@ static INT_PTR CALLBACK ProgressCallback(HWND hCtrl, UINT message, WPARAM wParam
 				SetTextColor(hDC, PROGRESS_BAR_INVERTED_TEXT_COLOR);
 				SetBkColor(hDC, color);
 				ExtTextOut(hDC, (full_right - size.cx) / 2, (rc.bottom - size.cy) / 2,
-					ETO_CLIPPED | ETO_OPAQUE | ETO_NUMERICSLOCAL, &rc, winfo, (int)wcslen(winfo), NULL);
+					text_flags, &rc, winfo, (int)wcslen(winfo), NULL);
 				rc.left = rc.right;
 				rc.right = full_right;
 			}
@@ -1089,7 +1112,7 @@ static INT_PTR CALLBACK ProgressCallback(HWND hCtrl, UINT message, WPARAM wParam
 				SetTextColor(hDC, PROGRESS_BAR_NORMAL_TEXT_COLOR);
 				SetBkColor(hDC, PROGRESS_BAR_BACKGROUND_COLOR);
 				ExtTextOut(hDC, (full_right - size.cx) / 2, (rc.bottom - size.cy) / 2,
-					ETO_CLIPPED | ETO_OPAQUE | ETO_NUMERICSLOCAL, &rc, winfo, (int)wcslen(winfo), NULL);
+					text_flags, &rc, winfo, (int)wcslen(winfo), NULL);
 				rc.left = rc.right;
 				rc.right = full_right;
 			}
@@ -1098,14 +1121,14 @@ static INT_PTR CALLBACK ProgressCallback(HWND hCtrl, UINT message, WPARAM wParam
 			SetTextColor(hDC, PROGRESS_BAR_INVERTED_TEXT_COLOR);
 			SetBkColor(hDC, color);
 			ExtTextOut(hDC, (full_right - size.cx) / 2, (rc.bottom - size.cy) / 2,
-				ETO_CLIPPED | ETO_OPAQUE | ETO_NUMERICSLOCAL, &rc, winfo, (int)wcslen(winfo), NULL);
+				text_flags, &rc, winfo, (int)wcslen(winfo), NULL);
 		} else {
 			// First segment
 			rc.right = (pos > min) ? MulDiv(pos - min, rc.right, max - min) : rc.left;
 			SetTextColor(hDC, PROGRESS_BAR_INVERTED_TEXT_COLOR);
 			SetBkColor(hDC, color);
 			ExtTextOut(hDC, (full_right - size.cx) / 2, (rc.bottom - size.cy) / 2,
-				ETO_CLIPPED | ETO_OPAQUE | ETO_NUMERICSLOCAL, &rc, winfo, (int)wcslen(winfo), NULL);
+				text_flags, &rc, winfo, (int)wcslen(winfo), NULL);
 		}
 		// Last segment
 		rc.left = rc.right;
@@ -1113,14 +1136,17 @@ static INT_PTR CALLBACK ProgressCallback(HWND hCtrl, UINT message, WPARAM wParam
 		SetTextColor(hDC, PROGRESS_BAR_NORMAL_TEXT_COLOR);
 		SetBkColor(hDC, PROGRESS_BAR_BACKGROUND_COLOR);
 		ExtTextOut(hDC, (full_right - size.cx) / 2, (rc.bottom - size.cy) / 2,
-			ETO_CLIPPED | ETO_OPAQUE | ETO_NUMERICSLOCAL, &rc, winfo, (int)wcslen(winfo), NULL);
+			text_flags, &rc, winfo, (int)wcslen(winfo), NULL);
 		// Bounding rectangle
-		SetDCPenColor(hDC, PROGRESS_BAR_BOX_COLOR);
+		if (WindowsVersion.Version != WINDOWS_NT4)
+			SetDCPenColor(hDC, PROGRESS_BAR_BOX_COLOR);
 		Rectangle(hDC, rc2.left, rc2.top, rc2.right, rc2.bottom);
 		if (hOldFont != NULL)
 			SelectObject(hDC, hOldFont);
 		SelectObject(hDC, hOldPen);
 		SelectObject(hDC, hOldBrush);
+		if (hBorderPen != NULL)
+			DeleteObject(hBorderPen);
 		EndPaint(hCtrl, &ps);
 		return (INT_PTR)TRUE;
 	}
@@ -1177,8 +1203,13 @@ void CreateAdditionalControls(HWND hDlg)
 		}
 	} else {
 		HMODULE hInst = GetModuleHandle(NULL);
-		hIconUp = (HICON)LoadImage(hInst, MAKEINTRESOURCE(IDI_UP), IMAGE_ICON, s16, s16, LR_DEFAULTCOLOR);
-		hIconDown = (HICON)LoadImage(hInst, MAKEINTRESOURCE(IDI_DOWN), IMAGE_ICON, s16, s16, LR_DEFAULTCOLOR);
+		// These systems corrupt alpha-only up/down icon resources
+		hIconUp = (WindowsVersion.Version <= WINDOWS_2000) ?
+			W2K_LoadAlphaIconResource(hInst, IDI_UP, s16, s16, GetSysColor(COLOR_BTNFACE)) :
+			(HICON)LoadImage(hInst, MAKEINTRESOURCE(IDI_UP), IMAGE_ICON, s16, s16, LR_DEFAULTCOLOR);
+		hIconDown = (WindowsVersion.Version <= WINDOWS_2000) ?
+			W2K_LoadAlphaIconResource(hInst, IDI_DOWN, s16, s16, GetSysColor(COLOR_BTNFACE)) :
+			(HICON)LoadImage(hInst, MAKEINTRESOURCE(IDI_DOWN), IMAGE_ICON, s16, s16, LR_DEFAULTCOLOR);
 		if (hIconUp == NULL || hIconDown == NULL) {
 			uprintf("Could not load advanced-options icons: %s", WindowsErrorString());
 		}
@@ -1261,7 +1292,7 @@ void CreateAdditionalControls(HWND hDlg)
 		}
 
 		if (hIcon == NULL) {
-			hIcon = (WindowsVersion.Version == WINDOWS_2000) ?
+			hIcon = (WindowsVersion.Version <= WINDOWS_2000) ?
 				W2K_LoadAlphaIconResource(hMainInstance, multitoolbar_icons[i] + icon_offset,
 					i16, i16, GetSysColor(COLOR_BTNFACE)) :
 				(HICON)LoadImageA(hMainInstance,

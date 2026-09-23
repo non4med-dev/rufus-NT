@@ -439,7 +439,8 @@ BOOL SmartGetVersion(HANDLE hdevice)
  *   from the above) => there is no magic API we can query that will tell us what we're
  *   really looking at.
  */
-int IsHDD(DWORD DriveIndex, uint16_t vid, uint16_t pid, const char* strid)
+
+int IsHDD(DWORD DriveIndex, uint16_t vid, uint16_t pid, const char* strid, uint64_t known_drive_size)
 {
 	int score = 0;
 	size_t i, mlen, ilen, score_list_size = 0;
@@ -449,13 +450,16 @@ int IsHDD(DWORD DriveIndex, uint16_t vid, uint16_t pid, const char* strid)
 	char str[64] = { 0 };
 
 	// Boost the score if fixed, as these are *generally* HDDs
+#ifdef RUFUS_TARGET_NT4
+	// Avoid reopening the NT4 volume solely to score its drive type
+	if (WindowsVersion.Version > WINDOWS_NT4)
+#endif
 	if (GetDriveTypeFromIndex(DriveIndex) == DRIVE_FIXED) {
 		score_list[score_list_size] = 3;
 		score += score_list[score_list_size++];
 	}
 
-	// Adjust the score depending on the size
-	drive_size = GetDriveSize(DriveIndex);
+	drive_size = (known_drive_size != 0) ? known_drive_size : GetDriveSize(DriveIndex);
 	if (drive_size > 800 * GB) {
 		score_list[score_list_size] = 15;
 		score += score_list[score_list_size++];

@@ -127,6 +127,43 @@ static DWORD GetVolumeID(void)
 	return d;
 }
 
+#ifdef RUFUS_TARGET_NT4
+static BOOL NT4_GetCachedFat32Partition(uint64_t PartitionOffset, PDISK_GEOMETRY geometry,
+	PPARTITION_INFORMATION partition)
+{
+	DWORD sector_size, sectors_per_track;
+	int i;
+
+	if ((geometry == NULL) || (partition == NULL))
+		return FALSE;
+	sector_size = SelectedDrive.SectorSize;
+	if (sector_size < 512)
+		sector_size = 512;
+	if ((sector_size & (sector_size - 1)) != 0)
+		return FALSE;
+	for (i = 0; i < MAX_PARTITIONS; i++) {
+		if ((SelectedDrive.Partition[i].Size != 0) &&
+			(SelectedDrive.Partition[i].Offset == PartitionOffset))
+			break;
+	}
+	if (i == MAX_PARTITIONS)
+		return FALSE;
+	memset(geometry, 0, sizeof(*geometry));
+	memset(partition, 0, sizeof(*partition));
+	sectors_per_track = SelectedDrive.SectorsPerTrack;
+	if (sectors_per_track == 0)
+		sectors_per_track = 63;
+	geometry->BytesPerSector = sector_size;
+	geometry->SectorsPerTrack = sectors_per_track;
+	geometry->TracksPerCylinder = 255;
+	geometry->MediaType = SelectedDrive.MediaType;
+	partition->StartingOffset.QuadPart = PartitionOffset;
+	partition->PartitionLength.QuadPart = SelectedDrive.Partition[i].Size;
+	partition->HiddenSectors = (DWORD)(PartitionOffset / sector_size);
+	return TRUE;
+}
+#endif
+
 /*
  * Proper computation of FAT size
  * See: http://www.syslinux.org/archives/2016-February/024850.html
@@ -152,7 +189,13 @@ static DWORD GetFATSizeSectors(DWORD DskSize, DWORD ReservedSecCnt, DWORD SecPer
  */
 BOOL FormatLargeFAT32(DWORD DriveIndex, uint64_t PartitionOffset, DWORD ClusterSize, LPCSTR FSName, LPCSTR Label, DWORD Flags)
 {
-	BOOL r = FALSE;
+	BOOL r = FALSE, nt4_unlocked_volume = FALSE;
+#ifdef RUFUS_TARGET_NT4
+	BOOL nt4_aligned_buffers = FALSE, nt4_has_label = FALSE;
+	DWORD nt4_stage_tick = 0;
+	char nt4_stage[128];
+	size_t nt4_label_length = 0;
+#endif
 	DWORD i;
 	HANDLE hLogicalVolume = NULL;
 	DWORD cbRet;
@@ -197,47 +240,76 @@ BOOL FormatLargeFAT32(DWORD DriveIndex, uint64_t PartitionOffset, DWORD ClusterS
 	UpdateProgressWithInfoInit(NULL, TRUE);
 	VolumeId = GetVolumeID();
 
+#ifdef RUFUS_TARGET_NT4
+	if (WindowsVersion.Version <= WINDOWS_NT4) {
+		nt4_unlocked_volume = TRUE;
+		NT4_SetDiskFunction("FormatLargeFAT32");
+	}
+#endif
 	// Open the drive and lock it
 	hLogicalVolume = write_as_esp ?
-		AltGetLogicalHandle(DriveIndex, PartitionOffset, TRUE, TRUE, FALSE) :
-		GetLogicalHandle(DriveIndex, PartitionOffset, TRUE, TRUE, FALSE);
+		AltGetLogicalHandle(DriveIndex, PartitionOffset, !nt4_unlocked_volume, TRUE, FALSE) :
+		GetLogicalHandle(DriveIndex, PartitionOffset, !nt4_unlocked_volume, TRUE, FALSE);
 	if (IS_ERROR(ErrorStatus))
 		goto out;
 	if ((hLogicalVolume == INVALID_HANDLE_VALUE) || (hLogicalVolume == NULL))
 		die("Invalid logical volume handle", ERROR_INVALID_HANDLE);
-
 	// Try to disappear the volume while we're formatting it
-	UnmountVolume(hLogicalVolume);
+	if (!nt4_unlocked_volume)
+		UnmountVolume(hLogicalVolume);
 
 	// Work out drive params
-	if (!DeviceIoControl (hLogicalVolume, IOCTL_DISK_GET_DRIVE_GEOMETRY, NULL, 0, &dgDrive,
-		sizeof(dgDrive), &cbRet, NULL)) {
-		if (!DeviceIoControl (hLogicalVolume, IOCTL_DISK_GET_DRIVE_GEOMETRY_EX, NULL, 0, xdgDrive,
-			sizeof(geometry_ex), &cbRet, NULL)) {
-			uprintf("IOCTL_DISK_GET_DRIVE_GEOMETRY error: %s", WindowsErrorString());
-			die("Failed to get device geometry (both regular and _ex)", ERROR_NOT_SUPPORTED);
+#ifdef RUFUS_TARGET_NT4
+	if (nt4_unlocked_volume) {
+		// The partition and sector geometry are already cached in SelectedDrive
+		// Do not send geometry or partition-information IOCTLs through the NT4 logical USB volume
+		// immediately after CreateFile, which is what seems to have been crashing Linux writes in ISO mode
+		if (!NT4_GetCachedFat32Partition(PartitionOffset, &dgDrive, &piDrive))
+			die("Could not resolve FAT32 partition from cached disk layout (NT4)", ERROR_INVALID_DATA);
+		uprintf("Using cached FAT32 partition geometry (%lu-byte sectors) (NT4)", dgDrive.BytesPerSector);
+	} else
+#endif
+	{
+		if (!DeviceIoControl (hLogicalVolume, IOCTL_DISK_GET_DRIVE_GEOMETRY, NULL, 0, &dgDrive,
+			sizeof(dgDrive), &cbRet, NULL)) {
+			if (!DeviceIoControl (hLogicalVolume, IOCTL_DISK_GET_DRIVE_GEOMETRY_EX, NULL, 0, xdgDrive,
+				sizeof(geometry_ex), &cbRet, NULL)) {
+				uprintf("IOCTL_DISK_GET_DRIVE_GEOMETRY error: %s", WindowsErrorString());
+				die("Failed to get device geometry (both regular and _ex)", ERROR_NOT_SUPPORTED);
+			}
+			memcpy(&dgDrive, &xdgDrive->Geometry, sizeof(dgDrive));
 		}
-		memcpy(&dgDrive, &xdgDrive->Geometry, sizeof(dgDrive));
-	}
-	if (dgDrive.BytesPerSector < 512)
-		dgDrive.BytesPerSector = 512;
-	if (IS_ERROR(ErrorStatus)) goto out;
-	if (!DeviceIoControl (hLogicalVolume, IOCTL_DISK_GET_PARTITION_INFO, NULL, 0, &piDrive,
-		sizeof(piDrive), &cbRet, NULL)) {
-		if (!DeviceIoControl (hLogicalVolume, IOCTL_DISK_GET_PARTITION_INFO_EX, NULL, 0, &xpiDrive,
-			sizeof(xpiDrive), &cbRet, NULL)) {
-			uprintf("IOCTL_DISK_GET_PARTITION_INFO error: %s", WindowsErrorString());
-			die("Failed to get partition info (both regular and _ex)", ERROR_NOT_SUPPORTED);
-		}
+		if (dgDrive.BytesPerSector < 512)
+			dgDrive.BytesPerSector = 512;
+		if (IS_ERROR(ErrorStatus)) goto out;
+		if (!DeviceIoControl (hLogicalVolume, IOCTL_DISK_GET_PARTITION_INFO, NULL, 0, &piDrive,
+			sizeof(piDrive), &cbRet, NULL)) {
+			if (!DeviceIoControl (hLogicalVolume, IOCTL_DISK_GET_PARTITION_INFO_EX, NULL, 0, &xpiDrive,
+				sizeof(xpiDrive), &cbRet, NULL)) {
+				uprintf("IOCTL_DISK_GET_PARTITION_INFO error: %s", WindowsErrorString());
+				die("Failed to get partition info (both regular and _ex)", ERROR_NOT_SUPPORTED);
+			}
 
-		memset(&piDrive, 0, sizeof(piDrive));
-		piDrive.StartingOffset.QuadPart = xpiDrive.StartingOffset.QuadPart;
-		piDrive.PartitionLength.QuadPart = xpiDrive.PartitionLength.QuadPart;
-		piDrive.HiddenSectors = (DWORD)(xpiDrive.StartingOffset.QuadPart / dgDrive.BytesPerSector);
+			memset(&piDrive, 0, sizeof(piDrive));
+			piDrive.StartingOffset.QuadPart = xpiDrive.StartingOffset.QuadPart;
+			piDrive.PartitionLength.QuadPart = xpiDrive.PartitionLength.QuadPart;
+			piDrive.HiddenSectors = (DWORD)(xpiDrive.StartingOffset.QuadPart / dgDrive.BytesPerSector);
+		}
+		if (IS_ERROR(ErrorStatus)) goto out;
 	}
-	if (IS_ERROR(ErrorStatus)) goto out;
 
 	BytesPerSect = dgDrive.BytesPerSector;
+#ifdef RUFUS_TARGET_NT4
+	if (nt4_unlocked_volume && (Label != NULL) && (Label[0] != 0)) {
+		nt4_has_label = TRUE;
+		nt4_label_length = strlen(Label);
+		if (nt4_label_length > 11)
+			nt4_label_length = 11;
+		memset(VolId, ' ', 11);
+		memcpy(VolId, Label, nt4_label_length);
+		VolId[11] = 0;
+	}
+#endif
 
 	// Checks on Disk Size
 	qTotalSectors = piDrive.PartitionLength.QuadPart / dgDrive.BytesPerSector;
@@ -279,12 +351,32 @@ BOOL FormatLargeFAT32(DWORD DriveIndex, uint64_t PartitionOffset, DWORD ClusterS
 	}
 
 	// coverity[tainted_data]
-	pFAT32BootSect = (FAT_BOOTSECTOR32*)calloc(BytesPerSect, 1);
-	pFAT32FsInfo = (FAT_FSINFO*)calloc(BytesPerSect, 1);
-	pFirstSectOfFat = (DWORD*)calloc(BytesPerSect, 1);
+#ifdef RUFUS_TARGET_NT4
+	if (nt4_unlocked_volume) {
+        // Sector-aligned buffers are required for the NT4 USB/SCSI path
+		// Windows 2000+ continue through the unmodified calloc() branch
+		nt4_aligned_buffers = TRUE;
+		pFAT32BootSect = (FAT_BOOTSECTOR32*)_mm_malloc(BytesPerSect, BytesPerSect);
+		pFAT32FsInfo = (FAT_FSINFO*)_mm_malloc(BytesPerSect, BytesPerSect);
+		pFirstSectOfFat = (DWORD*)_mm_malloc(BytesPerSect, BytesPerSect);
+	} else
+#endif
+	{
+		pFAT32BootSect = (FAT_BOOTSECTOR32*)calloc(BytesPerSect, 1);
+		pFAT32FsInfo = (FAT_FSINFO*)calloc(BytesPerSect, 1);
+		pFirstSectOfFat = (DWORD*)calloc(BytesPerSect, 1);
+	}
 	if (!pFAT32BootSect || !pFAT32FsInfo || !pFirstSectOfFat) {
 		die("Failed to allocate memory", ERROR_NOT_ENOUGH_MEMORY);
 	}
+#ifdef RUFUS_TARGET_NT4
+	if (nt4_aligned_buffers) {
+		// Preserve the original zero-initialized-buffer contract
+		memset(pFAT32BootSect, 0, BytesPerSect);
+		memset(pFAT32FsInfo, 0, BytesPerSect);
+		memset(pFirstSectOfFat, 0, BytesPerSect);
+	}
+#endif
 
 	// fill out the boot sector and fs info
 	pFAT32BootSect->sJmpBoot[0] = 0xEB;
@@ -418,7 +510,17 @@ BOOL FormatLargeFAT32(DWORD DriveIndex, uint64_t PartitionOffset, DWORD ClusterS
 	uprintf("Clearing out %d sectors for reserved sectors, FATs and root cluster...", SystemAreaSize);
 
 	// Not the most effective, but easy on RAM
-	pZeroSect = (BYTE*)calloc(BytesPerSect, BurstSize);
+#ifdef RUFUS_TARGET_NT4
+	if (nt4_aligned_buffers) {
+		// 64 KiB buffer else the oldass driver blesses my eyes with a IRQL_NOT_LESS_OR_EQUAL
+		pZeroSect = (BYTE*)_mm_malloc((size_t)BytesPerSect * BurstSize, BytesPerSect);
+		if (pZeroSect != NULL)
+			memset(pZeroSect, 0, (size_t)BytesPerSect * BurstSize);
+	} else
+#endif
+	{
+		pZeroSect = (BYTE*)calloc(BytesPerSect, BurstSize);
+	}
 	if (!pZeroSect) {
 		die("Failed to allocate memory", ERROR_NOT_ENOUGH_MEMORY);
 	}
@@ -426,12 +528,24 @@ BOOL FormatLargeFAT32(DWORD DriveIndex, uint64_t PartitionOffset, DWORD ClusterS
 	for (i = 0; i < (SystemAreaSize + BurstSize - 1); i += BurstSize) {
 		UpdateProgressWithInfo(OP_FORMAT, MSG_217, (uint64_t)i, (uint64_t)SystemAreaSize + BurstSize);
 		CHECK_FOR_USER_CANCEL;
+#ifdef RUFUS_TARGET_NT4
+		if (nt4_aligned_buffers && ((nt4_stage_tick == 0) ||
+			((DWORD)(GetTickCount() - nt4_stage_tick) >= 5000))) {
+			nt4_stage_tick = GetTickCount();
+			wsprintfA(nt4_stage, "202 FAT32 clear system area sector=%lu count=%lu", i, BurstSize);
+			NT4_SetDiskStage(nt4_stage);
+		}
+#endif
 		if (write_sectors(hLogicalVolume, BytesPerSect, i, BurstSize, pZeroSect) != (BytesPerSect * BurstSize)) {
 			die("Error clearing reserved sectors", ERROR_WRITE_FAULT);
 		}
 	}
 
 	uprintf ("Initializing reserved sectors and FATs...");
+#ifdef RUFUS_TARGET_NT4
+	if (nt4_aligned_buffers)
+		NT4_SetDiskStage("203 FAT32 write boot and FSInfo sectors");
+#endif
 	// Now we should write the boot sector and fsinfo twice, once at 0 and once at the backup boot sect position
 	for (i = 0; i < 2; i++) {
 		int SectorStart = (i == 0) ? 0 : BackupBootSect;
@@ -440,13 +554,37 @@ BOOL FormatLargeFAT32(DWORD DriveIndex, uint64_t PartitionOffset, DWORD ClusterS
 	}
 
 	// Write the first fat sector in the right places
+#ifdef RUFUS_TARGET_NT4
+	if (nt4_aligned_buffers)
+		NT4_SetDiskStage("204 FAT32 initialize FAT tables");
+#endif
 	for (i = 0; i < NumFATs; i++) {
 		int SectorStart = ReservedSectCount + (i * FatSize);
 		uprintf("FAT #%d sector at address: %d", i, SectorStart);
 		write_sectors(hLogicalVolume, BytesPerSect, SectorStart, 1, pFirstSectOfFat);
 	}
 
+#ifdef RUFUS_TARGET_NT4
+	if (nt4_aligned_buffers) {
+		// bs bs bs bs bs
+		PrintInfo(0, MSG_221, lmprintf(MSG_307));
+		if (nt4_has_label) {
+			NT4_SetDiskStage("205 FAT32 write volume label entry");
+			memset(pZeroSect, 0, BytesPerSect);
+			memcpy(pZeroSect, VolId, 11);
+			pZeroSect[11] = 0x08;
+			if (write_sectors(hLogicalVolume, BytesPerSect,
+				ReservedSectCount + NumFATs * FatSize, 1, pZeroSect) != BytesPerSect)
+				die("Could not write FAT32 volume label", ERROR_WRITE_FAULT);
+		}
+	}
+#endif
+
 	if (!(Flags & FP_NO_BOOT)) {
+#ifdef RUFUS_TARGET_NT4
+		if (nt4_aligned_buffers)
+			NT4_SetDiskStage("206 FAT32 write partition boot record");
+#endif
 		// Must do it here, as have issues when trying to write the PBR after a remount
 		PrintInfoDebug(0, MSG_229);
 		if (!WritePBR(hLogicalVolume)) {
@@ -456,16 +594,22 @@ BOOL FormatLargeFAT32(DWORD DriveIndex, uint64_t PartitionOffset, DWORD ClusterS
 	}
 
 	// Set the FAT32 volume label
-	PrintInfo(0, MSG_221, lmprintf(MSG_307));
-	uprintf("Setting label...");
-	// Handle must be closed for SetVolumeLabel to work
-	safe_closehandle(hLogicalVolume);
-	VolumeName = write_as_esp ?
-		AltGetLogicalName(DriveIndex, PartitionOffset, TRUE, TRUE) :
-		GetLogicalName(DriveIndex, PartitionOffset, TRUE, TRUE);
-	if ((VolumeName == NULL) || (!SetVolumeLabelA(VolumeName, Label))) {
-		uprintf("Could not set label: %s", WindowsErrorString());
-		// Non fatal error
+#ifdef RUFUS_TARGET_NT4
+	if (nt4_aligned_buffers) {
+		safe_closehandle(hLogicalVolume);
+	} else
+#endif
+	{
+		PrintInfo(0, MSG_221, lmprintf(MSG_307));
+		uprintf("Setting label...");
+		// Handle must be closed for SetVolumeLabel to work
+		safe_closehandle(hLogicalVolume);
+		VolumeName = write_as_esp ?
+			AltGetLogicalName(DriveIndex, PartitionOffset, TRUE, TRUE) :
+			GetLogicalName(DriveIndex, PartitionOffset, TRUE, TRUE);
+		if ((VolumeName == NULL) || (!SetVolumeLabelA(VolumeName, Label))) {
+			uprintf("Could not set label: %s", WindowsErrorString());
+		}
 	}
 
 	uprintf("Format completed.");
@@ -474,9 +618,20 @@ BOOL FormatLargeFAT32(DWORD DriveIndex, uint64_t PartitionOffset, DWORD ClusterS
 out:
 	safe_free(VolumeName);
 	safe_closehandle(hLogicalVolume);
-	safe_free(pFAT32BootSect);
-	safe_free(pFAT32FsInfo);
-	safe_free(pFirstSectOfFat);
-	safe_free(pZeroSect);
+#ifdef RUFUS_TARGET_NT4
+	if (nt4_aligned_buffers) {
+		// Every pointer in this branch came from _mm_malloc()
+		safe_mm_free(pFAT32BootSect);
+		safe_mm_free(pFAT32FsInfo);
+		safe_mm_free(pFirstSectOfFat);
+		safe_mm_free(pZeroSect);
+	} else
+#endif
+	{
+		safe_free(pFAT32BootSect);
+		safe_free(pFAT32FsInfo);
+		safe_free(pFirstSectOfFat);
+		safe_free(pZeroSect);
+	}
 	return r;
 }

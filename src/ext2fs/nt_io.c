@@ -28,10 +28,17 @@
 #include "config.h"
 #include "ext2fs.h"
 #include "rufus.h"
+#ifdef RUFUS_TARGET_NT4
+#include "winxp.h"
+#endif
 #include "msapi_utf8.h"
 
 extern char* NtStatusError(NTSTATUS Status);
 static DWORD LastWinError = 0;
+#ifdef RUFUS_TARGET_NT4
+static DWORD nt4_ext_io_checkpoint_tick = 0;
+static ULONG nt4_ext_io_request_count = 0;
+#endif
 
 PF_TYPE_DECL(NTAPI, ULONG, RtlNtStatusToDosError, (NTSTATUS));
 PF_TYPE_DECL(NTAPI, NTSTATUS, NtClose, (HANDLE));
@@ -66,6 +73,12 @@ typedef struct _NT_PRIVATE_DATA {
     // Used by Rufus
     __u64   offset;
     __u64   size;
+#ifdef RUFUS_TARGET_NT4
+	// Reuse aligned I/O resources across the ext formatting session
+	PCHAR   nt4_io_buffer;
+	ULONG   nt4_io_buffer_size;
+	HANDLE  nt4_io_event;
+#endif
 } NT_PRIVATE_DATA, *PNT_PRIVATE_DATA;
 
 //
@@ -290,8 +303,17 @@ static __inline NTSTATUS _CloseDisk(IN HANDLE Handle)
 
 static PCSTR _NormalizeDeviceName(IN PCSTR Device, IN PSTR NormalizedDeviceNameBuffer, OUT __u64 *Offset, OUT __u64 *Size)
 {
+	ULONG drive_index;
+
 	*Offset = *Size = 0ULL;
-	// Convert non NT paths to NT
+	// NT4 maaaay not publish the PhysicalDrive DOS alias so use its native whole-disk object instead
+#ifdef RUFUS_TARGET_NT4
+	if ((WindowsVersion.Version <= WINDOWS_NT4) &&
+		(sscanf(Device, "\\\\.\\PhysicalDrive%lu %I64u %I64u", &drive_index, Offset, Size) == 3)) {
+		safe_sprintf(NormalizedDeviceNameBuffer, 512, "\\Device\\Harddisk%lu\\Partition0", drive_index);
+		return NormalizedDeviceNameBuffer;
+	}
+#endif
 	if (Device[0] == '\\') {
 		if ((strlen(Device) < 4) || (Device[3] != '\\'))
 			return Device;
@@ -385,10 +407,11 @@ static BOOLEAN _Ext2OpenDevice(IN PCSTR Name, IN BOOLEAN ReadOnly, OUT PHANDLE H
 	return TRUE;
 }
 
-static BOOLEAN _BlockIo(IN HANDLE Handle, IN LARGE_INTEGER Offset, IN ULONG Bytes, IN OUT PCHAR Buffer, IN BOOLEAN Read, OUT errcode_t *Errno OPTIONAL)
+static BOOLEAN _BlockIo(IN PNT_PRIVATE_DATA NtData, IN LARGE_INTEGER Offset, IN ULONG Bytes, IN OUT PCHAR Buffer, IN BOOLEAN Read, OUT errcode_t *Errno OPTIONAL)
 {
 	IO_STATUS_BLOCK IoStatusBlock;
 	NTSTATUS Status = STATUS_DLL_NOT_FOUND;
+	HANDLE Handle = NtData->handle;
 	PF_INIT_OR_OUT(NtReadFile, NtDll);
 	PF_INIT_OR_OUT(NtWriteFile, NtDll);
 
@@ -397,6 +420,54 @@ static BOOLEAN _BlockIo(IN HANDLE Handle, IN LARGE_INTEGER Offset, IN ULONG Byte
 	assert((Offset.LowPart % 512) == 0);
 
 	LastWinError = 0;
+#ifdef RUFUS_TARGET_NT4
+	if (WindowsVersion.Version <= WINDOWS_NT4) {
+		DWORD now, wait_result;
+		char stage[160];
+
+		if (Bytes > NtData->nt4_io_buffer_size) {
+			if (NtData->nt4_io_buffer != NULL)
+				VirtualFree(NtData->nt4_io_buffer, 0, MEM_RELEASE);
+			NtData->nt4_io_buffer = (PCHAR)VirtualAlloc(NULL, Bytes,
+				MEM_RESERVE | MEM_COMMIT, PAGE_READWRITE);
+			NtData->nt4_io_buffer_size = (NtData->nt4_io_buffer != NULL) ? Bytes : 0;
+		}
+		if (NtData->nt4_io_buffer == NULL) {
+			Status = (NTSTATUS)0xC0000017L;
+			goto out;
+		}
+		if (!Read)
+			memcpy(NtData->nt4_io_buffer, Buffer, Bytes);
+		nt4_ext_io_request_count++;
+		IoStatusBlock.Status = (NTSTATUS)0x00000103L;
+		IoStatusBlock.Information = 0;
+		ResetEvent(NtData->nt4_io_event);
+		Status = Read ?
+			pfNtReadFile(Handle, NtData->nt4_io_event, NULL, NULL, &IoStatusBlock,
+				NtData->nt4_io_buffer, Bytes, &Offset, NULL) :
+			pfNtWriteFile(Handle, NtData->nt4_io_event, NULL, NULL, &IoStatusBlock,
+				NtData->nt4_io_buffer, Bytes, &Offset, NULL);
+		if (Status == (NTSTATUS)0x00000103L) {
+			wait_result = WaitForSingleObject(NtData->nt4_io_event, INFINITE);
+			Status = (wait_result == WAIT_OBJECT_0) ? IoStatusBlock.Status : (NTSTATUS)0xC0000001L;
+		}
+		if (NT_SUCCESS(Status) && (IoStatusBlock.Information != Bytes))
+			Status = (NTSTATUS)0xC0000001L;
+		if (Read && NT_SUCCESS(Status))
+			memcpy(Buffer, NtData->nt4_io_buffer, Bytes);
+		// Record completed I/O so the checkpoint itself is never between setup and submission
+		now = GetTickCount();
+		if (NT_SUCCESS(Status) && ((nt4_ext_io_checkpoint_tick == 0) ||
+			((DWORD)(now - nt4_ext_io_checkpoint_tick) >= 5000))) {
+			nt4_ext_io_checkpoint_tick = now;
+			wsprintfA(stage, "%s ext native %s n=%lu len=%lu off=%08lX:%08lX",
+				Read ? "130" : "131", Read ? "read" : "write", nt4_ext_io_request_count,
+				Bytes, (DWORD)Offset.HighPart, Offset.LowPart);
+			NT4_SetDiskStage(stage);
+		}
+		goto out;
+	}
+#endif
 	// Perform io
 	if(Read) {
 		Status = pfNtReadFile(Handle, NULL, NULL, NULL,
@@ -418,14 +489,14 @@ out:
 	return TRUE;
 }
 
-static BOOLEAN _RawWrite(IN HANDLE Handle, IN LARGE_INTEGER Offset, IN ULONG Bytes, OUT const CHAR* Buffer, OUT errcode_t* Errno)
+static BOOLEAN _RawWrite(IN PNT_PRIVATE_DATA NtData, IN LARGE_INTEGER Offset, IN ULONG Bytes, OUT const CHAR* Buffer, OUT errcode_t* Errno)
 {
-	return _BlockIo(Handle, Offset, Bytes, (PCHAR)Buffer, FALSE, Errno);
+	return _BlockIo(NtData, Offset, Bytes, (PCHAR)Buffer, FALSE, Errno);
 }
 
-static BOOLEAN _RawRead(IN HANDLE Handle, IN LARGE_INTEGER Offset, IN ULONG Bytes, IN PCHAR Buffer, OUT errcode_t* Errno)
+static BOOLEAN _RawRead(IN PNT_PRIVATE_DATA NtData, IN LARGE_INTEGER Offset, IN ULONG Bytes, IN PCHAR Buffer, OUT errcode_t* Errno)
 {
-	return _BlockIo(Handle, Offset, Bytes, Buffer, TRUE, Errno);
+	return _BlockIo(NtData, Offset, Bytes, Buffer, TRUE, Errno);
 }
 
 static BOOLEAN _SetPartType(IN HANDLE Handle, IN UCHAR Type)
@@ -544,6 +615,17 @@ static errcode_t nt_open(const char *name, int flags, io_channel *channel)
 			errcode = EIO;
 		goto out;
 	}
+#ifdef RUFUS_TARGET_NT4
+	if (WindowsVersion.Version <= WINDOWS_NT4) {
+		nt_data->nt4_io_event = CreateEventA(NULL, TRUE, FALSE, NULL);
+		if (nt_data->nt4_io_event == NULL) {
+			errcode = ENOMEM;
+			goto out;
+		}
+		nt4_ext_io_checkpoint_tick = 0;
+		nt4_ext_io_request_count = 0;
+	}
+#endif
 
 	// Done
 	*channel = io;
@@ -556,6 +638,12 @@ out:
 		}
 
 		if (nt_data != NULL) {
+#ifdef RUFUS_TARGET_NT4
+			if (nt_data->nt4_io_event != NULL)
+				CloseHandle(nt_data->nt4_io_event);
+			if (nt_data->nt4_io_buffer != NULL)
+				VirtualFree(nt_data->nt4_io_buffer, 0, MEM_RELEASE);
+#endif
 			if (nt_data->handle != NULL) {
 				_UnlockDrive(nt_data->handle);
 				_CloseDisk(nt_data->handle);
@@ -586,6 +674,12 @@ static errcode_t nt_close(io_channel channel)
 	free(channel);
 
 	if (nt_data != NULL) {
+#ifdef RUFUS_TARGET_NT4
+		if (nt_data->nt4_io_event != NULL)
+			CloseHandle(nt_data->nt4_io_event);
+		if (nt_data->nt4_io_buffer != NULL)
+			VirtualFree(nt_data->nt4_io_buffer, 0, MEM_RELEASE);
+#endif
 		if (nt_data->handle != NULL)
 			CloseHandle(nt_data->handle);
 		free(nt_data->buffer);
@@ -655,7 +749,7 @@ static errcode_t nt_read_blk64(io_channel channel, unsigned long long block, int
 		assert((read_size % channel->block_size) == 0);
 	}
 
-	if (!_RawRead(nt_data->handle, offset, read_size, read_buffer, &errcode)) {
+	if (!_RawRead(nt_data, offset, read_size, read_buffer, &errcode)) {
 		if (channel->read_error)
 			return (channel->read_error)(channel, block, count, buf, size, 0, errcode);
 		else
@@ -703,7 +797,7 @@ static errcode_t nt_write_blk64(io_channel channel, unsigned long long block, in
 	assert((write_size % 512) == 0);
 	offset.QuadPart = block * channel->block_size + nt_data->offset;
 
-	if (!_RawWrite(nt_data->handle, offset, write_size, buf, &errcode)) {
+	if (!_RawWrite(nt_data, offset, write_size, buf, &errcode)) {
 		if (channel->write_error)
 			return (channel->write_error)(channel, block, count, buf, write_size, 0, errcode);
 		else
@@ -740,11 +834,19 @@ static errcode_t nt_flush(io_channel channel)
 
 
 	// Flush file buffers.
+#ifdef RUFUS_TARGET_NT4
+	if (WindowsVersion.Version <= WINDOWS_NT4)
+		NT4_SetDiskStage("132 ext flush native disk handle");
+#endif
 	_FlushDrive(nt_data->handle);
 
 
 	// Test and correct partition type.
-	if (nt_data->written)
+	if (nt_data->written
+#ifdef RUFUS_TARGET_NT4
+		&& (WindowsVersion.Version > WINDOWS_NT4)
+#endif
+		)
 		_SetPartType(nt_data->handle, 0x83);
 
 	return 0;

@@ -45,6 +45,8 @@
 //#define RUFUS_TEST
 
 #define APPLICATION_NAME            "Rufus-NT"
+// Move to HKCU\Software\Rufus-NT
+#define REGISTRY_KEY_NAME           "Rufus-NT"
 #if defined(_M_AMD64)
 #define APPLICATION_ARCH            "x64"
 #elif defined(_M_IX86)
@@ -60,7 +62,7 @@
 #define STR_NO_LABEL                "NO_LABEL"
 
 // Update level
-#define UPDATE_LEVEL                "Update 3"
+#define UPDATE_LEVEL                "Update 4"
 
 // Yes, there exist characters between these seemingly empty quotes!
 #define LEFT_TO_RIGHT_MARK          "‎"
@@ -852,7 +854,7 @@ extern char* remove_substr(const char* src, const char* sub);
 extern void parse_update(char* buf, size_t len);
 extern void* get_data_from_asn1(const uint8_t* buf, size_t buf_len, const char* oid_str, uint8_t asn1_type, size_t* data_len);
 extern int sanitize_label(char* label);
-extern int IsHDD(DWORD DriveIndex, uint16_t vid, uint16_t pid, const char* strid);
+extern int IsHDD(DWORD DriveIndex, uint16_t vid, uint16_t pid, const char* strid, uint64_t known_drive_size);
 extern char* GetSignatureName(const char* path, const char* country_code, BOOL bSilent);
 extern int GetIssuerCertificateInfo(uint8_t* cert, uint32_t cert_size, cert_info_t* info);
 extern uint64_t GetSignatureTimeStamp(const char* path);

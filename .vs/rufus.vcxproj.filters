@@ -99,6 +99,9 @@
     <ClCompile Include="..\src\win2k.c">
       <Filter>Source Files</Filter>
     </ClCompile>
+    <ClCompile Include="..\src\nt4.c">
+      <Filter>Source Files</Filter>
+    </ClCompile>
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="..\src\rufus.h">
@@ -206,6 +209,9 @@
     <ClInclude Include="..\src\win2k.h">
       <Filter>Header Files</Filter>
     </ClInclude>
+    <ClInclude Include="..\src\nt4.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <MASM Include="..\src\win2k_imports.asm">
@@ -221,6 +227,9 @@
     <None Include="..\res\down.ico">
       <Filter>Resource Files</Filter>
     </None>
+    <MASM Include="..\src\nt4_imports.asm">
+      <Filter>Source Files</Filter>
+    </MASM>
   </ItemGroup>
   <ItemGroup>
     <Manifest Include="..\src\rufus.manifest">

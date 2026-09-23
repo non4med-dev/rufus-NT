@@ -98,6 +98,7 @@ static char* FileDialog_XP(BOOL save, char* path, const ext_t* ext, UINT* select
 {
 	OPENFILENAMEW ofn = { 0 };
 	wchar_t selected_name[MAX_PATH] = { 0 };
+	wchar_t desktop_path[MAX_PATH] = { 0 };
 	wchar_t def_ext[8] = { 0 };
 	wchar_t *wpath = NULL, *filter_buf = NULL, *wfilename = NULL;
 	wchar_t *wdesc = NULL, *wext = NULL, *wall_files = NULL;
@@ -164,14 +165,22 @@ static char* FileDialog_XP(BOOL save, char* path, const ext_t* ext, UINT* select
 		safe_free(wall_files);
 	}
 
-	ofn.lStructSize = sizeof(ofn);
+	ofn.lStructSize = (WindowsVersion.Version == WINDOWS_NT4) ?
+		OPENFILENAME_SIZE_VERSION_400 : sizeof(ofn);
 	ofn.hwndOwner = hMainDialog;
 	ofn.lpstrFile = selected_name;
 	ofn.nMaxFile = MAX_PATH;
 	ofn.lpstrFilter = filter_buf;
 	ofn.nFilterIndex = (selected_ext == NULL) ? 1 : *selected_ext;
-	ofn.lpstrInitialDir = wpath;
+	// Set default folder to Desktop
+	if ((WindowsVersion.Version <= WINDOWS_NT4) && (wpath == NULL) &&
+		SHGetSpecialFolderPathW(NULL, desktop_path, CSIDL_DESKTOP, FALSE))
+		ofn.lpstrInitialDir = desktop_path;
+	else
+		ofn.lpstrInitialDir = wpath;
 	ofn.Flags = OFN_PATHMUSTEXIST | (save ? OFN_OVERWRITEPROMPT : OFN_FILEMUSTEXIST);
+	if (WindowsVersion.Version <= WINDOWS_NT4)
+		ofn.Flags |= OFN_HIDEREADONLY;
 
 	if (save && ext->count > 0) {
 		i = ((selected_ext != NULL) && (*selected_ext > 0) && (*selected_ext <= ext->count)) ?
@@ -358,7 +367,9 @@ void CreateStatusBar(HFONT* hFont)
 		HDC hDC = GetDC(hMainDialog);
 		*hFont = CreateFontA(-MulDiv(9, GetDeviceCaps(hDC, LOGPIXELSY), 72),
 			0, 0, 0, FW_MEDIUM, FALSE, FALSE, FALSE, DEFAULT_CHARSET,
-			0, 0, PROOF_QUALITY, 0, "Segoe UI");
+			0, 0, PROOF_QUALITY, 0,
+			// Force tahoma, else UI issues
+			(WindowsVersion.Version <= WINDOWS_XP) ? "Tahoma" : "Segoe UI");
 		safe_release_dc(hMainDialog, hDC);
 	}
 	SendMessage(hStatus, WM_SETFONT, (WPARAM)*hFont, TRUE);
@@ -645,6 +656,7 @@ static void SetAboutDetailsText(HWND hCtrl, int panel_id)
 
 /*
  * About dialog callback
+ * This took way too long
  */
 INT_PTR CALLBACK AboutCallback(HWND hDlg, UINT message, WPARAM wParam, LPARAM lParam)
 {
@@ -665,10 +677,12 @@ INT_PTR CALLBACK AboutCallback(HWND hDlg, UINT message, WPARAM wParam, LPARAM lP
 	wchar_t wUrl[256];
 	static int active_panel = 0;
 	static int compact_client_width, compact_client_height, pane_width, pane_extra, details_top, about_button_h;
+	static BOOL about_user_moved = FALSE;
 
 	switch (message) {
 	case WM_INITDIALOG:
 		active_panel = 0;
+		about_user_moved = FALSE;
 		style = GetWindowLongPtr(hDlg, GWL_EXSTYLE);
 		style &= ~(WS_EX_LAYOUTRTL | WS_EX_RTLREADING | WS_EX_RIGHT | WS_EX_LEFTSCROLLBAR);
 		style |= WS_EX_NOINHERITLAYOUT;
@@ -712,6 +726,7 @@ INT_PTR CALLBACK AboutCallback(HWND hDlg, UINT message, WPARAM wParam, LPARAM lP
 		static_sprintf(
 			about_blurb,
 			about_blurb_format,
+			// No. English static looks better.
 			"The Reliable USB Formatting Utility (For Windows NT)",
 			APPLICATION_NAME " (" UPDATE_LEVEL ")",
 			lmprintf(MSG_505 | MSG_RTF),
@@ -780,7 +795,9 @@ INT_PTR CALLBACK AboutCallback(HWND hDlg, UINT message, WPARAM wParam, LPARAM lP
 		max_text_width = max(max_text_width, min_text_width);
 		text_width = max(min_text_width, fixed_line_width);
 		localized_growth = max(localized_line_width - text_width, 0);
-		text_width += localized_growth * 3 / 5;
+		// NT4/W2k use different width than XP and later, Ima just keep it like this
+		text_width += (WindowsVersion.Version <= WINDOWS_2000) ?
+			localized_growth : localized_growth * 3 / 5;
 		text_width = min(text_width, max_text_width);
 		compact_client_width = icon_margin + icon_width + icon_gap + text_width + far_margin;
 		text_left = right_to_left_mode ? far_margin : icon_margin + icon_width + icon_gap;
@@ -789,6 +806,7 @@ INT_PTR CALLBACK AboutCallback(HWND hDlg, UINT message, WPARAM wParam, LPARAM lP
 			icon_width, icon_height, SWP_NOZORDER | SWP_NOACTIVATE);
 		SetWindowPos(hBlurb, NULL, text_left, details_top, text_width, rc.bottom - rc.top,
 			SWP_NOZORDER | SWP_NOACTIVATE);
+		SendMessage(hBlurb, EM_SETTARGETDEVICE, 0, 0);
 		max_blurb_h = max((work_rc.bottom - work_rc.top) * 2 / 3 - border_height - details_top -
 			(2 * button_h + 6 * gap + bottom_h), button_h * 4);
 		blurb_h = GetRichEditContentHeight(hBlurb);
@@ -801,6 +819,7 @@ INT_PTR CALLBACK AboutCallback(HWND hDlg, UINT message, WPARAM wParam, LPARAM lP
 		SetWindowLongPtr(hBlurb, GWL_STYLE, style);
 		SetWindowPos(hBlurb, NULL, text_left, details_top, text_width, blurb_h,
 			SWP_NOZORDER | SWP_NOACTIVATE | SWP_FRAMECHANGED);
+		SendMessage(hBlurb, EM_SETTARGETDEVICE, 0, 0);
 		rc2.left = text_left;
 		rc2.right = text_left + text_width;
 		rc2.top = details_top + blurb_h + text_gap;
@@ -841,6 +860,9 @@ INT_PTR CALLBACK AboutCallback(HWND hDlg, UINT message, WPARAM wParam, LPARAM lP
 		pane_extra = pane_width;
 		CenterDialog(hDlg, NULL);
 		return (INT_PTR)TRUE;
+	case WM_EXITSIZEMOVE:
+		about_user_moved = TRUE;
+		break;
 	case WM_NOTIFY:
 		if (((LPNMHDR)lParam)->code == EN_LINK) {
 			enl = (ENLINK*)lParam;
@@ -872,9 +894,15 @@ INT_PTR CALLBACK AboutCallback(HWND hDlg, UINT message, WPARAM wParam, LPARAM lP
 				ShowWindow(hDetails, SW_HIDE);
 				GetWindowRect(hDlg, &rc);
 				window_width = rc.right - rc.left;
+				if (!about_user_moved) {
+					SystemParametersInfo(SPI_GETWORKAREA, 0, &work_rc, 0);
+					rc.left += pane_extra / 2;
+					rc.left = max(work_rc.left, min(rc.left, work_rc.right - (window_width - pane_extra)));
+				}
 				if (right_to_left_mode) {
 					OffsetAboutControls(hDlg, main_id, ARRAYSIZE(main_id), -pane_extra);
-					rc.left += pane_extra;
+					if (about_user_moved)
+						rc.left += pane_extra;
 				}
 				SetWindowPos(hDlg, NULL, rc.left, rc.top, window_width - pane_extra,
 					rc.bottom - rc.top, SWP_NOZORDER | SWP_NOACTIVATE);
@@ -884,8 +912,13 @@ INT_PTR CALLBACK AboutCallback(HWND hDlg, UINT message, WPARAM wParam, LPARAM lP
 			if (active_panel == 0) {
 				GetWindowRect(hDlg, &rc);
 				window_width = rc.right - rc.left;
-				if (right_to_left_mode)
+				if (!about_user_moved) {
+					SystemParametersInfo(SPI_GETWORKAREA, 0, &work_rc, 0);
+					rc.left -= pane_extra / 2;
+					rc.left = max(work_rc.left, min(rc.left, work_rc.right - (window_width + pane_extra)));
+				} else if (right_to_left_mode) {
 					rc.left -= pane_extra;
+				}
 				SetWindowPos(hDlg, NULL, rc.left, rc.top, window_width + pane_extra,
 					rc.bottom - rc.top, SWP_NOZORDER | SWP_NOACTIVATE);
 				if (right_to_left_mode)
@@ -1796,6 +1829,9 @@ INT_PTR CALLBACK UpdateCallback(HWND hDlg, UINT message, WPARAM wParam, LPARAM l
 				SWP_NOMOVE | SWP_NOSIZE | SWP_NOZORDER | SWP_NOACTIVATE | SWP_FRAMECHANGED);
 		}
 		PositionControls(hDlg);
+		// NT4/2000 lose the combo list height after dialog localization, awesome
+		if (WindowsVersion.Version <= WINDOWS_2000)
+			W2K_RestoreComboBoxDropHeights(hDlg);
 		SetTitleBarIcon(hDlg);
 		CenterDialog(hDlg, NULL);
 		freq = ReadSetting32(SETTING_UPDATE_INTERVAL);
@@ -1835,11 +1871,10 @@ INT_PTR CALLBACK UpdateCallback(HWND hDlg, UINT message, WPARAM wParam, LPARAM l
 		IGNORE_RETVAL(ComboBox_AddStringU(hBeta, lmprintf(MSG_008)));
 		IGNORE_RETVAL(ComboBox_AddStringU(hBeta, lmprintf(MSG_009)));
 		if (WindowsVersion.Version < WINDOWS_8) {
-			enable_windows_to_go = (WindowsVersion.Version > WINDOWS_2000) &&
-				!ReadSettingBool(SETTING_DISABLE_WINDOWS_TO_GO);
+			enable_windows_to_go = ReadSettingBool((WindowsVersion.Version <= WINDOWS_NT4) ?
+				SETTING_ENABLE_WINDOWS_TO_GO : SETTING_ENABLE_LEGACY_WINDOWS_TO_GO);
 			IGNORE_RETVAL(ComboBox_SetCurSel(hBeta, enable_windows_to_go ? 0 : 1));
-			// Disable Windows To Go for W2k for now
-			EnableWindow(hBeta, WindowsVersion.Version > WINDOWS_2000);
+			EnableWindow(hBeta, WindowsVersion.Version >= WINDOWS_NT4);
 		}
 		else {
 			IGNORE_RETVAL(ComboBox_SetCurSel(hBeta,
@@ -1902,9 +1937,11 @@ INT_PTR CALLBACK UpdateCallback(HWND hDlg, UINT message, WPARAM wParam, LPARAM l
 			if (HIWORD(wParam) != CBN_SELCHANGE)
 				break;
 			if (WindowsVersion.Version < WINDOWS_8) {
-				enable_windows_to_go = (WindowsVersion.Version > WINDOWS_2000) &&
+				enable_windows_to_go = (WindowsVersion.Version >= WINDOWS_NT4) &&
 					(ComboBox_GetCurSel(hBeta) == 0);
-				WriteSettingBool(SETTING_DISABLE_WINDOWS_TO_GO, !enable_windows_to_go);
+				WriteSettingBool((WindowsVersion.Version <= WINDOWS_NT4) ?
+					SETTING_ENABLE_WINDOWS_TO_GO : SETTING_ENABLE_LEGACY_WINDOWS_TO_GO,
+					enable_windows_to_go);
 				ToggleImageOptions();
 			}
 			else {
@@ -2330,17 +2367,26 @@ void SetTitleBarIcon(HWND hDlg)
 	}
 
 	// Create the title bar icon
-	// Fuck you too W2k (port)
-	if (hSmallIcon == NULL)
-		hSmallIcon = (WindowsVersion.Version == WINDOWS_2000) ?
-			W2K_LoadIconResource(hMainInstance, IDI_ICON, s16, s16) :
+	if (hSmallIcon == NULL) {
+		hSmallIcon = (WindowsVersion.Version <= WINDOWS_2000) ?
+			W2K_LoadAlphaIconResource(hMainInstance, IDI_ICON, s16, s16,
+				GetSysColor(COLOR_ACTIVECAPTION)) :
 			(HICON)LoadImage(hMainInstance, MAKEINTRESOURCE(IDI_ICON), IMAGE_ICON, s16, s16, 0);
+	}
 	SendMessage(hDlg, WM_SETICON, ICON_SMALL, (LPARAM)hSmallIcon);
-	if (hBigIcon == NULL)
-		hBigIcon = (WindowsVersion.Version == WINDOWS_2000) ?
-			W2K_LoadIconResource(hMainInstance, IDI_ICON, s32, s32) :
+	if (hBigIcon == NULL) {
+		hBigIcon = (WindowsVersion.Version <= WINDOWS_2000) ?
+			W2K_LoadAlphaIconResource(hMainInstance, IDI_ICON, s32, s32,
+				GetSysColor(COLOR_ACTIVECAPTION)) :
 			(HICON)LoadImage(hMainInstance, MAKEINTRESOURCE(IDI_ICON), IMAGE_ICON, s32, s32, 0);
+	}
 	SendMessage(hDlg, WM_SETICON, ICON_BIG, (LPARAM)hBigIcon);
+	// NT4 cant decode the About dialog icon resource directly; replace it at runtime
+	if (WindowsVersion.Version == WINDOWS_NT4) {
+		HWND hIcon = GetDlgItem(hDlg, IDC_ABOUT_ICON);
+		if (hIcon != NULL)
+			Static_SetIcon(hIcon, hBigIcon);
+	}
 }
 
 // Return the onscreen size of the text displayed by a control
@@ -2416,7 +2462,8 @@ LPCDLGTEMPLATE GetDialogTemplate(int Dialog_ID)
 	// 2. So that Thai displays properly on RTF controls as it won't work with regular
 	// 'Segoe UI'... but Cyrillic won't work with 'Segoe UI Symbol'
 
-	if ((WindowsVersion.Version != WINDOWS_2000) && IsFontAvailable("Segoe UI Symbol") && (selected_locale != NULL)
+	// Tahoe ehehehehe
+	if ((WindowsVersion.Version > WINDOWS_2000) && IsFontAvailable("Segoe UI Symbol") && (selected_locale != NULL)
 		&& (safe_strcmp(selected_locale->txt[0], thai_id) == 0))
 		return rcTemplate;
 

@@ -110,7 +110,8 @@
     <BuildLog />
     <ClCompile>
       <!-- Keep modern declarations available behind runtime version checks. (port) -->
-      <PreprocessorDefinitions>RUFUS_TARGET_WIN2K=1;_OFF_T_DEFINED;_off_t=__int64;off_t=_off_t;COBJMACROS;_CRTDBG_MAP_ALLOC;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+
+      <PreprocessorDefinitions>RUFUS_TARGET_NT4=1;RUFUS_TARGET_WIN2K=1;_OFF_T_DEFINED;_off_t=__int64;off_t=_off_t;COBJMACROS;_CRTDBG_MAP_ALLOC;%(PreprocessorDefinitions)</PreprocessorDefinitions>
       <RuntimeLibrary>MultiThreadedDebug</RuntimeLibrary>
       <WarningLevel>Level3</WarningLevel>
       <AdditionalIncludeDirectories>..\src;..\src\msvc-missing;..\src\ms-sys\inc;..\src\syslinux\libinstaller;..\src\syslinux\libfat;..\src\syslinux\win;..\src\libcdio;..\src\getopt;..\res;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
@@ -248,7 +249,8 @@
     <BuildLog />
     <ClCompile>
       <!-- Select the Windows 2000 compatibility imports for Win32. (port) -->
-      <PreprocessorDefinitions>RUFUS_TARGET_WIN2K=1;_OFF_T_DEFINED;_off_t=__int64;off_t=_off_t;COBJMACROS;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+
+      <PreprocessorDefinitions>RUFUS_TARGET_NT4=1;RUFUS_TARGET_WIN2K=1;_OFF_T_DEFINED;_off_t=__int64;off_t=_off_t;COBJMACROS;%(PreprocessorDefinitions)</PreprocessorDefinitions>
       <RuntimeLibrary>MultiThreaded</RuntimeLibrary>
       <WarningLevel>Level3</WarningLevel>
       <AdditionalIncludeDirectories>..\src;..\src\msvc-missing;..\src\ms-sys\inc;..\src\syslinux\libinstaller;..\src\syslinux\libfat;..\src\syslinux\win;..\src\libcdio;..\src\getopt;..\res;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
@@ -388,6 +390,9 @@
     </PreBuildEvent>
   </ItemDefinitionGroup>
   <ItemGroup>
+    <MASM Include="..\src\nt4_imports.asm">
+      <ExcludedFromBuild Condition="'$(Platform)'!='Win32'">true</ExcludedFromBuild>
+    </MASM>
     <MASM Include="..\src\win2k_imports.asm">
       <!-- Use the compatibility import table only for the Win32 target. (port) -->
       <ExcludedFromBuild Condition="'$(Platform)'!='Win32'">true</ExcludedFromBuild>
@@ -405,6 +410,7 @@
     <ClCompile Include="..\src\iso.c" />
     <ClCompile Include="..\src\localization.c" />
     <ClCompile Include="..\src\net.c" />
+    <ClCompile Include="..\src\nt4.c" />
     <ClCompile Include="..\src\parser.c" />
     <ClCompile Include="..\src\pki.c" />
     <ClCompile Include="..\src\process.c" />
@@ -435,6 +441,7 @@
     <ClInclude Include="..\src\hdd_vs_ufd.h" />
     <ClInclude Include="..\src\mbr_types.h" />
     <ClInclude Include="..\src\missing.h" />
+    <ClInclude Include="..\src\nt4.h" />
     <ClInclude Include="..\src\process.h" />
     <ClInclude Include="..\src\re.h" />
     <ClInclude Include="..\src\settings.h" />

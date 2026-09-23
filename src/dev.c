@@ -36,6 +36,7 @@
 #include <assert.h>
 
 #include "rufus.h"
+#include "dev.h"
 #include "winxp.h"
 #include "missing.h"
 #include "resource.h"
@@ -44,7 +45,6 @@
 #include "localization.h"
 
 #include "drive.h"
-#include "dev.h"
 
 extern RUFUS_DRIVE rufus_drive[MAX_DRIVES];
 extern BOOL enable_HDDs, enable_VHDs, use_fake_units, enable_vmdk, usb_debug;
@@ -52,35 +52,44 @@ extern BOOL list_non_usb_removable_drives, its_a_me_mario;
 
 static __inline void ToUpper(char* str);
 
-// Recover USB identifiers from disk devnode ancestor bc NT5 loses hub mapping (port)
+static BOOL ParseUsbVidPid(const char* source, uint32_t* vid, uint32_t* pid)
+{
+	char device_id[MAX_PATH], * end, * vid_marker, * pid_marker;
+	ULONG parsed_vid, parsed_pid;
+
+	if ((source == NULL) || (vid == NULL) || (pid == NULL))
+		return FALSE;
+	lstrcpynA(device_id, source, ARRAYSIZE(device_id));
+	ToUpper(device_id);
+	vid_marker = strstr(device_id, "VID_");
+	pid_marker = strstr(device_id, "PID_");
+	if ((vid_marker == NULL) || (pid_marker == NULL))
+		return FALSE;
+	parsed_vid = strtoul(vid_marker + 4, &end, 16);
+	if (end != vid_marker + 8)
+		return FALSE;
+	parsed_pid = strtoul(pid_marker + 4, &end, 16);
+	if (end != pid_marker + 8)
+		return FALSE;
+	*vid = (uint32_t)parsed_vid;
+	*pid = (uint32_t)parsed_pid;
+	return ((*vid != 0) || (*pid != 0));
+}
+
+// Recover USB identifiers from disk devnode ancestor bc NT5 loses hub mapping
 static BOOL GetXpUsbVidPid(DEVINST device_inst, uint32_t* vid, uint32_t* pid)
 {
-	char device_id[MAX_PATH], *end, *vid_marker, *pid_marker;
+	char device_id[MAX_PATH];
 	DEVINST current_inst = device_inst, parent_inst;
-	ULONG parsed_vid, parsed_pid;
 	int depth;
 
 	if ((vid == NULL) || (pid == NULL))
 		return FALSE;
 	for (depth = 0; depth < 5; depth++) {
 		if (CM_Get_Device_IDA(current_inst, device_id, ARRAYSIZE(device_id), 0) == CR_SUCCESS) {
-			ToUpper(device_id);
-			vid_marker = strstr(device_id, "VID_");
-			pid_marker = strstr(device_id, "PID_");
-			if ((vid_marker != NULL) && (pid_marker != NULL)) {
-				parsed_vid = strtoul(vid_marker + 4, &end, 16);
-				if (end != vid_marker + 8)
-					goto next_parent;
-				parsed_pid = strtoul(pid_marker + 4, &end, 16);
-				if (end != pid_marker + 8)
-					goto next_parent;
-				// Match x86 storage fields used by usb_device_props (port)
-				*vid = (uint32_t)parsed_vid;
-				*pid = (uint32_t)parsed_pid;
-				return ((*vid != 0) || (*pid != 0));
-			}
+			if (ParseUsbVidPid(device_id, vid, pid))
+				return TRUE;
 		}
-next_parent:
 		if (CM_Get_Parent(&parent_inst, current_inst, 0) != CR_SUCCESS)
 			break;
 		current_inst = parent_inst;
@@ -180,6 +189,11 @@ BOOL CyclePort(int index)
 
 	if_not_assert(index < MAX_DRIVES)
 		return -1;
+	// IOCTL_USB_HUB_CYCLE_PORT is unsupported and unsafe on NT4
+	if (WindowsVersion.Version <= WINDOWS_NT4) {
+		uprintf("USB port cycling is unavailable (NT4)");
+		return FALSE;
+	}
 	// Wait at least 10 secs between resets
 	if (GetTickCount64() < LastReset + 10000ULL) {
 		uprintf("You must wait at least 10 seconds before trying to reset a device");
@@ -375,7 +389,8 @@ BOOL GetOpticalMedia(IMG_SAVE* img_save)
 
 	dev_info = SetupDiGetClassDevsA(&GUID_DEVINTERFACE_CDROM, NULL, NULL, DIGCF_PRESENT | DIGCF_DEVICEINTERFACE);
 	if (dev_info == INVALID_HANDLE_VALUE) {
-		uprintf("SetupDiGetClassDevs (Interface) failed: %s", WindowsErrorString());
+		if ((WindowsVersion.Version > WINDOWS_NT4) || (GetLastError() != ERROR_NO_MORE_ITEMS))
+			uprintf("SetupDiGetClassDevs (Interface) failed: %s", WindowsErrorString());
 		return FALSE;
 	}
 	dev_info_data.cbSize = sizeof(dev_info_data);
@@ -534,6 +549,7 @@ BOOL GetDevices(DWORD devnum)
 	int s, u, v, score, drive_number, remove_drive, num_drives = 0;
 	char drive_letters[27], *device_id, *devid_list = NULL, display_msg[128];
 	char *p, *label, *display_name, buffer[MAX_PATH], str[MAX_PATH], device_instance_id[MAX_PATH], *method_str, *hub_path;
+	const char* name_suffix;
 	uint32_t ignore_vid_pid[MAX_IGNORE_USB];
 	uint64_t drive_size = 0;
 	usb_device_props props;
@@ -548,53 +564,62 @@ BOOL GetDevices(DWORD devnum)
 	if (device_id == NULL)
 		goto out;
 
-	// Build a hash table associating a CM Device ID of a USB device with the SetupDI Device Interface Path
-	// of its parent hub - this is needed to retrieve the device speed
-	dev_info = SetupDiGetClassDevsA(&GUID_DEVINTERFACE_USB_HUB, NULL, NULL, DIGCF_PRESENT | DIGCF_DEVICEINTERFACE);
-	if (dev_info != INVALID_HANDLE_VALUE) {
-		if (htab_create(DEVID_HTAB_SIZE, &htab_devid)) {
-			dev_info_data.cbSize = sizeof(dev_info_data);
-			for (i=0; SetupDiEnumDeviceInfo(dev_info, i, &dev_info_data); i++) {
-				uuprintf("Processing Hub %d:", i + 1);
-				devint_detail_data = NULL;
-				devint_data.cbSize = sizeof(devint_data);
-				// Only care about the first interface (MemberIndex 0)
-				if ( (SetupDiEnumDeviceInterfaces(dev_info, &dev_info_data, &GUID_DEVINTERFACE_USB_HUB, 0, &devint_data))
-				  && (!SetupDiGetDeviceInterfaceDetailA(dev_info, &devint_data, NULL, 0, &size, NULL))
-				  && (GetLastError() == ERROR_INSUFFICIENT_BUFFER)
-				  && ((devint_detail_data = (PSP_DEVICE_INTERFACE_DETAIL_DATA_A)calloc(1, size)) != NULL) ) {
-					devint_detail_data->cbSize = sizeof(SP_DEVICE_INTERFACE_DETAIL_DATA_A);
-					if (SetupDiGetDeviceInterfaceDetailA(dev_info, &devint_data, devint_detail_data, size, &size, NULL)) {
+	// NT4 obtains the display identity from the legacy SCSI inquiry I/O path in nt4.c
+	// Walking live USB hub interfaces here adds USB traffic, and guess what it does
+	// to an outdated unstable USB driver on NT4? 
+	// Hint: [*] 
+#ifdef RUFUS_TARGET_NT4
+	if (WindowsVersion.Version > WINDOWS_NT4)
+#endif
+	{
+		// Build a hash table associating a CM Device ID of a USB device with the SetupDI Device Interface Path
+		// of its parent hub - this is needed to retrieve the device speed
+		dev_info = SetupDiGetClassDevsA(&GUID_DEVINTERFACE_USB_HUB, NULL, NULL, DIGCF_PRESENT | DIGCF_DEVICEINTERFACE);
+		if (dev_info != INVALID_HANDLE_VALUE) {
+			if (htab_create(DEVID_HTAB_SIZE, &htab_devid)) {
+				dev_info_data.cbSize = sizeof(dev_info_data);
+				for (i = 0; SetupDiEnumDeviceInfo(dev_info, i, &dev_info_data); i++) {
+					uuprintf("Processing Hub %d:", i + 1);
+					devint_detail_data = NULL;
+					devint_data.cbSize = sizeof(devint_data);
+					// Only care about the first interface (MemberIndex 0)
+					if ((SetupDiEnumDeviceInterfaces(dev_info, &dev_info_data, &GUID_DEVINTERFACE_USB_HUB, 0, &devint_data))
+						&& (!SetupDiGetDeviceInterfaceDetailA(dev_info, &devint_data, NULL, 0, &size, NULL))
+						&& (GetLastError() == ERROR_INSUFFICIENT_BUFFER)
+						&& ((devint_detail_data = (PSP_DEVICE_INTERFACE_DETAIL_DATA_A)calloc(1, size)) != NULL)) {
+						devint_detail_data->cbSize = sizeof(SP_DEVICE_INTERFACE_DETAIL_DATA_A);
+						if (SetupDiGetDeviceInterfaceDetailA(dev_info, &devint_data, devint_detail_data, size, &size, NULL)) {
 
-						// Find the Device IDs for all the children of this hub
-						if (CM_Get_Child(&device_inst, dev_info_data.DevInst, 0) == CR_SUCCESS) {
-							device_id[0] = 0;
-							s = StrArrayAdd(&dev_if_path, devint_detail_data->DevicePath, TRUE);
-							uuprintf("  Hub[%d] = '%s'", s, devint_detail_data->DevicePath);
-							if ((s>= 0) && (CM_Get_Device_IDA(device_inst, device_id, MAX_PATH, 0) == CR_SUCCESS)) {
-								ToUpper(device_id);
-								if ((k = htab_hash(device_id, &htab_devid)) != 0) {
-									htab_devid.table[k].data = (void*)(uintptr_t)s;
-								}
-								uuprintf("  Found ID[%03d]: %s", k, device_id);
-								while (CM_Get_Sibling(&device_inst, device_inst, 0) == CR_SUCCESS) {
-									device_id[0] = 0;
-									if (CM_Get_Device_IDA(device_inst, device_id, MAX_PATH, 0) == CR_SUCCESS) {
-										ToUpper(device_id);
-										if ((k = htab_hash(device_id, &htab_devid)) != 0) {
-											htab_devid.table[k].data = (void*)(uintptr_t)s;
+							// Find the Device IDs for all the children of this hub
+							if (CM_Get_Child(&device_inst, dev_info_data.DevInst, 0) == CR_SUCCESS) {
+								device_id[0] = 0;
+								s = StrArrayAdd(&dev_if_path, devint_detail_data->DevicePath, TRUE);
+								uuprintf("  Hub[%d] = '%s'", s, devint_detail_data->DevicePath);
+								if ((s >= 0) && (CM_Get_Device_IDA(device_inst, device_id, MAX_PATH, 0) == CR_SUCCESS)) {
+									ToUpper(device_id);
+									if ((k = htab_hash(device_id, &htab_devid)) != 0) {
+										htab_devid.table[k].data = (void*)(uintptr_t)s;
+									}
+									uuprintf("  Found ID[%03d]: %s", k, device_id);
+									while (CM_Get_Sibling(&device_inst, device_inst, 0) == CR_SUCCESS) {
+										device_id[0] = 0;
+										if (CM_Get_Device_IDA(device_inst, device_id, MAX_PATH, 0) == CR_SUCCESS) {
+											ToUpper(device_id);
+											if ((k = htab_hash(device_id, &htab_devid)) != 0) {
+												htab_devid.table[k].data = (void*)(uintptr_t)s;
+											}
+											uuprintf("  Found ID[%03d]: %s", k, device_id);
 										}
-										uuprintf("  Found ID[%03d]: %s", k, device_id);
 									}
 								}
 							}
 						}
+						free(devint_detail_data);
 					}
-					free(devint_detail_data);
 				}
 			}
+			SetupDiDestroyDeviceInfoList(dev_info);
 		}
-		SetupDiDestroyDeviceInfoList(dev_info);
 	}
 	free(device_id);
 
@@ -610,6 +635,12 @@ BOOL GetDevices(DWORD devnum)
 		// Also compute the uasp_start index
 		if (strcmp(usbstor_name[s], "UASPSTOR") == 0)
 			uasp_start = s;
+
+#ifdef RUFUS_TARGET_NT4
+		if (WindowsVersion.Version <= WINDOWS_NT4)
+			continue;
+#endif
+
 		if (CM_Get_Device_ID_List_SizeA(&list_size[s], usbstor_name[s], ulFlags) != CR_SUCCESS)
 			list_size[s] = 0;
 		if (list_size[s] != 0)
@@ -664,7 +695,8 @@ BOOL GetDevices(DWORD devnum)
 	// Now use SetupDi to enumerate all our disk storage devices
 	dev_info = SetupDiGetClassDevsA(&GUID_DEVINTERFACE_DISK, NULL, NULL, DIGCF_PRESENT | DIGCF_DEVICEINTERFACE);
 	if (dev_info == INVALID_HANDLE_VALUE) {
-		uprintf("SetupDiGetClassDevs (Interface) failed: %s", WindowsErrorString());
+		if ((WindowsVersion.Version > WINDOWS_NT4) || (GetLastError() != ERROR_NO_MORE_ITEMS))
+			uprintf("SetupDiGetClassDevs (Interface) failed: %s", WindowsErrorString());
 		goto out;
 	}
 	dev_info_data.cbSize = sizeof(dev_info_data);
@@ -829,9 +861,16 @@ BOOL GetDevices(DWORD devnum)
 		}
 		// Fallback to disk devnode ancestry for NT 5 (port)
 		if ((WindowsVersion.Version <= WINDOWS_XP) && props.is_USB &&
-			(props.vid == 0) && (props.pid == 0) &&
-			GetXpUsbVidPid(dev_info_data.DevInst, &props.vid, &props.pid))
-			method_str = "[XP ID]";
+			(props.vid == 0) && (props.pid == 0)) {
+#ifdef RUFUS_TARGET_NT4
+			if ((WindowsVersion.Version <= WINDOWS_NT4) &&
+				ParseUsbVidPid(device_instance_id, &props.vid, &props.pid))
+				method_str = "";
+			else
+#endif
+				if (GetXpUsbVidPid(dev_info_data.DevInst, &props.vid, &props.pid))
+					method_str = "";
+		}
 		// Windows has the bad habit of appending "SCSI Disk Device" to the description
 		// of UAS devices, which of course screws up detection of device that actually
 		// describe themselves as SCSI-like disks, so replace that with "UAS Device".
@@ -885,8 +924,21 @@ BOOL GetDevices(DWORD devnum)
 			}
 			if (props.speed >= USB_SPEED_MAX)
 				props.speed = 0;
-			uprintf("Found %s%s%s device '%s' (%s) %s", props.is_UASP ? "UAS (" : "",
-				usb_speed_name[props.speed], props.is_UASP ? ")" : "", buffer, str, method_str);
+			name_suffix = "";
+			if ((WindowsVersion.Version <= WINDOWS_NT4) && props.is_USB && !props.is_UASP &&
+				((safe_strlen(buffer) < 11) || (safe_stricmp(&buffer[safe_strlen(buffer) - 11], " USB Device") != 0)))
+				name_suffix = " USB Device";
+			// Don't print (VID:PID) on NT4 as it can't supply it reliably
+#ifdef RUFUS_TARGET_NT4
+			if ((WindowsVersion.Version <= WINDOWS_NT4) &&
+				(props.vid == 0) && (props.pid == 0))
+				uprintf("Found %s%s%s device '%s%s'%s%s", props.is_UASP ? "UAS (" : "",
+					usb_speed_name[props.speed], props.is_UASP ? ")" : "", buffer, name_suffix,
+					(method_str[0] != 0) ? " " : "", method_str);
+			else
+#endif
+			uprintf("Found %s%s%s device '%s%s' (%s) %s", props.is_UASP ? "UAS (" : "",
+				usb_speed_name[props.speed], props.is_UASP ? ")" : "", buffer, name_suffix, str, method_str);
 			if (props.lower_speed)
 				uprintf("NOTE: This device is a USB 3.%c device operating at lower speed...", '0' + props.lower_speed - 1);
 		}
@@ -943,7 +995,11 @@ BOOL GetDevices(DWORD devnum)
 				continue;
 
 			drive_index = drive_number + DRIVE_INDEX_MIN;
+#ifdef RUFUS_TARGET_NT4
+			if ((WindowsVersion.Version > WINDOWS_NT4) && !IsMediaPresent(drive_index)) {
+#else
 			if (!IsMediaPresent(drive_index)) {
+#endif
 				uprintf("Device eliminated because it appears to contain no media");
 				safe_free(devint_detail_data);
 				break;
@@ -979,7 +1035,7 @@ BOOL GetDevices(DWORD devnum)
 					}
 				}
 				if ((!enable_HDDs) && (!props.is_VHD) && (!props.is_CARD) &&
-					((score = IsHDD(drive_index, (uint16_t)props.vid, (uint16_t)props.pid, buffer)) > 0)) {
+					((score = IsHDD(drive_index, (uint16_t)props.vid, (uint16_t)props.pid, buffer, drive_size)) > 0)) {
 					uprintf("Device eliminated because it was detected as a Hard Drive (score %d > 0)", score);
 					if (!list_non_usb_removable_drives)
 						uprintf("If this device is not a Hard Drive, please e-mail the author of this application");

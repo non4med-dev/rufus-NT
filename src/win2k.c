@@ -1,3 +1,5 @@
+// The writing of this shim was assisted by AI
+
 #define _CRT_SECURE_NO_WARNINGS
 #include <windows.h>
 #include <shlobj.h>
@@ -189,7 +191,7 @@ HICON W2K_LoadAlphaIconResource(HINSTANCE hInstance, int resourceId,
 	for (i = 0; i < pixelCount; i++) {
 		alpha = sourceBits[4 * i + 3];
 		if (alpha == 0) {
-			// Reverse mask rows so they align with the bottom-up colour bitmap. (port)
+			// Reverse mask rows so they align with the bottom-up colour bitmap
 			maskBits[(height - 1 - i / width) * maskStride + (i % width) / 8] |=
 				(BYTE)(0x80 >> ((i % width) & 7));
 			colorBits[4 * i + 0] = 0;
@@ -239,7 +241,7 @@ static BOOL CALLBACK W2K_RestoreComboBoxDropHeight(HWND hCtrl, LPARAM unused)
 		return TRUE;
 	itemHeight = (int)SendMessage(hCtrl, CB_GETITEMHEIGHT, 0, 0);
 	selectionHeight = (int)SendMessage(hCtrl, CB_GETITEMHEIGHT, (WPARAM)-1, 0);
-	// An empty combo box may only report its selection-field height. (port)
+	// An empty combo box may only report its selection-field height
 	if ((itemHeight <= 0) && (selectionHeight > 0))
 		itemHeight = selectionHeight;
 	if ((itemHeight <= 0) || (selectionHeight <= 0))
@@ -247,7 +249,7 @@ static BOOL CALLBACK W2K_RestoreComboBoxDropHeight(HWND hCtrl, LPARAM unused)
 	GetWindowRect(hCtrl, &rect);
 	MapWindowPoints(NULL, GetParent(hCtrl), (POINT*)&rect, 2);
 	dropHeight = selectionHeight + 8 * itemHeight + 6;
-	// Restore room for eight items after Rufus resizes the combo box. (port)
+	// Restore room for eight items after Rufus resizes the combo box
 	SetWindowPos(hCtrl, NULL, rect.left, rect.top, rect.right - rect.left, dropHeight,
 		SWP_NOZORDER | SWP_NOACTIVATE);
 	return TRUE;
@@ -272,7 +274,7 @@ PVOID WINAPI W2K_DecodePointer(PVOID Ptr)
 {
 	typedef PVOID(WINAPI* Fn)(PVOID);
 	Fn fn = (Fn)W2K_GetKernelProc("DecodePointer");
-	// Pointer encoding is an identity operation when the native API is unavailable. (port)
+	// Pointer encoding is an identity operation when the native API is unavailable
 	return (fn == NULL) ? Ptr : fn(Ptr);
 }
 
@@ -280,7 +282,7 @@ PVOID WINAPI W2K_EncodePointer(PVOID Ptr)
 {
 	typedef PVOID(WINAPI* Fn)(PVOID);
 	Fn fn = (Fn)W2K_GetKernelProc("EncodePointer");
-	// Match the identity fallback used by the decoder. (port)
+	// Match the identity fallback used by the decoder
 	return (fn == NULL) ? Ptr : fn(Ptr);
 }
 
@@ -370,7 +372,7 @@ VOID WINAPI W2K_GetNativeSystemInfo(LPSYSTEM_INFO lpSystemInfo)
 	if (fn != NULL)
 		fn(lpSystemInfo);
 	else
-		// Windows 2000 cannot run under WOW64, so GetSystemInfo is already native. (port)
+		// Windows 2000 cannot run under WOW64, so GetSystemInfo is already native
 		GetSystemInfo(lpSystemInfo);
 }
 
@@ -381,7 +383,7 @@ VOID WINAPI W2K_InitializeSListHead(PSLIST_HEADER ListHead)
 	if (fn != NULL)
 		fn(ListHead);
 	else if (ListHead != NULL)
-		// Initialize an empty Windows 2000 SLIST header to zero. (port)
+		// Initialize an empty Windows 2000 SLIST header to zero
 		ZeroMemory(ListHead, sizeof(*ListHead));
 }
 
@@ -467,7 +469,7 @@ BOOL WINAPI W2K_IsWow64Process(HANDLE hProcess, PBOOL Wow64Process)
 		SetLastError(ERROR_INVALID_PARAMETER);
 		return FALSE;
 	}
-	// Windows 2000 has no WOW64 execution environment. (port)
+	// Windows 2000 has no WOW64 execution environment
 	*Wow64Process = FALSE;
 	return TRUE;
 }
@@ -480,7 +482,7 @@ LANGID WINAPI W2K_SetThreadUILanguage(LANGID LangId)
 	if (fn != NULL)
 		return fn(LangId);
 	previous = LANGIDFROMLCID(GetThreadLocale());
-	// Use SetThreadLocale as the Windows 2000 UI-language fallback. (port)
+	// Use SetThreadLocale as the Windows 2000 UI-language fallback
 	return SetThreadLocale(MAKELCID(LangId, SORT_DEFAULT)) ? previous : 0;
 }
 
@@ -503,7 +505,7 @@ HRESULT WINAPI W2K_SHParseDisplayName(PCWSTR pszName, IBindCtx* pbc,
 	hr = SHGetDesktopFolder(&desktop);
 	if (FAILED(hr))
 		return hr;
-	// Parse the path through the desktop folder when SHParseDisplayName is unavailable. (port)
+	// Parse the path through the desktop folder when SHParseDisplayName is unavailable
 	hr = IShellFolder_ParseDisplayName(desktop, NULL, pbc, (LPWSTR)pszName,
 		&eaten, (LPITEMIDLIST*)ppidl, (psfgaoOut == NULL) ? NULL : &attributes);
 	IShellFolder_Release(desktop);

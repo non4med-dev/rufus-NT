@@ -214,10 +214,10 @@ CAPTION "Update policy and settings"
 FONT 9, "Segoe UI Symbol", 400, 0, 0x0
 BEGIN
     ICON            IDI_ICON,IDC_ABOUT_ICON,11,8,20,20
-    CONTROL         "",IDC_POLICY,"RichEdit20W",WS_VSCROLL | WS_TABSTOP | 0x804,46,8,235,132,WS_EX_STATICEDGE
+    CONTROL         "",IDC_POLICY,"RichEdit20W",WS_VSCROLL | WS_TABSTOP | 0x804,40,8,241,132,WS_EX_STATICEDGE
     GROUPBOX        "Settings",IDS_UPDATE_SETTINGS_GRP,45,145,165,46
     LTEXT           "Check for updates",IDS_UPDATE_FREQUENCY_TXT,51,158,80,10
-    COMBOBOX        IDC_UPDATE_FREQUENCY,133,158,66,12,CBS_DROPDOWNLIST | WS_VSCROLL | WS_TABSTOP
+    COMBOBOX        IDC_UPDATE_FREQUENCY,133,158,66,30,CBS_DROPDOWNLIST | WS_VSCROLL | WS_TABSTOP
     LTEXT           "Include beta versions",IDS_INCLUDE_BETAS_TXT,51,173,80,10
     COMBOBOX        IDC_INCLUDE_BETAS,133,173,66,30,CBS_DROPDOWNLIST | WS_VSCROLL | WS_TABSTOP
     GROUPBOX        "",IDS_CHECK_NOW_GRP,210,145,71,46
@@ -416,7 +416,7 @@ END
 //
 
 VS_VERSION_INFO VERSIONINFO
- FILEVERSION 1,0,0,6
+ FILEVERSION 1,1,0,0
  PRODUCTVERSION 4,7,0,0
  FILEFLAGSMASK 0x3fL
 #ifdef _DEBUG
@@ -432,17 +432,17 @@ BEGIN
     BEGIN
         BLOCK "000004b0"
         BEGIN
-            VALUE "Comments", "Unofficial fork of Rufus created to run on legacy Windows operating systems. https://github.com/non4med-dev/rufus-nt"
-            VALUE "CompanyName", "non4med / Akeo Consulting"
+            VALUE "Comments", "Unofficial Rufus fork meant for legacy Windows operating systems."
+            VALUE "CompanyName", "https://github.com/non4med-dev"
             VALUE "FileDescription", "Rufus-NT"
-            VALUE "FileVersion", "1.0.0.6"
+            VALUE "FileVersion", "1.1.0.0"
             VALUE "InternalName", "Rufus-NT"
             // Had to remove © as it doesn't exist in old fonts
-            VALUE "LegalCopyright", "2011-2025 Pete Batard (GPL v3)"
+            VALUE "LegalCopyright", "2011-2026 Pete Batard (GPL v3)"
             VALUE "LegalTrademarks", "https://www.gnu.org/licenses/gpl-3.0.html"
-            VALUE "Changelog", "Update 3: Reworked 'About Rufus', added Retro7zip and wimlib copyrights and licenses, localized copyrights, backported newest strings"
+            VALUE "Changelog", "Update 4: Windows NT 4.0 support"
             VALUE "ProductName", "Rufus-NT"
-            VALUE "ProductVersion", "Update 3"
+            VALUE "ProductVersion", "Update 4"
         END
     END
     BLOCK "VarFileInfo"
@@ -582,4 +582,3 @@ CREATEPROCESS_MANIFEST_RESOURCE_ID RT_MANIFEST "rufus.manifest"
 
 /////////////////////////////////////////////////////////////////////////////
 #endif    // not APSTUDIO_INVOKED
-

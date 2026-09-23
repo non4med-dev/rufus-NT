@@ -21,6 +21,9 @@
 #include <stdint.h>
 
 #include "../rufus.h"
+#ifdef RUFUS_TARGET_NT4
+#include "../winxp.h"
+#endif
 #include "file.h"
 
 extern unsigned long ulBytesPerSector;

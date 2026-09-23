@@ -234,7 +234,7 @@ static BOOL HasWinToGoApplyBackend(void)
 	uint8_t methods;
 
 	// If it's disabled, it's disabled. 
-	if (!enable_windows_to_go || (WindowsVersion.Version <= WINDOWS_2000))
+	if (!enable_windows_to_go || (WindowsVersion.Version < WINDOWS_NT4))
 		return FALSE;
 	methods = WimExtractCheck(TRUE);
 	return (WindowsVersion.Version >= WINDOWS_8) ?
@@ -925,7 +925,7 @@ BOOL SetupWinToGo(DWORD DriveIndex, const char* drive_name, BOOL use_esp)
 
 	uprintf("Windows To Go mode selected");
 	// Reject if Windows To Go is turned off
-	if (!enable_windows_to_go || (WindowsVersion.Version <= WINDOWS_2000)) {
+	if (!enable_windows_to_go || (WindowsVersion.Version < WINDOWS_NT4)) {
 		ErrorStatus = RUFUS_ERROR(ERROR_NOT_SUPPORTED);
 		return FALSE;
 	}

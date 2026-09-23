@@ -107,7 +107,7 @@ static __inline BOOL _GetRegistryKey(HKEY key_root, const char* key_name, DWORD 
 			hSoftware = NULL;
 			goto out;
 		}
-		if (RegCreateKeyExA(hSoftware, COMPANY_NAME "\\" APPLICATION_NAME, 0, NULL, 0,
+		if (RegCreateKeyExA(hSoftware, REGISTRY_KEY_NAME, 0, NULL, 0,
 			KEY_SET_VALUE | KEY_QUERY_VALUE | KEY_CREATE_SUB_KEY, NULL, &hApp, &dwDisp) != ERROR_SUCCESS) {
 			hApp = NULL;
 			goto out;
@@ -148,7 +148,7 @@ static __inline BOOL _SetRegistryKey(HKEY key_root, const char* key_name, DWORD 
 	}
 
 	// This is a short key name, store the value under our app sub-hive
-	if (RegCreateKeyExA(hRoot, "SOFTWARE\\" COMPANY_NAME "\\" APPLICATION_NAME, 0, NULL, 0,
+	if (RegCreateKeyExA(hRoot, "SOFTWARE\\" REGISTRY_KEY_NAME, 0, NULL, 0,
 		KEY_SET_VALUE | KEY_QUERY_VALUE | KEY_CREATE_SUB_KEY, NULL, &hApp, &dwDisp) != ERROR_SUCCESS) {
 		hApp = NULL;
 		goto out;
