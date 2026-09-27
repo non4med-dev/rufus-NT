@@ -89,15 +89,21 @@ BOOL InstallSyslinux(DWORD drive_index, char drive_letter, int file_system)
 	const LARGE_INTEGER liZero = { {0, 0} };
 	HANDLE f_handle = INVALID_HANDLE_VALUE;
 	HANDLE d_handle = INVALID_HANDLE_VALUE;
-	DWORD bytes_read, err;
+	DWORD bytes_read, err, file_attributes;
+#ifndef RUFUS_NO_EMBED
+	DWORD ldlinux_c32_len;
+#endif
 	S_NTFSSECT_VOLINFO vol_info = { 0 };
 	LARGE_INTEGER vcn, lba, len;
 	S_NTFSSECT_EXTENT extent;
-	BOOL r = FALSE;
+	BOOL r = FALSE, reopen_ldlinux = FALSE;
 	FILE* fd;
 	size_t length;
 
 	static unsigned char* sectbuf = NULL;
+#ifndef RUFUS_NO_EMBED
+	unsigned char* ldlinux_c32 = NULL;
+#endif
 	static char* resource[2][2] = {
 		{ MAKEINTRESOURCEA(IDR_SL_LDLINUX_V4_SYS), MAKEINTRESOURCEA(IDR_SL_LDLINUX_V4_BSS) },
 		{ MAKEINTRESOURCEA(IDR_SL_LDLINUX_V6_SYS), MAKEINTRESOURCEA(IDR_SL_LDLINUX_V6_BSS) } };
@@ -196,11 +202,13 @@ BOOL InstallSyslinux(DWORD drive_index, char drive_letter, int file_system)
 
 	/* Create ldlinux.sys file */
 	static_sprintf(path, "%c:\\%s.%s", toupper(drive_letter), ldlinux, ldlinux_ext[0]);
+	reopen_ldlinux = (WindowsVersion.Version <= WINDOWS_NT4) && (file_system != FS_NTFS);
+	file_attributes = FILE_ATTRIBUTE_SYSTEM | FILE_ATTRIBUTE_HIDDEN;
+	if (!reopen_ldlinux)
+		file_attributes |= FILE_ATTRIBUTE_READONLY;
 	f_handle = CreateFileA(path, GENERIC_READ | GENERIC_WRITE,
 			  FILE_SHARE_READ | FILE_SHARE_WRITE,
-			  NULL, CREATE_ALWAYS,
-			  FILE_ATTRIBUTE_READONLY | FILE_ATTRIBUTE_SYSTEM |
-			  FILE_ATTRIBUTE_HIDDEN, NULL);
+			  NULL, CREATE_ALWAYS, file_attributes, NULL);
 
 	if (f_handle == INVALID_HANDLE_VALUE) {
 		uprintf("Unable to create '%s': %s", &path[3], WindowsErrorString());
@@ -226,6 +234,9 @@ BOOL InstallSyslinux(DWORD drive_index, char drive_letter, int file_system)
 	if (!FlushFileBuffers(f_handle)) {
 		uprintf("FlushFileBuffers failed");
 		goto out;
+	}
+	if (reopen_ldlinux) {
+		safe_closehandle(f_handle);
 	}
 
 	/* Map the file (is there a better way to do this?) */
@@ -295,12 +306,19 @@ BOOL InstallSyslinux(DWORD drive_index, char drive_letter, int file_system)
 	if (i > 0)
 		img_report.cfg_path[i] = '/';
 	if (w < 0) {
-		uprintf("Could not patch Syslinux files.");
-		uprintf("WARNING: This could be caused by your firewall having modified downloaded content, such as 'ldlinux.sys'...");
+		uprintf("Could not patch Syslinux files (mapped %d of %d sectors)", nsectors, ldlinux_sectors);
 		goto out;
 	}
 
 	/* Rewrite the file */
+	if (reopen_ldlinux) {
+		f_handle = CreateFileA(path, GENERIC_READ | GENERIC_WRITE,
+			FILE_SHARE_READ | FILE_SHARE_WRITE, NULL, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, NULL);
+		if (f_handle == INVALID_HANDLE_VALUE) {
+			uprintf("Could not reopen '%s': %s", &path[3], WindowsErrorString());
+			goto out;
+		}
+	}
 	if (!SetFilePointerEx(f_handle, liZero, NULL, FILE_BEGIN) ||
 		!WriteFileWithRetry(f_handle, syslinux_ldlinux[0], syslinux_ldlinux_len[0], NULL, WRITE_RETRIES)) {
 		uprintf("Could not rewrite '%s': %s\n", &path[3], WindowsErrorString());
@@ -309,6 +327,8 @@ BOOL InstallSyslinux(DWORD drive_index, char drive_letter, int file_system)
 
 	/* Close file */
 	safe_closehandle(f_handle);
+	if (reopen_ldlinux)
+		SetFileAttributesA(path, FILE_ATTRIBUTE_READONLY | FILE_ATTRIBUTE_SYSTEM | FILE_ATTRIBUTE_HIDDEN);
 
 	/* Read existing FAT data into boot sector */
 	if (!SetFilePointerEx(d_handle, liZero, NULL, FILE_BEGIN) ||
@@ -334,6 +354,7 @@ BOOL InstallSyslinux(DWORD drive_index, char drive_letter, int file_system)
 	uprintf("Successfully wrote Syslinux boot record");
 
 	if (boot_type == BT_SYSLINUX_V6) {
+#ifdef RUFUS_NO_EMBED
 		IGNORE_RETVAL(_chdirU(app_data_dir));
 		static_sprintf(path, "%s\\%s-%s", FILES_DIR, syslinux, embedded_sl_version_str[1]);
 		IGNORE_RETVAL(_chdir(path));
@@ -344,12 +365,31 @@ BOOL InstallSyslinux(DWORD drive_index, char drive_letter, int file_system)
 		} else {
 			fclose(fd);
 			if (CopyFileU(&path[3], path, TRUE)) {
-				uprintf("Created '%s' (from '%s\\%s\\%s-%s\\%s') %s", path, app_data_dir, FILES_DIR, syslinux,
-					embedded_sl_version_str[1], &path[3], IsFileInDB(&path[3])?"✓":"✗");
+				uprintf("Created '%s' (from '%s\\%s\\%s-%s\\%s') %s", path, app_data_dir, FILES_DIR,
+					syslinux, embedded_sl_version_str[1], &path[3], IsFileInDB(&path[3]) ? "✓" : "✗");
 			} else {
 				uprintf("Failed to create '%s': %s", path, WindowsErrorString());
 			}
 		}
+#else
+		static_sprintf(path, "%c:\\%s.%s", toupper(drive_letter), ldlinux, ldlinux_ext[2]);
+		ldlinux_c32 = GetResource(hMainInstance, MAKEINTRESOURCEA(IDR_SL_LDLINUX_C32),
+			_RT_RCDATA, &path[3], &ldlinux_c32_len, FALSE);
+		if (ldlinux_c32 == NULL) {
+			uprintf("Could not access embedded '%s'", &path[3]);
+			goto out;
+		}
+		f_handle = CreateFileA(path, GENERIC_READ | GENERIC_WRITE, FILE_SHARE_READ,
+			NULL, CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, NULL);
+		if ((f_handle == INVALID_HANDLE_VALUE) ||
+			!WriteFileWithRetry(f_handle, ldlinux_c32, ldlinux_c32_len, NULL, WRITE_RETRIES)) {
+			uprintf("Failed to create '%s': %s", path, WindowsErrorString());
+		} else {
+			uprintf("Created '%s' (from embedded resource) %s", path,
+				IsBufferInDB(ldlinux_c32, ldlinux_c32_len) ? "✓" : "✗");
+		}
+		safe_closehandle(f_handle);
+#endif
 	} else if (HAS_REACTOS(img_report)) {
 		uprintf("Setting up ReactOS...");
 		syslinux_mboot = GetResource(hMainInstance, MAKEINTRESOURCEA(IDR_SL_MBOOT_C32),

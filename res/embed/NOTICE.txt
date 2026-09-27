@@ -1,0 +1,24 @@
+Embedded bootloader components
+==============================
+
+Syslinux 6.04 — ldlinux.c32
+Project: https://www.kernel.org/pub/linux/utils/boot/syslinux/
+License: GNU General Public License, version 2 or later
+SHA-256: d3472c02263acf9cd1da5db51e263c5484bad13ea68618c403d9cb01ca070aee
+
+Grub4DOS 0.4.5c and 0.4.6a — grldr
+Project: https://github.com/chenall/grub4dos
+License: GNU General Public License, version 2 or later
+Files: grub4dos-0.4.5c/grldr, grub4dos-0.4.6a/grldr
+
+GNU GRUB 2.x — core.img
+Project: https://www.gnu.org/software/grub/
+License: GNU General Public License, version 3 or later
+Versions: 2.00-22, 2.02, 2.02 beta 2, 2.02 beta 3, 2.03, 2.03.5,
+2.04, 2.04 nonstandard, 2.05, 2.06, 2.06 RC1, 2.06 e67a551a,
+2.06 nonstandard variants, 2.12, 2.12 nonstandard-gdie, 2.14 and 2.14 RC1
+
+The SHA-256 value of each embedded payload is recorded in src/db.h.
+
+The corresponding projects and source distributions provide the complete
+license terms and source code for these components.

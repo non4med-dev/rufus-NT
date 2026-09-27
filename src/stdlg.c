@@ -369,6 +369,7 @@ void CreateStatusBar(HFONT* hFont)
 			0, 0, 0, FW_MEDIUM, FALSE, FALSE, FALSE, DEFAULT_CHARSET,
 			0, 0, PROOF_QUALITY, 0,
 			// Force tahoma, else UI issues
+			(WindowsVersion.Version <= WINDOWS_NT4) ? "MS Shell Dlg" :
 			(WindowsVersion.Version <= WINDOWS_XP) ? "Tahoma" : "Segoe UI");
 		safe_release_dc(hMainDialog, hDC);
 	}
@@ -641,7 +642,8 @@ static void SetAboutDetailsText(HWND hCtrl, int panel_id)
 			lmprintf(MSG_516 | MSG_RTF), lmprintf(MSG_517 | MSG_RTF),
 			lmprintf(MSG_509 | MSG_RTF), lmprintf(MSG_518 | MSG_RTF),
 			lmprintf(MSG_518 | MSG_RTF), lmprintf(MSG_518 | MSG_RTF),
-			lmprintf(MSG_519 | MSG_RTF), lmprintf(MSG_509 | MSG_RTF),
+			lmprintf(MSG_519 | MSG_RTF), lmprintf(MSG_532 | MSG_RTF),
+			lmprintf(MSG_509 | MSG_RTF),
 			lmprintf(MSG_509 | MSG_RTF), lmprintf(MSG_509 | MSG_RTF),
 			lmprintf(MSG_509 | MSG_RTF), lmprintf(MSG_509 | MSG_RTF),
 			lmprintf(MSG_509 | MSG_RTF));
@@ -2475,13 +2477,21 @@ LPCDLGTEMPLATE GetDialogTemplate(int Dialog_ID)
 		else
 			wBuf = &wBuf[wcslen(wBuf) + 1];
 	}
-	// To change the font size to 9 use
-	// wBuf[0] = 0x0009;
+	// NT4 must use the logical shell font rather than a hard-coded face.
+	// This lets the OS resolve the locale-appropriate UI font through its
+	// FontSubstitutes table and gives CreateDialogIndirect() native NT4
+	// dialog metrics. Keep the classic 8 pt size used by NT4 dialogs.
+	if (WindowsVersion.Version <= WINDOWS_NT4) {
+		wBuf[0] = 0x0008;
+		// DS_SHELLFONT == DS_SETFONT | DS_FIXEDSYS. Set the bits explicitly
+		// so this also builds with older SDK headers.
+		dwBuf = (DWORD*)rcTemplate;
+		dwBuf[3] |= (DS_SETFONT | DS_FIXEDSYS);
+	}
 	wBuf = &wBuf[3];
 	if (wcscmp(L"Segoe UI Symbol", wBuf) == 0) {
 		uintptr_t src, dst, start = (uintptr_t)rcTemplate;
-		// Use Tahoma on XP too, this should fix the wide-window issue
-		const WCHAR* fontName =
+		const WCHAR* fontName = (WindowsVersion.Version <= WINDOWS_NT4) ? L"MS Shell Dlg" :
 			(WindowsVersion.Version <= WINDOWS_XP) ? L"Tahoma" : L"Segoe UI";
 		src = ((uintptr_t)&wBuf[wcslen(wBuf) + 1] + 3) & ~(uintptr_t)3;
 		len = wcslen(fontName);

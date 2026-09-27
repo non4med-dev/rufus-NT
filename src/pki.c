@@ -1219,6 +1219,43 @@ LONG ValidateSignature(HWND hDlg, const char* path)
 	return r;
 }
 
+LONG ValidateMicrosoftSignature(const char* path)
+{
+	LONG r;
+	WINTRUST_DATA trust_data = { 0 };
+	WINTRUST_FILE_INFO trust_file = { 0 };
+	GUID guid_generic_verify =
+		{ 0xaac56b, 0xcd44, 0x11d0,{ 0x8c, 0xc2, 0x0, 0xc0, 0x4f, 0xc2, 0x95, 0xee } };
+	char* signature_name;
+
+	if (path == NULL)
+		return ERROR_INVALID_PARAMETER;
+	signature_name = GetSignatureName(path, "US", TRUE);
+	if ((signature_name == NULL) ||
+		((strcmp(signature_name, "Microsoft Corporation") != 0) &&
+		(strcmp(signature_name, "Microsoft Windows") != 0) &&
+		(strcmp(signature_name, "Microsoft Windows Publisher") != 0))) {
+		uprintf("PKI: PowerShell signature is not from Microsoft");
+		return TRUST_E_EXPLICIT_DISTRUST;
+	}
+
+	trust_file.cbStruct = sizeof(trust_file);
+	trust_file.pcwszFilePath = utf8_to_wchar(path);
+	if (trust_file.pcwszFilePath == NULL)
+		return RUFUS_ERROR(ERROR_NOT_ENOUGH_MEMORY);
+	trust_data.cbStruct = sizeof(trust_data);
+	trust_data.dwUIChoice = WTD_UI_NONE;
+	trust_data.fdwRevocationChecks = WTD_REVOKE_NONE;
+	trust_data.dwProvFlags = WTD_CACHE_ONLY_URL_RETRIEVAL;
+	trust_data.dwUnionChoice = WTD_CHOICE_FILE;
+	trust_data.pFile = &trust_file;
+	r = WinVerifyTrustEx(INVALID_HANDLE_VALUE, &guid_generic_verify, &trust_data);
+	safe_free(trust_file.pcwszFilePath);
+	if (r != ERROR_SUCCESS)
+		uprintf("PKI: PowerShell signature validation failed: 0x%08lX", r);
+	return r;
+}
+
 // Why-oh-why am I the only one on github doing this openssl vs MS signature validation?!?
 // For once, I'd like to find code samples from *OTHER PEOPLE* who went through this ordeal first...
 BOOL ValidateOpensslSignature(BYTE* pbBuffer, DWORD dwBufferLen, BYTE* pbSignature, DWORD dwSigLen)

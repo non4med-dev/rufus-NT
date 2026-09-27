@@ -772,8 +772,8 @@ int NT4_GetDriveNumberFromPath(const char* path)
 static HDEVINFO NT4_CreateVirtualDiskSet(void)
 {
 	NT4_VIRTUAL_DEVINFO* set;
-	DWORD mask, i, j, size;
-	char root[] = "A:\\", dos[] = "A:", target[MAX_PATH];
+	DWORD mask, i, size;
+	char dos[] = "A:", target[MAX_PATH], drive_letter[32] = { 0 };
 
 	set = (NT4_VIRTUAL_DEVINFO*)LocalAlloc(LPTR, sizeof(*set));
 	if (set == NULL)
@@ -784,20 +784,17 @@ static HDEVINFO NT4_CreateVirtualDiskSet(void)
 	for (i = 0; (i < 26) && (set->count < 26); i++) {
 		char* marker;
 		unsigned long number;
-		UINT drive_type;
-
 		if ((mask & (1UL << i)) == 0)
 			continue;
-		root[0] = dos[0] = (char)('A' + i);
+		dos[0] = (char)('A' + i);
 		if (QueryDosDeviceA(dos, target, sizeof(target)) == 0)
 			continue;
 		marker = strstr(target, "\\Harddisk");
 		if (marker == NULL)
 			continue;
 		number = strtoul(marker + 9, NULL, 10);
-		drive_type = GetDriveTypeA(root);
-		if (drive_type == DRIVE_REMOVABLE)
-			NT4_AddVirtualDisk(set, (DWORD)number, root[0]);
+		if (number < sizeof(drive_letter))
+			drive_letter[number] = dos[0];
 	}
 
 	for (i = 0; (i < 32) &&
@@ -806,9 +803,6 @@ static HDEVINFO NT4_CreateVirtualDiskSet(void)
 		HANDLE disk;
 		char path[32];
 
-		for (j = 0; (j < set->count) && (set->disk[j].number != i); j++);
-		if (j < set->count)
-			continue;
 		wsprintfA(path, "\\\\.\\PhysicalDrive%lu", i);
 		disk = NT4_CreateFileA(path, 0, FILE_SHARE_READ | FILE_SHARE_WRITE,
 			NULL, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, NULL);
@@ -818,7 +812,7 @@ static HDEVINFO NT4_CreateVirtualDiskSet(void)
 		if (DeviceIoControl(disk, IOCTL_DISK_GET_DRIVE_GEOMETRY, NULL, 0,
 			&geometry, sizeof(geometry), &size, NULL) &&
 			(geometry.MediaType == RemovableMedia))
-			NT4_AddVirtualDisk(set, i, 0);
+			NT4_AddVirtualDisk(set, i, drive_letter[i]);
 		CloseHandle(disk);
 	}
 	if (set->count == 0) {

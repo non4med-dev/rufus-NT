@@ -147,6 +147,10 @@ msgstr "지우기"
 msgid "Save"
 msgstr "저장"
 
+#. • IDD_LOG → IDC_LOG_DIAGNOSTICS
+msgid "Diagnostics"
+msgstr "진단"
+
 #. • IDD_UPDATE_POLICY → IDD_UPDATE_POLICY
 msgid "Update policy and settings"
 msgstr "업데이트 정책 및 설정"
@@ -2118,6 +2122,118 @@ msgstr "저작권"
 #. • MSG_519
 msgid "and contributors"
 msgstr "및 기여자"
+
+#. • MSG_520
+msgid "exFAT support"
+msgstr "exFAT 지원"
+
+#. • MSG_521
+msgid "Windows XP requires KB955704 for exFAT support.\n\nDo you want to download the update for the detected system locale?\n\nSystem locale: 0x%04X (%s)"
+msgstr "Windows XP에서 exFAT를 지원하려면 KB955704가 필요합니다.\n\n감지된 시스템 로캘용 업데이트를 다운로드하시겠습니까?\n\n시스템 로캘: 0x%04X (%s)"
+
+#. • MSG_522
+msgid "No exFAT update is available for the detected system locale. You must install exFAT support manually.\n\nSystem locale: 0x%04X (%s)"
+msgstr "감지된 시스템 로캘용 exFAT 업데이트가 없습니다. exFAT 지원을 수동으로 설치해야 합니다.\n\n시스템 로캘: 0x%04X (%s)"
+
+#. • MSG_523
+msgid "A USB drive of 16 GB or larger was detected. Formatting it as ext2 or ext3 could take a very long time (about 30 minutes).\n\nDo you want to continue?"
+msgstr "16GB 이상의 USB 드라이브가 감지되었습니다. ext2 또는 ext3로 포맷하면 매우 오래 걸릴 수 있습니다(약 30분).\n\n계속하시겠습니까?"
+
+#. • MSG_524
+msgid "This image uses GRUB %s, but Rufus only includes files for GRUB %s.\n\nThe required files could not be downloaded. Rufus will use the included version instead."
+msgstr "이 이미지는 GRUB %s을(를) 사용하지만 Rufus에는 GRUB %s용 파일만 포함되어 있습니다.\n\n필요한 파일을 다운로드하지 못했습니다. Rufus는 포함된 버전을 대신 사용합니다."
+
+#. • MSG_525
+msgid "'diskcopy.dll' is required to create an MS-DOS drive and could not be downloaded.\n\nDownload it from:\n%s\n\nThen drag and drop the downloaded file into the main window."
+msgstr "MS-DOS 드라이브를 만들려면 'diskcopy.dll'이 필요하지만 다운로드하지 못했습니다.\n\n다음 위치에서 다운로드하십시오:\n%s\n\n그런 다음 다운로드한 파일을 기본 창으로 끌어다 놓으십시오."
+
+#. • MSG_526
+msgid "'diskcopy.dll' is already installed."
+msgstr "'diskcopy.dll'이 이미 설치되어 있습니다."
+
+#. • MSG_527
+msgid "'diskcopy.dll' was installed successfully."
+msgstr "'diskcopy.dll'을 성공적으로 설치했습니다."
+
+#. • MSG_528
+msgid "The selected file is not a valid copy of 'diskcopy.dll'."
+msgstr "선택한 파일은 올바른 'diskcopy.dll' 사본이 아닙니다."
+
+#. • MSG_529
+msgid "No USB drivers were detected. USB drivers are required for most Rufus functionality."
+msgstr "USB 드라이버가 감지되지 않았습니다. 대부분의 Rufus 기능을 사용하려면 USB 드라이버가 필요합니다."
+
+#. • MSG_530
+msgid "Rufus requires TLS 1.2 for networking functionality.\n\nWould you like Rufus to enable TLS 1.2?"
+msgstr "Rufus의 네트워크 기능을 사용하려면 TLS 1.2가 필요합니다.\n\nRufus에서 TLS 1.2를 사용하도록 설정하시겠습니까?"
+
+#. • MSG_531
+msgid "TLS 1.2 Required"
+msgstr "TLS 1.2 필요"
+
+#. • MSG_532
+msgid "Embedded bootloader components"
+msgstr "포함된 부트로더 구성 요소"
+
+#. • MSG_533
+msgid "PowerShell 7 Required"
+msgstr ""
+
+#. • MSG_534
+msgid "PowerShell 7 is required to run Fido, but it was not found in the registered installation or in:\n\n%s\n\nThe system PATH was not searched."
+msgstr ""
+
+#. • MSG_535
+msgid "PowerShell Signature Warning"
+msgstr ""
+
+#. • MSG_536
+msgid "PowerShell 7 at:\n\n%s\n\ndoes not have a valid Microsoft digital signature and may have been tampered with. What should Rufus do?"
+msgstr ""
+
+#. • MSG_537
+msgid "Use it and remember this location"
+msgstr ""
+
+#. • MSG_538
+msgid "Ignore it and keep searching"
+msgstr ""
+
+#. • MSG_539
+msgid "Cancel the Fido operation"
+msgstr ""
+
+#. • MSG_540
+msgid "PowerShell 7 is required to run Fido."
+msgstr ""
+
+#. • MSG_541
+msgid "Windows Vista Extended Kernel, version 10192022 or newer, is required.\n\nWould you like to open the installation guide?"
+msgstr ""
+
+#. • MSG_542
+msgid "Would you like to download PowerShell 7.2.24?"
+msgstr ""
+
+#. • MSG_543
+msgid "Would you like to download PowerShell 7?"
+msgstr ""
+
+#. • MSG_544
+msgid "Windows Vista requires the May 2018 or a later security update to support TLS 1.2.\n\nWould you like to open Microsoft Update Catalog?"
+msgstr "Windows Vista에서 TLS 1.2를 지원하려면 2018년 5월 이후의 보안 업데이트가 필요합니다.\n\nMicrosoft Update 카탈로그를 여시겠습니까?"
+
+#. • MSG_545
+msgid "Security Update Required"
+msgstr "보안 업데이트 필요"
+
+#. • MSG_546
+msgid "Windows Vista requires an additional Internet Explorer setting change to use TLS 1.2.\n\nWould you like Rufus to apply it?"
+msgstr "Windows Vista에서 TLS 1.2를 사용하려면 Internet Explorer 설정을 추가로 변경해야 합니다.\n\nRufus에서 변경 사항을 적용하시겠습니까?"
+
+#. • MSG_547
+msgid "Networking requires the May 2018 or later security update"
+msgstr "네트워킹에는 2018년 5월 이후 보안 업데이트가 필요합니다"
 
 #. • MSG_900
 #.

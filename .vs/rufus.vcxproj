@@ -20,6 +20,7 @@
   </ItemGroup>
   <PropertyGroup Label="Globals">
     <ProjectName>rufus</ProjectName>
+    <TargetName Condition="'$(SolutionName)'=='rufusnt-noembed'">rufusnt-noembed</TargetName>    <TargetName Condition="'$(SolutionName)'!='rufusnt-noembed'">rufusnt</TargetName>
     <ProjectGuid>{731858A7-0303-4988-877B-9C0DD6471864}</ProjectGuid>
     <RootNamespace>rufus</RootNamespace>
     <Keyword>Win32Proj</Keyword>
@@ -479,6 +480,14 @@
   <ItemGroup>
     <ResourceCompile Include="..\src\rufus.rc" />
   </ItemGroup>
+  <ItemDefinitionGroup Condition="'$(SolutionName)'=='rufusnt-noembed'">
+    <ClCompile>
+      <PreprocessorDefinitions>RUFUS_NO_EMBED=1;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+    </ClCompile>
+    <ResourceCompile>
+      <PreprocessorDefinitions>RUFUS_NO_EMBED=1;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+    </ResourceCompile>
+  </ItemDefinitionGroup>
   <ItemGroup>
     <ProjectReference Include=".\bled.vcxproj">
       <Project>{fb6d52d4-a2f8-c358-db85-bbcaecfddd7d}</Project>

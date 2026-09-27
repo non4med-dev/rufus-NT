@@ -147,6 +147,10 @@ msgstr "Изчисти"
 msgid "Save"
 msgstr "Запази"
 
+#. • IDD_LOG → IDC_LOG_DIAGNOSTICS
+msgid "Diagnostics"
+msgstr "Диагностика"
+
 #. • IDD_UPDATE_POLICY → IDD_UPDATE_POLICY
 msgid "Update policy and settings"
 msgstr "Политика за актуализации и настройки"
@@ -2119,6 +2123,118 @@ msgstr "Авторски права"
 #. • MSG_519
 msgid "and contributors"
 msgstr "и сътрудници"
+
+#. • MSG_520
+msgid "exFAT support"
+msgstr "Поддръжка на exFAT"
+
+#. • MSG_521
+msgid "Windows XP requires KB955704 for exFAT support.\n\nDo you want to download the update for the detected system locale?\n\nSystem locale: 0x%04X (%s)"
+msgstr "Windows XP изисква KB955704 за поддръжка на exFAT.\n\nИскате ли да изтеглите актуализацията за откритата системна локализация?\n\nСистемна локализация: 0x%04X (%s)"
+
+#. • MSG_522
+msgid "No exFAT update is available for the detected system locale. You must install exFAT support manually.\n\nSystem locale: 0x%04X (%s)"
+msgstr "Няма актуализация за exFAT за откритата системна локализация. Трябва да инсталирате поддръжката за exFAT ръчно.\n\nСистемна локализация: 0x%04X (%s)"
+
+#. • MSG_523
+msgid "A USB drive of 16 GB or larger was detected. Formatting it as ext2 or ext3 could take a very long time (about 30 minutes).\n\nDo you want to continue?"
+msgstr "Открито е USB устройство с размер 16 GB или повече. Форматирането му като ext2 или ext3 може да отнеме много време (около 30 минути).\n\nИскате ли да продължите?"
+
+#. • MSG_524
+msgid "This image uses GRUB %s, but Rufus only includes files for GRUB %s.\n\nThe required files could not be downloaded. Rufus will use the included version instead."
+msgstr "Този образ използва GRUB %s, но Rufus включва файлове само за GRUB %s.\n\nНеобходимите файлове не можаха да бъдат изтеглени. Вместо тях Rufus ще използва включената версия."
+
+#. • MSG_525
+msgid "'diskcopy.dll' is required to create an MS-DOS drive and could not be downloaded.\n\nDownload it from:\n%s\n\nThen drag and drop the downloaded file into the main window."
+msgstr "'diskcopy.dll' е необходим за създаване на MS-DOS устройство и не можа да бъде изтеглен.\n\nИзтеглете го от:\n%s\n\nСлед това плъзнете и пуснете изтегления файл в главния прозорец."
+
+#. • MSG_526
+msgid "'diskcopy.dll' is already installed."
+msgstr "'diskcopy.dll' вече е инсталиран."
+
+#. • MSG_527
+msgid "'diskcopy.dll' was installed successfully."
+msgstr "'diskcopy.dll' беше инсталиран успешно."
+
+#. • MSG_528
+msgid "The selected file is not a valid copy of 'diskcopy.dll'."
+msgstr "Избраният файл не е валидно копие на 'diskcopy.dll'."
+
+#. • MSG_529
+msgid "No USB drivers were detected. USB drivers are required for most Rufus functionality."
+msgstr "Не са открити USB драйвери. USB драйверите са необходими за повечето функции на Rufus."
+
+#. • MSG_530
+msgid "Rufus requires TLS 1.2 for networking functionality.\n\nWould you like Rufus to enable TLS 1.2?"
+msgstr "Rufus изисква TLS 1.2 за мрежовите функции.\n\nИскате ли Rufus да активира TLS 1.2?"
+
+#. • MSG_531
+msgid "TLS 1.2 Required"
+msgstr "Изисква се TLS 1.2"
+
+#. • MSG_532
+msgid "Embedded bootloader components"
+msgstr "Вградени компоненти на зареждащата програма"
+
+#. • MSG_533
+msgid "PowerShell 7 Required"
+msgstr ""
+
+#. • MSG_534
+msgid "PowerShell 7 is required to run Fido, but it was not found in the registered installation or in:\n\n%s\n\nThe system PATH was not searched."
+msgstr ""
+
+#. • MSG_535
+msgid "PowerShell Signature Warning"
+msgstr ""
+
+#. • MSG_536
+msgid "PowerShell 7 at:\n\n%s\n\ndoes not have a valid Microsoft digital signature and may have been tampered with. What should Rufus do?"
+msgstr ""
+
+#. • MSG_537
+msgid "Use it and remember this location"
+msgstr ""
+
+#. • MSG_538
+msgid "Ignore it and keep searching"
+msgstr ""
+
+#. • MSG_539
+msgid "Cancel the Fido operation"
+msgstr ""
+
+#. • MSG_540
+msgid "PowerShell 7 is required to run Fido."
+msgstr ""
+
+#. • MSG_541
+msgid "Windows Vista Extended Kernel, version 10192022 or newer, is required.\n\nWould you like to open the installation guide?"
+msgstr ""
+
+#. • MSG_542
+msgid "Would you like to download PowerShell 7.2.24?"
+msgstr ""
+
+#. • MSG_543
+msgid "Would you like to download PowerShell 7?"
+msgstr ""
+
+#. • MSG_544
+msgid "Windows Vista requires the May 2018 or a later security update to support TLS 1.2.\n\nWould you like to open Microsoft Update Catalog?"
+msgstr "Windows Vista изисква актуализация на защитата от май 2018 г. или по-нова за поддръжка на TLS 1.2.\n\nИскате ли да отворите каталога на Microsoft Update?"
+
+#. • MSG_545
+msgid "Security Update Required"
+msgstr "Изисква се актуализация на защитата"
+
+#. • MSG_546
+msgid "Windows Vista requires an additional Internet Explorer setting change to use TLS 1.2.\n\nWould you like Rufus to apply it?"
+msgstr "Windows Vista изисква допълнителна промяна в настройките на Internet Explorer за използване на TLS 1.2.\n\nИскате ли Rufus да я приложи?"
+
+#. • MSG_547
+msgid "Networking requires the May 2018 or later security update"
+msgstr "Мрежата изисква актуализацията на защитата от май 2018 г. или по-нова"
 
 #. • MSG_900
 #.

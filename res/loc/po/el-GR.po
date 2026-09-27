@@ -147,6 +147,10 @@ msgstr "Καθαρισμός"
 msgid "Save"
 msgstr "Αποθήκευση"
 
+#. • IDD_LOG → IDC_LOG_DIAGNOSTICS
+msgid "Diagnostics"
+msgstr "Διαγνωστικά"
+
 #. • IDD_UPDATE_POLICY → IDD_UPDATE_POLICY
 msgid "Update policy and settings"
 msgstr "Πολιτική ενημέρωσης και ρυθμίσεων"
@@ -2115,6 +2119,118 @@ msgstr "Πνευματικά δικαιώματα"
 #. • MSG_519
 msgid "and contributors"
 msgstr "και συνεισφέροντες"
+
+#. • MSG_520
+msgid "exFAT support"
+msgstr "Υποστήριξη exFAT"
+
+#. • MSG_521
+msgid "Windows XP requires KB955704 for exFAT support.\n\nDo you want to download the update for the detected system locale?\n\nSystem locale: 0x%04X (%s)"
+msgstr "Τα Windows XP απαιτούν την ενημέρωση KB955704 για υποστήριξη exFAT.\n\nΘέλετε να κάνετε λήψη της ενημέρωσης για τις τοπικές ρυθμίσεις συστήματος που εντοπίστηκαν;\n\nΤοπικές ρυθμίσεις συστήματος: 0x%04X (%s)"
+
+#. • MSG_522
+msgid "No exFAT update is available for the detected system locale. You must install exFAT support manually.\n\nSystem locale: 0x%04X (%s)"
+msgstr "Δεν υπάρχει διαθέσιμη ενημέρωση exFAT για τις τοπικές ρυθμίσεις συστήματος που εντοπίστηκαν. Πρέπει να εγκαταστήσετε την υποστήριξη exFAT χειροκίνητα.\n\nΤοπικές ρυθμίσεις συστήματος: 0x%04X (%s)"
+
+#. • MSG_523
+msgid "A USB drive of 16 GB or larger was detected. Formatting it as ext2 or ext3 could take a very long time (about 30 minutes).\n\nDo you want to continue?"
+msgstr "Εντοπίστηκε μονάδα USB 16 GB ή μεγαλύτερη. Η διαμόρφωσή της ως ext2 ή ext3 μπορεί να διαρκέσει πολύ (περίπου 30 λεπτά).\n\nΘέλετε να συνεχίσετε;"
+
+#. • MSG_524
+msgid "This image uses GRUB %s, but Rufus only includes files for GRUB %s.\n\nThe required files could not be downloaded. Rufus will use the included version instead."
+msgstr "Αυτό το είδωλο χρησιμοποιεί GRUB %s, αλλά το Rufus περιλαμβάνει αρχεία μόνο για GRUB %s.\n\nΔεν ήταν δυνατή η λήψη των απαιτούμενων αρχείων. Το Rufus θα χρησιμοποιήσει την ενσωματωμένη έκδοση."
+
+#. • MSG_525
+msgid "'diskcopy.dll' is required to create an MS-DOS drive and could not be downloaded.\n\nDownload it from:\n%s\n\nThen drag and drop the downloaded file into the main window."
+msgstr "Το 'diskcopy.dll' απαιτείται για τη δημιουργία μονάδας MS-DOS και δεν ήταν δυνατή η λήψη του.\n\nΚάντε λήψη από:\n%s\n\nΣτη συνέχεια, σύρετε και αποθέστε το αρχείο που κατεβάσατε στο κύριο παράθυρο."
+
+#. • MSG_526
+msgid "'diskcopy.dll' is already installed."
+msgstr "Το 'diskcopy.dll' είναι ήδη εγκατεστημένο."
+
+#. • MSG_527
+msgid "'diskcopy.dll' was installed successfully."
+msgstr "Το 'diskcopy.dll' εγκαταστάθηκε με επιτυχία."
+
+#. • MSG_528
+msgid "The selected file is not a valid copy of 'diskcopy.dll'."
+msgstr "Το επιλεγμένο αρχείο δεν είναι έγκυρο αντίγραφο του 'diskcopy.dll'."
+
+#. • MSG_529
+msgid "No USB drivers were detected. USB drivers are required for most Rufus functionality."
+msgstr "Δεν εντοπίστηκαν προγράμματα οδήγησης USB. Τα προγράμματα οδήγησης USB απαιτούνται για τις περισσότερες λειτουργίες του Rufus."
+
+#. • MSG_530
+msgid "Rufus requires TLS 1.2 for networking functionality.\n\nWould you like Rufus to enable TLS 1.2?"
+msgstr "Το Rufus απαιτεί TLS 1.2 για τη λειτουργία δικτύου.\n\nΘέλετε το Rufus να ενεργοποιήσει το TLS 1.2;"
+
+#. • MSG_531
+msgid "TLS 1.2 Required"
+msgstr "Απαιτείται TLS 1.2"
+
+#. • MSG_532
+msgid "Embedded bootloader components"
+msgstr "Ενσωματωμένα στοιχεία φορτωτή εκκίνησης"
+
+#. • MSG_533
+msgid "PowerShell 7 Required"
+msgstr ""
+
+#. • MSG_534
+msgid "PowerShell 7 is required to run Fido, but it was not found in the registered installation or in:\n\n%s\n\nThe system PATH was not searched."
+msgstr ""
+
+#. • MSG_535
+msgid "PowerShell Signature Warning"
+msgstr ""
+
+#. • MSG_536
+msgid "PowerShell 7 at:\n\n%s\n\ndoes not have a valid Microsoft digital signature and may have been tampered with. What should Rufus do?"
+msgstr ""
+
+#. • MSG_537
+msgid "Use it and remember this location"
+msgstr ""
+
+#. • MSG_538
+msgid "Ignore it and keep searching"
+msgstr ""
+
+#. • MSG_539
+msgid "Cancel the Fido operation"
+msgstr ""
+
+#. • MSG_540
+msgid "PowerShell 7 is required to run Fido."
+msgstr ""
+
+#. • MSG_541
+msgid "Windows Vista Extended Kernel, version 10192022 or newer, is required.\n\nWould you like to open the installation guide?"
+msgstr ""
+
+#. • MSG_542
+msgid "Would you like to download PowerShell 7.2.24?"
+msgstr ""
+
+#. • MSG_543
+msgid "Would you like to download PowerShell 7?"
+msgstr ""
+
+#. • MSG_544
+msgid "Windows Vista requires the May 2018 or a later security update to support TLS 1.2.\n\nWould you like to open Microsoft Update Catalog?"
+msgstr "Τα Windows Vista απαιτούν την ενημέρωση ασφαλείας του Μαΐου 2018 ή νεότερη για υποστήριξη TLS 1.2.\n\nΘέλετε να ανοίξετε τον Κατάλογο του Microsoft Update;"
+
+#. • MSG_545
+msgid "Security Update Required"
+msgstr "Απαιτείται ενημέρωση ασφαλείας"
+
+#. • MSG_546
+msgid "Windows Vista requires an additional Internet Explorer setting change to use TLS 1.2.\n\nWould you like Rufus to apply it?"
+msgstr "Τα Windows Vista απαιτούν μια πρόσθετη αλλαγή στις ρυθμίσεις του Internet Explorer για τη χρήση TLS 1.2.\n\nΘέλετε να την εφαρμόσει το Rufus;"
+
+#. • MSG_547
+msgid "Networking requires the May 2018 or later security update"
+msgstr "Η δικτύωση απαιτεί την ενημέρωση ασφαλείας Μαΐου 2018 ή νεότερη"
 
 #. • MSG_900
 #.

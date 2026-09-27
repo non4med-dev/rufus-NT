@@ -147,6 +147,10 @@ msgstr "Törlés"
 msgid "Save"
 msgstr "Mentés"
 
+#. • IDD_LOG → IDC_LOG_DIAGNOSTICS
+msgid "Diagnostics"
+msgstr "Diagnosztika"
+
 #. • IDD_UPDATE_POLICY → IDD_UPDATE_POLICY
 msgid "Update policy and settings"
 msgstr "Frissítési irányelvek és beállítások"
@@ -2120,6 +2124,118 @@ msgstr "Szerzői jog"
 #. • MSG_519
 msgid "and contributors"
 msgstr "és közreműködők"
+
+#. • MSG_520
+msgid "exFAT support"
+msgstr "exFAT-támogatás"
+
+#. • MSG_521
+msgid "Windows XP requires KB955704 for exFAT support.\n\nDo you want to download the update for the detected system locale?\n\nSystem locale: 0x%04X (%s)"
+msgstr "A Windows XP rendszernek szüksége van a KB955704 frissítésre az exFAT támogatásához.\n\nLetölti az észlelt rendszerterületi beállításhoz tartozó frissítést?\n\nRendszerterületi beállítás: 0x%04X (%s)"
+
+#. • MSG_522
+msgid "No exFAT update is available for the detected system locale. You must install exFAT support manually.\n\nSystem locale: 0x%04X (%s)"
+msgstr "Az észlelt rendszerterületi beállításhoz nem érhető el exFAT-frissítés. Az exFAT-támogatást kézzel kell telepítenie.\n\nRendszerterületi beállítás: 0x%04X (%s)"
+
+#. • MSG_523
+msgid "A USB drive of 16 GB or larger was detected. Formatting it as ext2 or ext3 could take a very long time (about 30 minutes).\n\nDo you want to continue?"
+msgstr "A rendszer legalább 16 GB méretű USB-meghajtót észlelt. Az ext2 vagy ext3 fájlrendszerre formázás nagyon sokáig tarthat (körülbelül 30 percig).\n\nFolytatja?"
+
+#. • MSG_524
+msgid "This image uses GRUB %s, but Rufus only includes files for GRUB %s.\n\nThe required files could not be downloaded. Rufus will use the included version instead."
+msgstr "Ez a lemezkép a GRUB %s verziót használja, de a Rufus csak a GRUB %s fájljait tartalmazza.\n\nA szükséges fájlokat nem sikerült letölteni. A Rufus helyettük a beépített verziót használja."
+
+#. • MSG_525
+msgid "'diskcopy.dll' is required to create an MS-DOS drive and could not be downloaded.\n\nDownload it from:\n%s\n\nThen drag and drop the downloaded file into the main window."
+msgstr "Az MS-DOS-meghajtó létrehozásához szükséges 'diskcopy.dll' fájlt nem sikerült letölteni.\n\nTöltse le innen:\n%s\n\nEzután húzza a letöltött fájlt a főablakba."
+
+#. • MSG_526
+msgid "'diskcopy.dll' is already installed."
+msgstr "A 'diskcopy.dll' már telepítve van."
+
+#. • MSG_527
+msgid "'diskcopy.dll' was installed successfully."
+msgstr "A 'diskcopy.dll' telepítése sikerült."
+
+#. • MSG_528
+msgid "The selected file is not a valid copy of 'diskcopy.dll'."
+msgstr "A kijelölt fájl nem a 'diskcopy.dll' érvényes példánya."
+
+#. • MSG_529
+msgid "No USB drivers were detected. USB drivers are required for most Rufus functionality."
+msgstr "A rendszer nem észlelt USB-illesztőprogramot. A Rufus legtöbb funkciójához USB-illesztőprogram szükséges."
+
+#. • MSG_530
+msgid "Rufus requires TLS 1.2 for networking functionality.\n\nWould you like Rufus to enable TLS 1.2?"
+msgstr "A Rufus hálózati funkcióihoz TLS 1.2 szükséges.\n\nEngedélyezze a Rufus a TLS 1.2-t?"
+
+#. • MSG_531
+msgid "TLS 1.2 Required"
+msgstr "TLS 1.2 szükséges"
+
+#. • MSG_532
+msgid "Embedded bootloader components"
+msgstr "Beágyazott rendszerbetöltő-összetevők"
+
+#. • MSG_533
+msgid "PowerShell 7 Required"
+msgstr ""
+
+#. • MSG_534
+msgid "PowerShell 7 is required to run Fido, but it was not found in the registered installation or in:\n\n%s\n\nThe system PATH was not searched."
+msgstr ""
+
+#. • MSG_535
+msgid "PowerShell Signature Warning"
+msgstr ""
+
+#. • MSG_536
+msgid "PowerShell 7 at:\n\n%s\n\ndoes not have a valid Microsoft digital signature and may have been tampered with. What should Rufus do?"
+msgstr ""
+
+#. • MSG_537
+msgid "Use it and remember this location"
+msgstr ""
+
+#. • MSG_538
+msgid "Ignore it and keep searching"
+msgstr ""
+
+#. • MSG_539
+msgid "Cancel the Fido operation"
+msgstr ""
+
+#. • MSG_540
+msgid "PowerShell 7 is required to run Fido."
+msgstr ""
+
+#. • MSG_541
+msgid "Windows Vista Extended Kernel, version 10192022 or newer, is required.\n\nWould you like to open the installation guide?"
+msgstr ""
+
+#. • MSG_542
+msgid "Would you like to download PowerShell 7.2.24?"
+msgstr ""
+
+#. • MSG_543
+msgid "Would you like to download PowerShell 7?"
+msgstr ""
+
+#. • MSG_544
+msgid "Windows Vista requires the May 2018 or a later security update to support TLS 1.2.\n\nWould you like to open Microsoft Update Catalog?"
+msgstr "A Windows Vista rendszernek a TLS 1.2 támogatásához a 2018. májusi vagy egy újabb biztonsági frissítésre van szüksége.\n\nMegnyitja a Microsoft Update katalógust?"
+
+#. • MSG_545
+msgid "Security Update Required"
+msgstr "Biztonsági frissítés szükséges"
+
+#. • MSG_546
+msgid "Windows Vista requires an additional Internet Explorer setting change to use TLS 1.2.\n\nWould you like Rufus to apply it?"
+msgstr "A Windows Vista rendszernek a TLS 1.2 használatához az Internet Explorer egy további beállításmódosítására van szüksége.\n\nAlkalmazza ezt a Rufus?"
+
+#. • MSG_547
+msgid "Networking requires the May 2018 or later security update"
+msgstr "A hálózathoz a 2018. májusi vagy újabb biztonsági frissítés szükséges"
 
 #. • MSG_900
 #.

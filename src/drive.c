@@ -1296,14 +1296,8 @@ static BOOL _GetDriveLettersAndType(DWORD DriveIndex, char* drive_letters, UINT*
 		// not unique! An HDD, a DVD and probably other drives can have the same
 		// value there => Use GetDriveType() to filter out unwanted devices.
 		// See https://github.com/pbatard/rufus/issues/32#issuecomment-3785956
-		_drive_type = GetDriveTypeA(drive);
-
-		if ((_drive_type != DRIVE_REMOVABLE) && (_drive_type != DRIVE_FIXED))
-			continue;
-
 		static_sprintf(logical_drive, "\\\\.\\%c:", toupper(drive[0]));
 #ifdef RUFUS_TARGET_NT4
-		// NT4s DOS device name already contains HarddiskN
 		if (WindowsVersion.Version <= WINDOWS_NT4) {
 			drive_number = NT4_GetDriveNumberFromPath(logical_drive);
 			if (drive_number == DriveIndex) {
@@ -1311,11 +1305,15 @@ static BOOL _GetDriveLettersAndType(DWORD DriveIndex, char* drive_letters, UINT*
 				if (drive_letters != NULL)
 					drive_letters[i++] = *drive;
 				if (drive_type != NULL)
-					*drive_type = _drive_type;
+					*drive_type = DRIVE_REMOVABLE;
 			}
 			continue;
 		}
 #endif
+		_drive_type = GetDriveTypeA(drive);
+
+		if ((_drive_type != DRIVE_REMOVABLE) && (_drive_type != DRIVE_FIXED))
+			continue;
 		// This call appears to freeze on some systems and we don't want to spend more
 		// time than needed waiting for unresponsive drives, so use a 3 seconds timeout.
 		hDrive = CreateFileWithTimeout(logical_drive, GENERIC_READ, FILE_SHARE_READ | FILE_SHARE_WRITE,
@@ -1509,11 +1507,11 @@ BOOL GetDriveLabel(DWORD DriveIndex, char* letters, char** label, BOOL bSilent)
 
 	if (!GetDriveLetters(DriveIndex, letters))
 		return FALSE;
-	if (letters[0] == 0) {
 #ifdef RUFUS_TARGET_NT4
-		if (WindowsVersion.Version <= WINDOWS_NT4)
-			return TRUE;
+	if (WindowsVersion.Version <= WINDOWS_NT4)
+		return TRUE;
 #endif
+	if (letters[0] == 0) {
 		// Even if we don't have a letter, try to obtain the label of the first partition
 		HANDLE h = GetLogicalHandle(DriveIndex, 0, FALSE, FALSE, FALSE);
 		if (GetVolumeInformationByHandleW(h, VolumeName, 64, &VolumeSerialNumber,
@@ -1969,20 +1967,19 @@ const char* GetFsName(HANDLE hPhysical, LARGE_INTEGER StartingOffset)
 		{ "FAT16", { 'F', 'A', 'T', '1', '6', ' ', ' ', ' ' } },
 		{ "FAT32", { 'F', 'A', 'T', '3', '2', ' ', ' ', ' ' } },
 	};
-	const uint32_t ext_feature[3][3] = {
-		// feature_compat
-		{ 0x0000017B, 0x00000004, 0x00000E00 },
-		// feature_ro_compat
-		{ 0x00000003, 0x00000000, 0x00008FF8 },
-		// feature_incompat
-		{ 0x00000013, 0x0000004C, 0x0003F780 }
-	};
-	const char* ext_names[] = { "ext", "ext2", "ext3", "ext4" };
 	const char* ret = "(Unrecognized)";
-	DWORD i, j, offset, size, sector_size = 512;
-	uint8_t* buf = calloc(sector_size, 1);
+	DWORD i, offset, size, sector_size = 512;
+	uint8_t* buf;
+#ifdef RUFUS_TARGET_NT4
+	BOOL nt4_virtual_buffer = (WindowsVersion.Version <= WINDOWS_NT4);
+	buf = nt4_virtual_buffer ? (uint8_t*)VirtualAlloc(NULL, sector_size,
+		MEM_RESERVE | MEM_COMMIT, PAGE_READWRITE) : (uint8_t*)calloc(sector_size, 1);
+#else
+	buf = (uint8_t*)calloc(sector_size, 1);
+#endif
 	if (buf == NULL)
 		goto out;
+	memset(buf, 0, sector_size);
 
 	// 1. Try to detect ISO9660/FAT/exFAT/NTFS/ReFS through the 512 bytes superblock at offset 0
 	if (!SetFilePointerEx(hPhysical, StartingOffset, NULL, FILE_BEGIN))
@@ -2040,24 +2037,28 @@ const char* GetFsName(HANDLE hPhysical, LARGE_INTEGER StartingOffset)
 		goto out;
 	}
 
-	// 3. Try to detect ext2/ext3/ext4 through the 512 bytes superblock at offset 1024
+	// ext2/ext3 file system detection
+	// Try to detect ext2/ext3/ext4 through the 512 bytes superblock at offset 1024
 	// We're already at the right offset
 	if (!SetFilePointerEx(hPhysical, StartingOffset, NULL, FILE_BEGIN))
 		goto out;
 	if (!ReadFile(hPhysical, buf, sector_size, &size, NULL) || size != sector_size)
 		goto out;
 	if (buf[0x38] == 0x53 && buf[0x39] == 0xEF) {
-		uint32_t rev = 0;
-		for (i = 0; i < 3; i++) {
-			uint32_t feature = *((uint32_t*)&buf[0x5C + 4 * i]);
-			for (j = 0; j < 3; j++) {
-				if (feature & ext_feature[i][j] && rev <= j)
-					rev = j + 1;
-			}
-		}
-		assert(rev < ARRAYSIZE(ext_names));
-		if (rev < ARRAYSIZE(ext_names))
-			ret = ext_names[rev];
+		uint32_t feature_compat, feature_incompat, feature_ro_compat;
+		const uint32_t ext4_incompat = 0x0003F7C0;
+		const uint32_t ext4_ro_compat = 0x00008FF8;
+
+		memcpy(&feature_compat, &buf[0x5C], sizeof(feature_compat));
+		memcpy(&feature_incompat, &buf[0x60], sizeof(feature_incompat));
+		memcpy(&feature_ro_compat, &buf[0x64], sizeof(feature_ro_compat));
+
+		if ((feature_incompat & ext4_incompat) || (feature_ro_compat & ext4_ro_compat))
+			ret = "ext4";
+		else if (feature_compat & 0x00000004)
+			ret = "ext3";
+		else
+			ret = "ext2";
 		goto out;
 	}
 
@@ -2076,9 +2077,44 @@ const char* GetFsName(HANDLE hPhysical, LARGE_INTEGER StartingOffset)
 	}
 
 out:
-	free(buf);
+#ifdef RUFUS_TARGET_NT4
+	if (nt4_virtual_buffer)
+		VirtualFree(buf, 0, MEM_RELEASE);
+	else
+#endif
+		free(buf);
 	return ret;
 }
+
+#ifdef RUFUS_TARGET_NT4
+static BOOL NT4_HasSafePartitionTable(HANDLE hPhysical, uint64_t disk_size, DWORD sector_size)
+{
+	BYTE sector[512];
+	DWORD i, size, start, count;
+	uint64_t disk_sectors = disk_size / sector_size;
+	BOOL has_partition = FALSE;
+	LARGE_INTEGER offset;
+
+	offset.QuadPart = 0;
+	if (!SetFilePointerEx(hPhysical, offset, NULL, FILE_BEGIN) ||
+		!ReadFile(hPhysical, sector, sizeof(sector), &size, NULL) ||
+		(size != sizeof(sector)) || (sector[510] != 0x55) || (sector[511] != 0xAA))
+		return FALSE;
+	for (i = 0; i < 4; i++) {
+		BYTE *entry = &sector[0x1BE + 16 * i];
+		if (entry[4] == 0)
+			continue;
+		if ((entry[0] != 0) && (entry[0] != 0x80))
+			return FALSE;
+		memcpy(&start, &entry[8], sizeof(start));
+		memcpy(&count, &entry[12], sizeof(count));
+		if ((count == 0) || ((uint64_t)start + count > disk_sectors))
+			return FALSE;
+		has_partition = TRUE;
+	}
+	return has_partition;
+}
+#endif
 
 /*
  * Fill the drive properties (size, FS, etc)
@@ -2099,11 +2135,8 @@ BOOL GetDrivePartitionData(DWORD DriveIndex, char* FileSystemName, DWORD FileSys
 	char *volume_name, *buf;
 	// GetFsName() and the NT4 fallback both return read-only text
 	const char* detected_fs;
-#ifdef RUFUS_TARGET_NT4
-	char nt4_drive_letters[27], nt4_root[] = "#:\\";
-#endif
 
-	if (FileSystemName == NULL)
+	if ((FileSystemName == NULL) || (FileSystemNameSize == 0))
 		return FALSE;
 
 	SelectedDrive.nPartitions = 0;
@@ -2111,16 +2144,7 @@ BOOL GetDrivePartitionData(DWORD DriveIndex, char* FileSystemName, DWORD FileSys
 	// Populate the filesystem data
 	FileSystemName[0] = 0;
 #ifdef RUFUS_TARGET_NT4
-	if (WindowsVersion.Version <= WINDOWS_NT4) {
-		nt4_drive_letters[0] = 0;
-		if (!GetDriveLetters(DriveIndex, nt4_drive_letters) || (nt4_drive_letters[0] == 0)) {
-			suprintf("No volume information for drive 0x%02x", DriveIndex);
-		} else {
-			nt4_root[0] = nt4_drive_letters[0];
-			if (!GetVolumeInformationA(nt4_root, NULL, 0, NULL, NULL, NULL, FileSystemName, FileSystemNameSize))
-				suprintf("No volume information for drive 0x%02x", DriveIndex);
-		}
-	} else
+	if (WindowsVersion.Version > WINDOWS_NT4)
 #endif
 	{
 		volume_name = GetLogicalName(DriveIndex, 0, TRUE, FALSE);
@@ -2187,6 +2211,12 @@ BOOL GetDrivePartitionData(DWORD DriveIndex, char* FileSystemName, DWORD FileSys
 	if (WindowsVersion.Version <= WINDOWS_NT4) {
 		DWORD maxEntries = (sizeof(layout) - FIELD_OFFSET(DRIVE_LAYOUT_INFORMATION_EX, PartitionEntry)) /
 			sizeof(PARTITION_INFORMATION_EX);
+		if (!NT4_HasSafePartitionTable(hPhysical, SelectedDrive.DiskSize, SelectedDrive.SectorSize)) {
+			SelectedDrive.PartitionStyle = PARTITION_STYLE_MBR;
+			suprintf("Partition type: RAW");
+			safe_closehandle(hPhysical);
+			return FALSE;
+		}
 		// Translate a Windows 2000 MBR layout into the a regular representation (port)
 		r = DeviceIoControl(hPhysical, IOCTL_DISK_GET_DRIVE_LAYOUT, NULL, 0,
 			legacy_layout, sizeof(legacy_layout), &size, NULL);
@@ -2308,9 +2338,13 @@ BOOL GetDrivePartitionData(DWORD DriveIndex, char* FileSystemName, DWORD FileSys
 					SelectedDrive.Partition[i].Size = DriveLayout->PartitionEntry[i].PartitionLength.QuadPart;
 				}
 #ifdef RUFUS_TARGET_NT4
-				if (WindowsVersion.Version <= WINDOWS_NT4)
-					detected_fs = (FileSystemName[0] != 0) ? FileSystemName : "Unknown";
-				else
+				if (WindowsVersion.Version <= WINDOWS_NT4) {
+					detected_fs = GetFsName(hPhysical, DriveLayout->PartitionEntry[i].StartingOffset);
+					if ((FileSystemName[0] == 0) && (strcmp(detected_fs, "(Unrecognized)") != 0)) {
+						strncpy(FileSystemName, detected_fs, FileSystemNameSize);
+						FileSystemName[FileSystemNameSize - 1] = 0;
+					}
+				} else
 #endif
 					detected_fs = GetFsName(hPhysical, DriveLayout->PartitionEntry[i].StartingOffset);
 

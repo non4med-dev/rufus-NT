@@ -147,6 +147,10 @@ msgstr "ล้าง"
 msgid "Save"
 msgstr "บันทึก"
 
+#. • IDD_LOG → IDC_LOG_DIAGNOSTICS
+msgid "Diagnostics"
+msgstr "การวินิจฉัย"
+
 #. • IDD_UPDATE_POLICY → IDD_UPDATE_POLICY
 msgid "Update policy and settings"
 msgstr "นโยบายการอัพเดต และการตั้งค่า"
@@ -1864,7 +1868,7 @@ msgstr ""
 "- เลือก 'ใช่ (Yes)' เพื่อดาวน์โหลดไฟล์ผ่านอินเทอร์เน็ต\n"
 "- เลือก 'ไม่ใช่ (No)' เพื่อยกเลิก\n"
 "\n"
-"หมายเหตุ: ไฟล์ใหม่จะถูกจัดเก็บในโฟลเดอร์ปัจจุบัน และเมื่อไฟล์ '%s มีแล้ว ไฟล์จะถูกเลือกใช้โดยอัตโนมัติ"
+"หมายเหตุ: ไฟล์จะถูกดาวน์โหลดไปยังโฟลเดอร์ของแอปพลิเคชัน และจะถูกนำมาใช้ซ้ำโดยอัตโนมัติหากมีอยู่แล้ว"
 
 #. • MSG_338
 msgid "Revoked UEFI bootloader detected"
@@ -2119,6 +2123,118 @@ msgstr "ลิขสิทธิ์"
 #. • MSG_519
 msgid "and contributors"
 msgstr "และผู้ร่วมพัฒนา"
+
+#. • MSG_520
+msgid "exFAT support"
+msgstr "การรองรับ exFAT"
+
+#. • MSG_521
+msgid "Windows XP requires KB955704 for exFAT support.\n\nDo you want to download the update for the detected system locale?\n\nSystem locale: 0x%04X (%s)"
+msgstr "Windows XP ต้องใช้ KB955704 เพื่อรองรับ exFAT\n\nคุณต้องการดาวน์โหลดการอัปเดตสำหรับตำแหน่งที่ตั้งของระบบที่ตรวจพบหรือไม่\n\nตำแหน่งที่ตั้งของระบบ: 0x%04X (%s)"
+
+#. • MSG_522
+msgid "No exFAT update is available for the detected system locale. You must install exFAT support manually.\n\nSystem locale: 0x%04X (%s)"
+msgstr "ไม่มีการอัปเดต exFAT สำหรับตำแหน่งที่ตั้งของระบบที่ตรวจพบ คุณต้องติดตั้งการรองรับ exFAT ด้วยตนเอง\n\nตำแหน่งที่ตั้งของระบบ: 0x%04X (%s)"
+
+#. • MSG_523
+msgid "A USB drive of 16 GB or larger was detected. Formatting it as ext2 or ext3 could take a very long time (about 30 minutes).\n\nDo you want to continue?"
+msgstr "ตรวจพบไดรฟ์ USB ขนาด 16 GB ขึ้นไป การฟอร์แมตเป็น ext2 หรือ ext3 อาจใช้เวลานานมาก (ประมาณ 30 นาที)\n\nคุณต้องการดำเนินการต่อหรือไม่"
+
+#. • MSG_524
+msgid "This image uses GRUB %s, but Rufus only includes files for GRUB %s.\n\nThe required files could not be downloaded. Rufus will use the included version instead."
+msgstr "อิมเมจนี้ใช้ GRUB %s แต่ Rufus มีเฉพาะไฟล์สำหรับ GRUB %s\n\nไม่สามารถดาวน์โหลดไฟล์ที่จำเป็นได้ Rufus จะใช้รุ่นที่มีมาให้แทน"
+
+#. • MSG_525
+msgid "'diskcopy.dll' is required to create an MS-DOS drive and could not be downloaded.\n\nDownload it from:\n%s\n\nThen drag and drop the downloaded file into the main window."
+msgstr "ต้องใช้ 'diskcopy.dll' เพื่อสร้างไดรฟ์ MS-DOS แต่ไม่สามารถดาวน์โหลดได้\n\nดาวน์โหลดจาก:\n%s\n\nจากนั้นลากและวางไฟล์ที่ดาวน์โหลดลงในหน้าต่างหลัก"
+
+#. • MSG_526
+msgid "'diskcopy.dll' is already installed."
+msgstr "ติดตั้ง 'diskcopy.dll' ไว้แล้ว"
+
+#. • MSG_527
+msgid "'diskcopy.dll' was installed successfully."
+msgstr "ติดตั้ง 'diskcopy.dll' สำเร็จแล้ว"
+
+#. • MSG_528
+msgid "The selected file is not a valid copy of 'diskcopy.dll'."
+msgstr "ไฟล์ที่เลือกไม่ใช่สำเนา 'diskcopy.dll' ที่ถูกต้อง"
+
+#. • MSG_529
+msgid "No USB drivers were detected. USB drivers are required for most Rufus functionality."
+msgstr "ไม่พบไดรเวอร์ USB จำเป็นต้องมีไดรเวอร์ USB เพื่อใช้ฟังก์ชันส่วนใหญ่ของ Rufus"
+
+#. • MSG_530
+msgid "Rufus requires TLS 1.2 for networking functionality.\n\nWould you like Rufus to enable TLS 1.2?"
+msgstr "Rufus ต้องใช้ TLS 1.2 สำหรับฟังก์ชันเครือข่าย\n\nคุณต้องการให้ Rufus เปิดใช้งาน TLS 1.2 หรือไม่?"
+
+#. • MSG_531
+msgid "TLS 1.2 Required"
+msgstr "จำเป็นต้องใช้ TLS 1.2"
+
+#. • MSG_532
+msgid "Embedded bootloader components"
+msgstr "คอมโพเนนต์บูตโหลดเดอร์แบบฝัง"
+
+#. • MSG_533
+msgid "PowerShell 7 Required"
+msgstr ""
+
+#. • MSG_534
+msgid "PowerShell 7 is required to run Fido, but it was not found in the registered installation or in:\n\n%s\n\nThe system PATH was not searched."
+msgstr ""
+
+#. • MSG_535
+msgid "PowerShell Signature Warning"
+msgstr ""
+
+#. • MSG_536
+msgid "PowerShell 7 at:\n\n%s\n\ndoes not have a valid Microsoft digital signature and may have been tampered with. What should Rufus do?"
+msgstr ""
+
+#. • MSG_537
+msgid "Use it and remember this location"
+msgstr ""
+
+#. • MSG_538
+msgid "Ignore it and keep searching"
+msgstr ""
+
+#. • MSG_539
+msgid "Cancel the Fido operation"
+msgstr ""
+
+#. • MSG_540
+msgid "PowerShell 7 is required to run Fido."
+msgstr ""
+
+#. • MSG_541
+msgid "Windows Vista Extended Kernel, version 10192022 or newer, is required.\n\nWould you like to open the installation guide?"
+msgstr ""
+
+#. • MSG_542
+msgid "Would you like to download PowerShell 7.2.24?"
+msgstr ""
+
+#. • MSG_543
+msgid "Would you like to download PowerShell 7?"
+msgstr ""
+
+#. • MSG_544
+msgid "Windows Vista requires the May 2018 or a later security update to support TLS 1.2.\n\nWould you like to open Microsoft Update Catalog?"
+msgstr "Windows Vista ต้องใช้การอัปเดตความปลอดภัยประจำเดือนพฤษภาคม 2018 หรือใหม่กว่าเพื่อรองรับ TLS 1.2\n\nคุณต้องการเปิดแค็ตตาล็อก Microsoft Update หรือไม่?"
+
+#. • MSG_545
+msgid "Security Update Required"
+msgstr "จำเป็นต้องมีการอัปเดตความปลอดภัย"
+
+#. • MSG_546
+msgid "Windows Vista requires an additional Internet Explorer setting change to use TLS 1.2.\n\nWould you like Rufus to apply it?"
+msgstr "Windows Vista ต้องเปลี่ยนการตั้งค่า Internet Explorer เพิ่มเติมเพื่อใช้ TLS 1.2\n\nคุณต้องการให้ Rufus ดำเนินการหรือไม่?"
+
+#. • MSG_547
+msgid "Networking requires the May 2018 or later security update"
+msgstr "ระบบเครือข่ายต้องใช้การอัปเดตความปลอดภัยเดือนพฤษภาคม 2018 หรือใหม่กว่า"
 
 #. • MSG_900
 #.

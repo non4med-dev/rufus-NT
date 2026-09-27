@@ -147,6 +147,10 @@ msgstr "Wyczyść"
 msgid "Save"
 msgstr "Zapisz"
 
+#. • IDD_LOG → IDC_LOG_DIAGNOSTICS
+msgid "Diagnostics"
+msgstr "Diagnostyka"
+
 #. • IDD_UPDATE_POLICY → IDD_UPDATE_POLICY
 msgid "Update policy and settings"
 msgstr "Polityka aktualizacji i ustawienia"
@@ -2118,6 +2122,118 @@ msgstr "Prawa autorskie"
 #. • MSG_519
 msgid "and contributors"
 msgstr "i współtwórcy"
+
+#. • MSG_520
+msgid "exFAT support"
+msgstr "Obsługa exFAT"
+
+#. • MSG_521
+msgid "Windows XP requires KB955704 for exFAT support.\n\nDo you want to download the update for the detected system locale?\n\nSystem locale: 0x%04X (%s)"
+msgstr "System Windows XP wymaga aktualizacji KB955704 do obsługi exFAT.\n\nCzy chcesz pobrać aktualizację dla wykrytych ustawień regionalnych systemu?\n\nUstawienia regionalne systemu: 0x%04X (%s)"
+
+#. • MSG_522
+msgid "No exFAT update is available for the detected system locale. You must install exFAT support manually.\n\nSystem locale: 0x%04X (%s)"
+msgstr "Dla wykrytych ustawień regionalnych systemu nie jest dostępna aktualizacja exFAT. Obsługę exFAT należy zainstalować ręcznie.\n\nUstawienia regionalne systemu: 0x%04X (%s)"
+
+#. • MSG_523
+msgid "A USB drive of 16 GB or larger was detected. Formatting it as ext2 or ext3 could take a very long time (about 30 minutes).\n\nDo you want to continue?"
+msgstr "Wykryto dysk USB o pojemności co najmniej 16 GB. Formatowanie go jako ext2 lub ext3 może potrwać bardzo długo (około 30 minut).\n\nCzy chcesz kontynuować?"
+
+#. • MSG_524
+msgid "This image uses GRUB %s, but Rufus only includes files for GRUB %s.\n\nThe required files could not be downloaded. Rufus will use the included version instead."
+msgstr "Ten obraz używa GRUB %s, ale Rufus zawiera tylko pliki dla GRUB %s.\n\nNie można pobrać wymaganych plików. Rufus użyje zamiast nich dołączonej wersji."
+
+#. • MSG_525
+msgid "'diskcopy.dll' is required to create an MS-DOS drive and could not be downloaded.\n\nDownload it from:\n%s\n\nThen drag and drop the downloaded file into the main window."
+msgstr "Plik 'diskcopy.dll' jest wymagany do utworzenia dysku MS-DOS i nie można go było pobrać.\n\nPobierz go z:\n%s\n\nNastępnie przeciągnij pobrany plik do okna głównego."
+
+#. • MSG_526
+msgid "'diskcopy.dll' is already installed."
+msgstr "Plik 'diskcopy.dll' jest już zainstalowany."
+
+#. • MSG_527
+msgid "'diskcopy.dll' was installed successfully."
+msgstr "Plik 'diskcopy.dll' został pomyślnie zainstalowany."
+
+#. • MSG_528
+msgid "The selected file is not a valid copy of 'diskcopy.dll'."
+msgstr "Wybrany plik nie jest prawidłową kopią 'diskcopy.dll'."
+
+#. • MSG_529
+msgid "No USB drivers were detected. USB drivers are required for most Rufus functionality."
+msgstr "Nie wykryto sterowników USB. Sterowniki USB są wymagane do działania większości funkcji programu Rufus."
+
+#. • MSG_530
+msgid "Rufus requires TLS 1.2 for networking functionality.\n\nWould you like Rufus to enable TLS 1.2?"
+msgstr "Program Rufus wymaga protokołu TLS 1.2 do obsługi funkcji sieciowych.\n\nCzy program Rufus ma włączyć protokół TLS 1.2?"
+
+#. • MSG_531
+msgid "TLS 1.2 Required"
+msgstr "Wymagany jest TLS 1.2"
+
+#. • MSG_532
+msgid "Embedded bootloader components"
+msgstr "Osadzone składniki programu rozruchowego"
+
+#. • MSG_533
+msgid "PowerShell 7 Required"
+msgstr "Wymagany jest PowerShell 7"
+
+#. • MSG_534
+msgid "PowerShell 7 is required to run Fido, but it was not found in the registered installation or in:\n\n%s\n\nThe system PATH was not searched."
+msgstr "Program PowerShell 7 jest wymagany do uruchomienia Fido, ale nie znaleziono go w zarejestrowanej instalacji ani w:\n\n%s\n\nŚcieżka systemowa PATH nie została przeszukana."
+
+#. • MSG_535
+msgid "PowerShell Signature Warning"
+msgstr "Ostrzeżenie dotyczące podpisu programu PowerShell"
+
+#. • MSG_536
+msgid "PowerShell 7 at:\n\n%s\n\ndoes not have a valid Microsoft digital signature and may have been tampered with. What should Rufus do?"
+msgstr "Program PowerShell 7 w lokalizacji:\n\n%s\n\nnie ma prawidłowego podpisu cyfrowego firmy Microsoft i mógł zostać zmodyfikowany. Co powinien zrobić program Rufus?"
+
+#. • MSG_537
+msgid "Use it and remember this location"
+msgstr "Użyj go i zapamiętaj tę lokalizację"
+
+#. • MSG_538
+msgid "Ignore it and keep searching"
+msgstr "Zignoruj go i kontynuuj wyszukiwanie"
+
+#. • MSG_539
+msgid "Cancel the Fido operation"
+msgstr "Anuluj operację Fido"
+
+#. • MSG_540
+msgid "PowerShell 7 is required to run Fido."
+msgstr "Program PowerShell 7 jest wymagany do uruchomienia Fido."
+
+#. • MSG_541
+msgid "Windows Vista Extended Kernel, version 10192022 or newer, is required.\n\nWould you like to open the installation guide?"
+msgstr "Wymagane jest rozszerzone jądro systemu Windows Vista w wersji 10192022 lub nowszej.\n\nCzy chcesz otworzyć instrukcję instalacji?"
+
+#. • MSG_542
+msgid "Would you like to download PowerShell 7.2.24?"
+msgstr "Czy chcesz pobrać program PowerShell 7.2.24?"
+
+#. • MSG_543
+msgid "Would you like to download PowerShell 7?"
+msgstr "Czy chcesz pobrać program PowerShell 7?"
+
+#. • MSG_544
+msgid "Windows Vista requires the May 2018 or a later security update to support TLS 1.2.\n\nWould you like to open Microsoft Update Catalog?"
+msgstr "System Windows Vista wymaga aktualizacji zabezpieczeń z maja 2018 r. lub nowszej, aby obsługiwać protokół TLS 1.2.\n\nCzy chcesz otworzyć wykaz usługi Microsoft Update?"
+
+#. • MSG_545
+msgid "Security Update Required"
+msgstr "Wymagana jest aktualizacja zabezpieczeń"
+
+#. • MSG_546
+msgid "Windows Vista requires an additional Internet Explorer setting change to use TLS 1.2.\n\nWould you like Rufus to apply it?"
+msgstr "System Windows Vista wymaga dodatkowej zmiany ustawień programu Internet Explorer, aby korzystać z protokołu TLS 1.2.\n\nCzy program Rufus ma ją zastosować?"
+
+#. • MSG_547
+msgid "Networking requires the May 2018 or later security update"
+msgstr "Sieć wymaga aktualizacji zabezpieczeń z maja 2018 r. lub nowszej"
 
 #. • MSG_900
 #.

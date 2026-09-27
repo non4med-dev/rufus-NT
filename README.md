@@ -1,45 +1,51 @@
-Rufus: The Reliable USB Formatting Utility
-==========================================
+# Rufus-NT
+### The Reliable USB Formatting Utility, for anything NT (with USB support)
 
-[![VS2022 Build Status](https://img.shields.io/github/actions/workflow/status/pbatard/rufus/vs2022.yml?branch=master&style=flat-square&label=VS2022%20Build)](https://github.com/pbatard/rufus/actions/workflows/vs2022.yml)
-[![MinGW Build Status](https://img.shields.io/github/actions/workflow/status/pbatard/rufus/mingw.yml?branch=master&style=flat-square&label=MinGW%20Build)](https://github.com/pbatard/rufus/actions/workflows/mingw.yml)
-[![Coverity Scan Status](https://img.shields.io/coverity/scan/2172.svg?style=flat-square&label=Coverity%20Analysis)](https://scan.coverity.com/projects/pbatard-rufus)  
-[![Latest Release](https://img.shields.io/github/release-pre/pbatard/rufus.svg?style=flat-square&label=Latest%20Release)](https://github.com/pbatard/rufus/releases)
-[![Licence](https://img.shields.io/badge/license-GPLv3-blue.svg?style=flat-square&label=License)](https://www.gnu.org/licenses/gpl-3.0.en.html)
-[![Download Stats](https://img.shields.io/github/downloads/pbatard/rufus/total.svg?label=Downloads&style=flat-square)](https://github.com/pbatard/rufus/releases)
-[![Contributors](https://img.shields.io/github/contributors/pbatard/rufus.svg?style=flat-square&label=Contributors)](https://github.com/pbatard/rufus/graphs/contributors)
+![Rufus-NT-Banner](https://raw.githubusercontent.com/non4med-dev/Rufus-NT/master/res/banner.png)
 
-![Rufus logo](https://raw.githubusercontent.com/pbatard/rufus/master/res/icons/rufus-128.png)
+The original project can be found [under this link.](https://github.com/pbatard/rufus)
 
-Rufus is a utility that helps format and create bootable USB flash drives.
+## Features
+  
+- Everything that [Rufus 4.7](https://github.com/pbatard/rufus/tree/v4.7) has to offer
+- ... but on Windows versions no one sane would ever consider
 
-Features
---------
+| Windows Version | Formatting / Partitioning | Windows To Go | Disk Cloning | Networking | Localization |
+| --- | --- | --- | --- | --- | --- |
+| Windows 7      | Fully supported | Fully supported | VHD Only    | Fully supported | Fully supported |
+| Windows Vista  | Fully supported | Fully supported | VHD Only    | Disabled        | Fully supported |
+| Windows XP     | Fully supported | Fully supported | VHD Only    | Disabled        | No Arabic       |
+| Windows 2000   | Fully supported | Fully supported | VHD Only    | Disabled        | No Arabic       |
+| Windows NT 4.0 | Fully supported | Supported (?)   | Unsupported | Disabled        | Limited         |
 
-* Format USB, flash card and virtual drives to FAT/FAT32/NTFS/UDF/exFAT/ReFS/ext2/ext3
-* Create DOS bootable USB drives using [FreeDOS](https://www.freedos.org) or MS-DOS
-* Create BIOS or UEFI bootable drives, including [UEFI bootable NTFS](https://github.com/pbatard/uefi-ntfs)
-* Create bootable drives from bootable ISOs (Windows, Linux, etc.)
-* Create bootable drives from bootable disk images, including compressed ones
-* Create Windows 11 installation drives for PCs that don't have TPM or Secure Boot
-* Create [Windows To Go](https://en.wikipedia.org/wiki/Windows_To_Go) drives
-* Create VHD/DD, VHDX and FFU images of an existing drive
-* Create persistent Linux partitions
-* Compute MD5, SHA-1, SHA-256 and SHA-512 checksums of the selected image
-* Perform runtime validation of UEFI bootable media
-* Improve Windows installation experience by automatically setting up OOBE parameters (local account, privacy options, etc.)
-* Perform bad blocks checks, including detection of "fake" flash drives
-* Download official Microsoft Windows 8, Windows 10 or Windows 11 retail ISOs
-* Download [UEFI Shell](https://github.com/pbatard/UEFI-Shell) ISOs
-* Modern and familiar UI, with [38 languages natively supported](https://github.com/pbatard/rufus/wiki/FAQ#What_languages_are_natively_supported_by_Rufus)
-* Small footprint. No installation required.
-* Portable. Secure Boot compatible.
-* 100% [Free Software](https://www.gnu.org/philosophy/free-sw) ([GPL v3](https://www.gnu.org/licenses/gpl-3.0))
+- Specific fixes and optimizations for all systems
+- Fido ISO downloading restored to Windows 7<br>
+-> [Powershell 7.2](https://github.com/PowerShell/PowerShell/releases/tag/v7.2.24) is required<br>
+- Fixes for VPNs, outdated drivers, unupdated systems
+- GRUB and Syslinux embedded for offline use
+- GPT partitioning for Windows NT4, XP and 2000
+- Native, optimized, fully functional UI even on older systems
+- Increased performance over last-supported versions (~15% on average)
+- Actively maintained, selectively updated from upstream
 
-Compilation
------------
+## Documentation
 
-Use either Visual Studio 2022 or MinGW and then invoke the `.sln` or `configure`/`make` respectively.
+Rufus-NT can be built as either `rufusnt.exe` or `rufusnt-noembed.exe` with the difference being not including /res/embed.<br>
+That saves about 900kb after compression.<br>
+
+Rufus-NT includes `wimgapi.dll` (6.1.7601.24546) and `bcdboot.exe` (6.2.8102) patched with the api-shim `ntapi.dll`.<br>
+
+If you'd like to recreate the patches, understand how they work and what they do, look [here](https://github.com/non4med-dev/rufus-nt/docs/bcdboot-wimgapi-ntapi.md)<br>
+Prerequisites are either python3 or a PE editor.<br>
+
+Most changes up to Update 5 weren't properly documented, explained nor audited.<br>
+I've tried my best at explaining everything in [this audit here](https://github.com/non4med-dev/rufus-nt/docs/code-audit-update5.md)
+
+## Compilation
+
+Use Visual Studio 2022 and then invoke the `.sln` <br>
+
+UPX 3.91 with `--lzma --best` compression is recommended 
 
 #### Visual Studio
 
@@ -48,17 +54,6 @@ download and use the *freely available* [Visual Studio Community Edition](https:
 to build, run or develop for Rufus. As per the Visual Studio Community Edition license,
 this applies regardless of whether you are an individual or a corporate user.
 
-Additional information
-----------------------
-
-Rufus provides extensive information about what it is doing, either through its
-easily accessible log, or through the [Windows debug facility](https://docs.microsoft.com/en-us/sysinternals/downloads/debugview).
-
-* [__Official Website__](https://rufus.ie)
-* [FAQ](https://github.com/pbatard/rufus/wiki/FAQ)
-
-Enhancements/Bugs
------------------
-
-Please use the [GitHub issue tracker](https://github.com/pbatard/rufus/issues)
-for reporting problems or suggesting new features.
+Rufus is 100% [Free Software](https://www.gnu.org/philosophy/free-sw) ([GPL v3](https://www.gnu.org/licenses/gpl-3.0))
+All credits for the original project go to [Pete Batard](https://github.com/pbatard) and all other contributors.
+Rufus-Legacy is an unofficial fork and is not affiliated with, endorsed by, or otherwise associated with the upstream Rufus project.

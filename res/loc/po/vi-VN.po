@@ -147,6 +147,10 @@ msgstr "Xoá"
 msgid "Save"
 msgstr "Lưu"
 
+#. • IDD_LOG → IDC_LOG_DIAGNOSTICS
+msgid "Diagnostics"
+msgstr "Chẩn đoán"
+
 #. • IDD_UPDATE_POLICY → IDD_UPDATE_POLICY
 msgid "Update policy and settings"
 msgstr "Cập nhật chính sách và thiết lập"
@@ -2118,6 +2122,118 @@ msgstr "Bản quyền"
 #. • MSG_519
 msgid "and contributors"
 msgstr "và những người đóng góp"
+
+#. • MSG_520
+msgid "exFAT support"
+msgstr "Hỗ trợ exFAT"
+
+#. • MSG_521
+msgid "Windows XP requires KB955704 for exFAT support.\n\nDo you want to download the update for the detected system locale?\n\nSystem locale: 0x%04X (%s)"
+msgstr "Windows XP yêu cầu KB955704 để hỗ trợ exFAT.\n\nBạn có muốn tải xuống bản cập nhật cho ngôn ngữ hệ thống đã phát hiện không?\n\nNgôn ngữ hệ thống: 0x%04X (%s)"
+
+#. • MSG_522
+msgid "No exFAT update is available for the detected system locale. You must install exFAT support manually.\n\nSystem locale: 0x%04X (%s)"
+msgstr "Không có bản cập nhật exFAT cho ngôn ngữ hệ thống đã phát hiện. Bạn phải cài đặt hỗ trợ exFAT theo cách thủ công.\n\nNgôn ngữ hệ thống: 0x%04X (%s)"
+
+#. • MSG_523
+msgid "A USB drive of 16 GB or larger was detected. Formatting it as ext2 or ext3 could take a very long time (about 30 minutes).\n\nDo you want to continue?"
+msgstr "Đã phát hiện ổ USB có dung lượng từ 16 GB trở lên. Việc định dạng thành ext2 hoặc ext3 có thể mất rất nhiều thời gian (khoảng 30 phút).\n\nBạn có muốn tiếp tục không?"
+
+#. • MSG_524
+msgid "This image uses GRUB %s, but Rufus only includes files for GRUB %s.\n\nThe required files could not be downloaded. Rufus will use the included version instead."
+msgstr "Ảnh này sử dụng GRUB %s, nhưng Rufus chỉ bao gồm các tệp cho GRUB %s.\n\nKhông thể tải xuống các tệp cần thiết. Rufus sẽ dùng phiên bản đi kèm thay thế."
+
+#. • MSG_525
+msgid "'diskcopy.dll' is required to create an MS-DOS drive and could not be downloaded.\n\nDownload it from:\n%s\n\nThen drag and drop the downloaded file into the main window."
+msgstr "Cần có 'diskcopy.dll' để tạo ổ đĩa MS-DOS nhưng không thể tải xuống.\n\nHãy tải xuống từ:\n%s\n\nSau đó kéo và thả tệp đã tải xuống vào cửa sổ chính."
+
+#. • MSG_526
+msgid "'diskcopy.dll' is already installed."
+msgstr "'diskcopy.dll' đã được cài đặt."
+
+#. • MSG_527
+msgid "'diskcopy.dll' was installed successfully."
+msgstr "Đã cài đặt 'diskcopy.dll' thành công."
+
+#. • MSG_528
+msgid "The selected file is not a valid copy of 'diskcopy.dll'."
+msgstr "Tệp đã chọn không phải là bản sao hợp lệ của 'diskcopy.dll'."
+
+#. • MSG_529
+msgid "No USB drivers were detected. USB drivers are required for most Rufus functionality."
+msgstr "Không phát hiện thấy trình điều khiển USB. Hầu hết chức năng của Rufus đều yêu cầu trình điều khiển USB."
+
+#. • MSG_530
+msgid "Rufus requires TLS 1.2 for networking functionality.\n\nWould you like Rufus to enable TLS 1.2?"
+msgstr "Rufus yêu cầu TLS 1.2 cho chức năng mạng.\n\nBạn có muốn Rufus bật TLS 1.2 không?"
+
+#. • MSG_531
+msgid "TLS 1.2 Required"
+msgstr "Yêu cầu TLS 1.2"
+
+#. • MSG_532
+msgid "Embedded bootloader components"
+msgstr "Các thành phần bộ nạp khởi động được nhúng"
+
+#. • MSG_533
+msgid "PowerShell 7 Required"
+msgstr ""
+
+#. • MSG_534
+msgid "PowerShell 7 is required to run Fido, but it was not found in the registered installation or in:\n\n%s\n\nThe system PATH was not searched."
+msgstr ""
+
+#. • MSG_535
+msgid "PowerShell Signature Warning"
+msgstr ""
+
+#. • MSG_536
+msgid "PowerShell 7 at:\n\n%s\n\ndoes not have a valid Microsoft digital signature and may have been tampered with. What should Rufus do?"
+msgstr ""
+
+#. • MSG_537
+msgid "Use it and remember this location"
+msgstr ""
+
+#. • MSG_538
+msgid "Ignore it and keep searching"
+msgstr ""
+
+#. • MSG_539
+msgid "Cancel the Fido operation"
+msgstr ""
+
+#. • MSG_540
+msgid "PowerShell 7 is required to run Fido."
+msgstr ""
+
+#. • MSG_541
+msgid "Windows Vista Extended Kernel, version 10192022 or newer, is required.\n\nWould you like to open the installation guide?"
+msgstr ""
+
+#. • MSG_542
+msgid "Would you like to download PowerShell 7.2.24?"
+msgstr ""
+
+#. • MSG_543
+msgid "Would you like to download PowerShell 7?"
+msgstr ""
+
+#. • MSG_544
+msgid "Windows Vista requires the May 2018 or a later security update to support TLS 1.2.\n\nWould you like to open Microsoft Update Catalog?"
+msgstr "Windows Vista yêu cầu bản cập nhật bảo mật tháng 5 năm 2018 hoặc mới hơn để hỗ trợ TLS 1.2.\n\nBạn có muốn mở Danh mục Microsoft Update không?"
+
+#. • MSG_545
+msgid "Security Update Required"
+msgstr "Yêu cầu bản cập nhật bảo mật"
+
+#. • MSG_546
+msgid "Windows Vista requires an additional Internet Explorer setting change to use TLS 1.2.\n\nWould you like Rufus to apply it?"
+msgstr "Windows Vista yêu cầu thay đổi thêm một thiết đặt Internet Explorer để sử dụng TLS 1.2.\n\nBạn có muốn Rufus áp dụng thay đổi này không?"
+
+#. • MSG_547
+msgid "Networking requires the May 2018 or later security update"
+msgstr "Mạng yêu cầu bản cập nhật bảo mật tháng 5 năm 2018 hoặc mới hơn"
 
 #. • MSG_900
 #.

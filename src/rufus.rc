@@ -129,8 +129,9 @@ CAPTION "Log"
 FONT 9, "Segoe UI Symbol", 400, 0, 0x0
 BEGIN
     EDITTEXT        IDC_LOG_EDIT,0,0,366,296,ES_MULTILINE | ES_READONLY | NOT WS_BORDER | WS_VSCROLL,WS_EX_CLIENTEDGE
-    PUSHBUTTON      "Clear",IDC_LOG_CLEAR,192,305,50,12
-    PUSHBUTTON      "Save",IDC_LOG_SAVE,249,305,50,12
+    PUSHBUTTON      "Clear",IDC_LOG_CLEAR,125,305,50,12
+    PUSHBUTTON      "Save",IDC_LOG_SAVE,182,305,50,12
+    PUSHBUTTON      "Diagnostics",IDC_LOG_DIAGNOSTICS,239,305,60,12
     DEFPUSHBUTTON   "Close",IDCANCEL,306,305,50,12
 END
 
@@ -276,8 +277,35 @@ BEGIN
     "IDR_SL_LDLINUX_V6_BSS   RCDATA                  ""../res/syslinux/ldlinux_v6.bss""\r\n"
     "IDR_SL_LDLINUX_V6_SYS   RCDATA                  ""../res/syslinux/ldlinux_v6.sys""\r\n"
     "IDR_SL_MBOOT_C32        RCDATA                  ""../res/syslinux/mboot.c32""\r\n"
+    "#ifndef RUFUS_NO_EMBED\r\n"
+    "IDR_SL_LDLINUX_C32      RCDATA                  ""../res/embed/syslinux-6.04/ldlinux.c32""\r\n"
+    "#endif\r\n"
     "IDR_GR_GRUB_GRLDR_MBR   RCDATA                  ""../res/grub/grldr.mbr""\r\n"
     "IDR_GR_GRUB2_CORE_IMG   RCDATA                  ""../res/grub2/core.img""\r\n"
+    "#ifndef RUFUS_NO_EMBED\r\n"
+    "IDR_GR_GRUB4DOS_GRLDR   RCDATA                  ""../res/embed/grub4dos-0.4.6a/grldr""\r\n"
+    "IDR_GR_GRUB2_CORE_IMG_206 RCDATA                ""../res/embed/grub-2.06-ubuntu-22.04/core.img""\r\n"
+    "IDR_GR_GRUB2_CORE_IMG_200_22 RCDATA             ""../res/embed/grub-2.00-22/core.img""\r\n"
+    "IDR_GR_GRUB2_CORE_IMG_202_BETA2 RCDATA          ""../res/embed/grub-2.02~beta2/core.img""\r\n"
+    "IDR_GR_GRUB2_CORE_IMG_202_BETA3 RCDATA          ""../res/embed/grub-2.02~beta3/core.img""\r\n"
+    "IDR_GR_GRUB2_CORE_IMG_202 RCDATA                ""../res/embed/grub-2.02/core.img""\r\n"
+    "IDR_GR_GRUB2_CORE_IMG_203 RCDATA                ""../res/embed/grub-2.03/core.img""\r\n"
+    "IDR_GR_GRUB2_CORE_IMG_203_5 RCDATA              ""../res/embed/grub-2.03.5/core.img""\r\n"
+    "IDR_GR_GRUB2_CORE_IMG_204 RCDATA                ""../res/embed/grub-2.04/core.img""\r\n"
+    "IDR_GR_GRUB2_CORE_IMG_204_NONSTANDARD RCDATA    ""../res/embed/grub-2.04-nonstandard/core.img""\r\n"
+    "IDR_GR_GRUB2_CORE_IMG_205 RCDATA                ""../res/embed/grub-2.05/core.img""\r\n"
+    "IDR_GR_GRUB2_CORE_IMG_206_E67A551A RCDATA       ""../res/embed/grub-2.06@e67a551a/core.img""\r\n"
+    "IDR_GR_GRUB2_CORE_IMG_206_E67A551A_NONSTANDARD RCDATA ""../res/embed/grub-2.06@e67a551a-nonstandard/core.img""\r\n"
+    "IDR_GR_GRUB2_CORE_IMG_206_E67A551A_NONSTANDARD_GDIE RCDATA ""../res/embed/grub-2.06@e67a551a-nonstandard-gdie/core.img""\r\n"
+    "IDR_GR_GRUB2_CORE_IMG_206_NONSTANDARD RCDATA    ""../res/embed/grub-2.06-nonstandard/core.img""\r\n"
+    "IDR_GR_GRUB2_CORE_IMG_206_NONSTANDARD_GDIE RCDATA ""../res/embed/grub-2.06-nonstandard-gdie/core.img""\r\n"
+    "IDR_GR_GRUB2_CORE_IMG_206_RC1 RCDATA            ""../res/embed/grub-2.06~rc1/core.img""\r\n"
+    "IDR_GR_GRUB2_CORE_IMG_212 RCDATA                ""../res/embed/grub-2.12/core.img""\r\n"
+    "IDR_GR_GRUB2_CORE_IMG_212_NONSTANDARD_GDIE RCDATA ""../res/embed/grub-2.12-nonstandard-gdie/core.img""\r\n"
+    "IDR_GR_GRUB2_CORE_IMG_214 RCDATA                ""../res/embed/grub-2.14/core.img""\r\n"
+    "IDR_GR_GRUB2_CORE_IMG_214_RC1 RCDATA            ""../res/embed/grub-2.14~rc1/core.img""\r\n"
+    "IDR_GR_GRUB4DOS_GRLDR_045C RCDATA               ""../res/embed/grub4dos-0.4.5c/grldr""\r\n"
+    "#endif\r\n"
     "IDR_SBR_MSG             RCDATA                  ""../res/mbr/msg.txt""\r\n"
     "IDR_FD_COMMAND_COM      RCDATA                  ""../res/freedos/COMMAND.COM""\r\n"
     "IDR_FD_KERNEL_SYS       RCDATA                  ""../res/freedos/KERNEL.SYS""\r\n"
@@ -416,7 +444,7 @@ END
 //
 
 VS_VERSION_INFO VERSIONINFO
- FILEVERSION 1,1,0,0
+ FILEVERSION 2,0,0,0
  PRODUCTVERSION 4,7,0,0
  FILEFLAGSMASK 0x3fL
 #ifdef _DEBUG
@@ -432,17 +460,18 @@ BEGIN
     BEGIN
         BLOCK "000004b0"
         BEGIN
-            VALUE "Comments", "Unofficial Rufus fork meant for legacy Windows operating systems."
-            VALUE "CompanyName", "https://github.com/non4med-dev"
+            VALUE "Comments", "Unofficial Rufus fork meant for legacy Windows systems."
+            VALUE "CompanyName", "non4med"
             VALUE "FileDescription", "Rufus-NT"
-            VALUE "FileVersion", "1.1.0.0"
+            // Major . Almost-major . Minor . Minor
+            VALUE "FileVersion", "2.0.0.0"
             VALUE "InternalName", "Rufus-NT"
             // Had to remove © as it doesn't exist in old fonts
             VALUE "LegalCopyright", "2011-2026 Pete Batard (GPL v3)"
             VALUE "LegalTrademarks", "https://www.gnu.org/licenses/gpl-3.0.html"
-            VALUE "Changelog", "Update 4: Windows NT 4.0 support"
+            VALUE "Changelog", "Update 5: Security, stability and LOTS of fixes"
             VALUE "ProductName", "Rufus-NT"
-            VALUE "ProductVersion", "Update 4"
+            VALUE "ProductVersion", "Update 5"
         END
     END
     BLOCK "VarFileInfo"
@@ -480,8 +509,35 @@ IDR_SL_LDLINUX_V4_SYS   RCDATA                  "../res/syslinux/ldlinux_v4.sys"
 IDR_SL_LDLINUX_V6_BSS   RCDATA                  "../res/syslinux/ldlinux_v6.bss"
 IDR_SL_LDLINUX_V6_SYS   RCDATA                  "../res/syslinux/ldlinux_v6.sys"
 IDR_SL_MBOOT_C32        RCDATA                  "../res/syslinux/mboot.c32"
+#ifndef RUFUS_NO_EMBED
+IDR_SL_LDLINUX_C32      RCDATA                  "../res/embed/syslinux-6.04/ldlinux.c32"
+#endif
 IDR_GR_GRUB_GRLDR_MBR   RCDATA                  "../res/grub/grldr.mbr"
 IDR_GR_GRUB2_CORE_IMG   RCDATA                  "../res/grub2/core.img"
+#ifndef RUFUS_NO_EMBED
+IDR_GR_GRUB4DOS_GRLDR   RCDATA                  "../res/embed/grub4dos-0.4.6a/grldr"
+IDR_GR_GRUB2_CORE_IMG_206 RCDATA                "../res/embed/grub-2.06-ubuntu-22.04/core.img"
+IDR_GR_GRUB2_CORE_IMG_200_22 RCDATA             "../res/embed/grub-2.00-22/core.img"
+IDR_GR_GRUB2_CORE_IMG_202_BETA2 RCDATA          "../res/embed/grub-2.02~beta2/core.img"
+IDR_GR_GRUB2_CORE_IMG_202_BETA3 RCDATA          "../res/embed/grub-2.02~beta3/core.img"
+IDR_GR_GRUB2_CORE_IMG_202 RCDATA                "../res/embed/grub-2.02/core.img"
+IDR_GR_GRUB2_CORE_IMG_203 RCDATA                "../res/embed/grub-2.03/core.img"
+IDR_GR_GRUB2_CORE_IMG_203_5 RCDATA              "../res/embed/grub-2.03.5/core.img"
+IDR_GR_GRUB2_CORE_IMG_204 RCDATA                "../res/embed/grub-2.04/core.img"
+IDR_GR_GRUB2_CORE_IMG_204_NONSTANDARD RCDATA    "../res/embed/grub-2.04-nonstandard/core.img"
+IDR_GR_GRUB2_CORE_IMG_205 RCDATA                "../res/embed/grub-2.05/core.img"
+IDR_GR_GRUB2_CORE_IMG_206_E67A551A RCDATA       "../res/embed/grub-2.06@e67a551a/core.img"
+IDR_GR_GRUB2_CORE_IMG_206_E67A551A_NONSTANDARD RCDATA "../res/embed/grub-2.06@e67a551a-nonstandard/core.img"
+IDR_GR_GRUB2_CORE_IMG_206_E67A551A_NONSTANDARD_GDIE RCDATA "../res/embed/grub-2.06@e67a551a-nonstandard-gdie/core.img"
+IDR_GR_GRUB2_CORE_IMG_206_NONSTANDARD RCDATA    "../res/embed/grub-2.06-nonstandard/core.img"
+IDR_GR_GRUB2_CORE_IMG_206_NONSTANDARD_GDIE RCDATA "../res/embed/grub-2.06-nonstandard-gdie/core.img"
+IDR_GR_GRUB2_CORE_IMG_206_RC1 RCDATA            "../res/embed/grub-2.06~rc1/core.img"
+IDR_GR_GRUB2_CORE_IMG_212 RCDATA                "../res/embed/grub-2.12/core.img"
+IDR_GR_GRUB2_CORE_IMG_212_NONSTANDARD_GDIE RCDATA "../res/embed/grub-2.12-nonstandard-gdie/core.img"
+IDR_GR_GRUB2_CORE_IMG_214 RCDATA                "../res/embed/grub-2.14/core.img"
+IDR_GR_GRUB2_CORE_IMG_214_RC1 RCDATA            "../res/embed/grub-2.14~rc1/core.img"
+IDR_GR_GRUB4DOS_GRLDR_045C RCDATA               "../res/embed/grub4dos-0.4.5c/grldr"
+#endif
 IDR_SBR_MSG             RCDATA                  "../res/mbr/msg.txt"
 IDR_FD_COMMAND_COM      RCDATA                  "../res/freedos/COMMAND.COM"
 IDR_FD_KERNEL_SYS       RCDATA                  "../res/freedos/KERNEL.SYS"
@@ -519,8 +575,8 @@ IDR_BCDBOOT             RCDATA                  "../res/wintogo/bcdboot.exe"
 IDR_WIMLIB_IMAGE_X      RCDATA                  "../res/wintogo/wimlib/wimlib-imagex.exe"
 IDR_LIBWIM15            RCDATA                  "../res/wintogo/wimlib/libwim-15.dll"
 IDR_RETRO7ZIP           RCDATA                  "../res/retro7zip/7z.exe"
-IDR_CHANGELOG            RCDATA                  "../ChangeLog.txt"
-IDR_RUFUS_NT_CHANGELOG   RCDATA                  "../Changelog-NT.txt"
+IDR_CHANGELOG           RCDATA                  "../ChangeLog.txt"
+IDR_RUFUS_NT_CHANGELOG  RCDATA                  "../Changelog-NT.txt"
 IDR_MD5_BOOTIA32        RCDATA                  "../res/md5/bootia32.efi"
 IDR_MD5_BOOTX64         RCDATA                  "../res/md5/bootx64.efi"
 IDR_MD5_BOOTARM         RCDATA                  "../res/md5/bootarm.efi"
@@ -535,6 +591,7 @@ IDR_DBX_AA64            RCDATA                  "../res/dbx/dbx_aarch64.efiauth2
 IDR_DBX_IA64            RCDATA                  "../res/dbx/dbx_ia64.efiauth2"
 IDR_DBX_RISCV64         RCDATA                  "../res/dbx/dbx_riscv64.efiauth2"
 IDR_DBX_LOONGARCH64     RCDATA                  "../res/dbx/dbx_loongarch64.efiauth2"
+
 IDI_LANG_16             RCDATA                  "../res/icons/lang-16.png"
 IDI_INFO_16             RCDATA                  "../res/icons/info-16.png"
 IDI_SETTINGS_16         RCDATA                  "../res/icons/settings-16.png"

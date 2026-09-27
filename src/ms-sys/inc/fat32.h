@@ -29,6 +29,8 @@ int entire_fat_32_fd_br_matches(FILE *fp);
    otherwise FALSE */
 int write_fat_32_fd_br(FILE *fp, int bKeepLabel);
 
+int write_fat_32_nt4_br(FILE *fp, int bFreeDOS, int secondary);
+
 /* returns TRUE if the file has an exact match of the FAT32 boot record this
    program would create for NT, otherwise FALSE.
    The file position will change when this function is called! */

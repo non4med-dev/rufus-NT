@@ -228,3 +228,29 @@ out:
    _mm_free(aucBuf);
    return r;
 } /* write_data */
+
+int write_data_once(FILE *fp, uint64_t Position,
+                    const void *pData, uint64_t Len)
+{
+   int r = 0;
+   unsigned char *aucBuf;
+   FAKE_FD* fd = (FAKE_FD*)fp;
+   HANDLE hDrive = (HANDLE)fd->_handle;
+   uint64_t StartSector, NumSectors;
+
+   Position += fd->_offset;
+   if (((Position % ulBytesPerSector) != 0) || ((Len % ulBytesPerSector) != 0))
+      return write_data(fp, Position - fd->_offset, pData, Len);
+   if ((Len == 0) || (Len > MAX_DATA_LEN))
+      return 0;
+   aucBuf = _mm_malloc((size_t)Len, 4096);
+   if (aucBuf == NULL)
+      return 0;
+   memcpy(aucBuf, pData, (size_t)Len);
+   StartSector = Position / ulBytesPerSector;
+   NumSectors = Len / ulBytesPerSector;
+   if (write_sectors(hDrive, ulBytesPerSector, StartSector, NumSectors, aucBuf) > 0)
+      r = 1;
+   _mm_free(aucBuf);
+   return r;
+}

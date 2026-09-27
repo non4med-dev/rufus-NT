@@ -859,17 +859,24 @@ BOOL GetDevices(DWORD devnum)
 				break;
 			}
 		}
-		// Fallback to disk devnode ancestry for NT 5 (port)
-		if ((WindowsVersion.Version <= WINDOWS_XP) && props.is_USB &&
-			(props.vid == 0) && (props.pid == 0)) {
+		// Fallback to disk devnode ancestry when legacy USB drivers cannot supply descriptor IDs
+		if ((WindowsVersion.Version <= WINDOWS_7) && props.is_USB &&
+			(((props.vid == 0) && (props.pid == 0)) ||
+			 ((WindowsVersion.Version >= WINDOWS_VISTA) && (hub_path == NULL)))) {
 #ifdef RUFUS_TARGET_NT4
 			if ((WindowsVersion.Version <= WINDOWS_NT4) &&
 				ParseUsbVidPid(device_instance_id, &props.vid, &props.pid))
 				method_str = "";
 			else
 #endif
-				if (GetXpUsbVidPid(dev_info_data.DevInst, &props.vid, &props.pid))
+			{
+				uint32_t legacy_vid = 0, legacy_pid = 0;
+				if (GetXpUsbVidPid(dev_info_data.DevInst, &legacy_vid, &legacy_pid)) {
+					props.vid = legacy_vid;
+					props.pid = legacy_pid;
 					method_str = "";
+				}
+			}
 		}
 		// Windows has the bad habit of appending "SCSI Disk Device" to the description
 		// of UAS devices, which of course screws up detection of device that actually

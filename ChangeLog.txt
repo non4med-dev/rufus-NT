@@ -3,6 +3,10 @@
 o Version 4.15 (2026.06.30)
     Add RISC-V 64 support to UEFI:NTFS
 
+o Version 4.12 (2026.01.30)
+    Fix a TOCTOU vulnerability in Fido script execution (CVE-2026-2398, reported by @independent-arg)
+    Fix replacement vulnerabilities for diskcopy.dll
+
 o Version 4.7 (2025.04.09)
     Add a mechanism to detect and download updated DBXs from the official UEFI repository
     Add ztsd compression support for disk images

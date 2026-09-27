@@ -1218,7 +1218,7 @@ static BOOL FormatNative(DWORD DriveIndex, uint64_t PartitionOffset, DWORD Clust
 			(VolumeName[1] == ':') && (VolumeName[2] == '\\'));
 		// FMIFS uses 0x0B for removable media and 0x0C for hard-disk media.
 		// Do not use 0x08 here: that is the legacy floppy class and UNTFS rejects quick NTFS on this USB volume
-		if (GetDriveTypeA(VolumeName) == DRIVE_REMOVABLE)
+		if (SelectedDrive.MediaType == RemovableMedia)
 			fmifs_media_type = (MEDIA_TYPE)0x0B;
 		else
 			fmifs_media_type = (MEDIA_TYPE)0x0C;
@@ -1476,7 +1476,7 @@ static BOOL NT4_ZeroPartitionMetadataRange(HANDLE hPhysicalDrive, ULONGLONG offs
 		return FALSE;
 	}
 
-	chunk_size = (64 * KB / SectorSize) * SectorSize;
+	chunk_size = (32 * KB / SectorSize) * SectorSize;
 	if (chunk_size == 0)
 		chunk_size = SectorSize;
 	zero_buffer = (BYTE*)VirtualAlloc(NULL, chunk_size,
@@ -1491,15 +1491,16 @@ static BOOL NT4_ZeroPartitionMetadataRange(HANDLE hPhysicalDrive, ULONGLONG offs
 		if (!SetFilePointerEx(hPhysicalDrive, position, NULL, FILE_BEGIN))
 			goto out;
 		written = 0;
-		if (!WriteFileWithRetry(hPhysicalDrive, zero_buffer, chunk, &written, WRITE_RETRIES) ||
-			(written != chunk)) {
+		if (!WriteFile(hPhysicalDrive, zero_buffer, chunk, &written, NULL) || (written != chunk)) {
 			if (written != chunk && GetLastError() == ERROR_SUCCESS)
 				SetLastError(ERROR_WRITE_FAULT);
+			LastWriteError = RUFUS_ERROR(GetLastError());
 			goto out;
 		}
 		offset += chunk;
 		length -= chunk;
 	}
+	LastWriteError = 0;
 	r = TRUE;
 
 out:
@@ -1535,8 +1536,10 @@ static BOOL NT4_ClearPartitionMetadata(HANDLE hPhysicalDrive, LONGLONG DiskSize,
 		if (end_offset >= clear_bytes) {
 			NT4_SetDiskStage("121 clearing partition metadata (back)");
 			if (!NT4_ZeroPartitionMetadataRange(hPhysicalDrive, end_offset,
-				clear_bytes, SectorSize))
-				return FALSE;
+				clear_bytes, SectorSize)) {
+				uprintf("Could not clear backup partition metadata: %s (NT4)", WindowsErrorString());
+				LastWriteError = 0;
+			}
 		}
 	}
 	NT4_SetDiskStage("122 partition metadata cleared");
@@ -1669,7 +1672,12 @@ static BOOL WriteMBR(HANDLE hPhysicalDrive)
 	// If everything else failed, fall back to a conventional Windows/Rufus MBR
 windows_mbr:
 	if (needs_masquerading || use_rufus_mbr) {
-		uprintf(using_msg, APPLICATION_NAME);
+#ifdef RUFUS_TARGET_NT4
+		if (WindowsVersion.Version <= WINDOWS_NT4)
+			uprintf("Using Rufus MBR (NT4)");
+		else
+#endif
+			uprintf(using_msg, APPLICATION_NAME);
 		r = write_rufus_mbr(fp);
 	} else {
 		uprintf(using_msg, "Windows 7");
@@ -1727,7 +1735,7 @@ static BOOL WriteSBR(HANDLE hPhysicalDrive)
 		break;
 	case BT_GRUB2:
 		if (grub2_buf != NULL) {
-			uprintf("Writing Grub 2.0 SBR (from download) %s",
+			uprintf("Writing Grub 2.0 SBR (from compatible source) %s",
 				IsBufferInDB(grub2_buf, grub2_len)?"✓":"✗");
 			buf = grub2_buf;
 			size = (DWORD)grub2_len;
@@ -1785,14 +1793,15 @@ static __inline const char* bt_to_name(void) {
 	}
 }
 
-BOOL WritePBR(HANDLE hLogicalVolume)
+BOOL WritePBRAtOffset(HANDLE hVolume, uint64_t offset)
 {
 	int i;
 	FAKE_FD fake_fd = { 0 };
 	FILE* fp = (FILE*)&fake_fd;
 	const char* using_msg = "Using %s %s partition boot record";
 
-	fake_fd._handle = (char*)hLogicalVolume;
+	fake_fd._handle = (char*)hVolume;
+	fake_fd._offset = offset;
 	set_bytes_per_sector(SelectedDrive.SectorSize);
 
 	switch (actual_fs_type) {
@@ -1825,6 +1834,15 @@ BOOL WritePBR(HANDLE hLogicalVolume)
 			}
 			uprintf("Confirmed new volume has a %s FAT32 boot sector", i ? "secondary" : "primary");
 			uprintf("Setting %s FAT32 boot sector for boot...", i ? "secondary" : "primary");
+#ifdef RUFUS_TARGET_NT4
+			if ((WindowsVersion.Version <= WINDOWS_NT4) &&
+				((boot_type == BT_FREEDOS) || (boot_type == BT_MSDOS))) {
+				if (!write_fat_32_nt4_br(fp, boot_type == BT_FREEDOS, i != 0))
+					break;
+				fake_fd._offset += 6 * SelectedDrive.SectorSize;
+				continue;
+			}
+#endif
 			if (boot_type == BT_FREEDOS) {
 				if (!write_fat_32_fd_br(fp, 0)) break;
 			} else if (boot_type == BT_REACTOS) {
@@ -1866,6 +1884,11 @@ BOOL WritePBR(HANDLE hLogicalVolume)
 	}
 	ErrorStatus = RUFUS_ERROR(ERROR_WRITE_FAULT);
 	return FALSE;
+}
+
+BOOL WritePBR(HANDLE hLogicalVolume)
+{
+	return WritePBRAtOffset(hLogicalVolume, 0);
 }
 
 static void update_progress(const uint64_t processed_bytes)
@@ -2286,10 +2309,19 @@ DWORD WINAPI FormatThread(void* param)
 	// require us to unlock the physical drive to format the drive, else access denied is returned.
 	BOOL need_logical = FALSE, must_unlock_physical = (use_vds || WindowsVersion.Version >= WINDOWS_11);
 	DWORD cr, DriveIndex = (DWORD)(uintptr_t)param, ClusterSize, Flags;
+#ifndef RUFUS_NO_EMBED
+	DWORD grub4dos_len;
+#endif
 	HANDLE hPhysicalDrive = INVALID_HANDLE_VALUE;
 	HANDLE hLogicalVolume = INVALID_HANDLE_VALUE;
+#ifndef RUFUS_NO_EMBED
+	HANDLE hGrub4Dos = INVALID_HANDLE_VALUE;
+#endif
 	SYSTEMTIME lt;
 	uint8_t *buffer = NULL, extra_partitions = 0;
+#ifndef RUFUS_NO_EMBED
+	uint8_t* grub4dos_buf = NULL;
+#endif
 	char *bb_msg, *volume_name = NULL;
 	char drive_name[] = "?:\\";
 	char drive_letters[27], fs_name[32], label[64];
@@ -2743,7 +2775,13 @@ DWORD WINAPI FormatThread(void* param)
 
 	// Thanks to Microsoft, we must fix the MBR AFTER the drive has been formatted
 	if ((partition_type == PARTITION_STYLE_MBR) || ((boot_type != BT_NON_BOOTABLE) && (partition_type == PARTITION_STYLE_GPT))) {
-		PrintInfoDebug(0, MSG_228);	// "Writing master boot record..."
+#ifdef RUFUS_TARGET_NT4
+		if (WindowsVersion.Version <= WINDOWS_NT4) {
+			PrintInfo(0, MSG_228);
+			uprintf("Writing MBR...");
+		} else
+#endif
+			PrintInfoDebug(0, MSG_228);	// "Writing master boot record..."
 		// Keep the temporary NT 5 MBR until all mounted-volume work is complete (port)
 		if (((WindowsVersion.Version <= WINDOWS_XP) && (partition_type == PARTITION_STYLE_GPT)) ?
 			!WriteSBR(hPhysicalDrive) : ((!WriteMBR(hPhysicalDrive)) || (!WriteSBR(hPhysicalDrive)))) {
@@ -2896,11 +2934,29 @@ DWORD WINAPI FormatThread(void* param)
 			}
 		} else if (boot_type == BT_GRUB4DOS) {
 			grub4dos_dst[0] = drive_name[0];
+#ifdef RUFUS_NO_EMBED
 			IGNORE_RETVAL(_chdirU(app_data_dir));
 			uprintf("Installing: %s (Grub4DOS loader) %s", grub4dos_dst,
-				IsFileInDB(FILES_DIR "\\grub4dos-" GRUB4DOS_VERSION "\\grldr")?"✓":"✗");
+				IsFileInDB(FILES_DIR "\\grub4dos-" GRUB4DOS_VERSION "\\grldr") ? "✓" : "✗");
 			if (!CopyFileU(FILES_DIR "\\grub4dos-" GRUB4DOS_VERSION "\\grldr", grub4dos_dst, FALSE))
 				uprintf("Failed to copy file: %s", WindowsErrorString());
+#else
+			grub4dos_buf = GetResource(hMainInstance, MAKEINTRESOURCEA(IDR_GR_GRUB4DOS_GRLDR),
+				_RT_RCDATA, "grldr", &grub4dos_len, FALSE);
+			if (grub4dos_buf == NULL) {
+				uprintf("Could not access embedded 'grldr'");
+				ErrorStatus = RUFUS_ERROR(ERROR_FILE_NOT_FOUND);
+				goto out;
+			}
+			uprintf("Installing: %s (Grub4DOS loader) %s", grub4dos_dst,
+				IsBufferInDB(grub4dos_buf, grub4dos_len) ? "✓" : "✗");
+			hGrub4Dos = CreateFileA(grub4dos_dst, GENERIC_READ | GENERIC_WRITE,
+				FILE_SHARE_READ, NULL, CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, NULL);
+			if ((hGrub4Dos == INVALID_HANDLE_VALUE) ||
+				!WriteFileWithRetry(hGrub4Dos, grub4dos_buf, grub4dos_len, NULL, WRITE_RETRIES))
+				uprintf("Failed to create '%s': %s", grub4dos_dst, WindowsErrorString());
+			safe_closehandle(hGrub4Dos);
+#endif
 		} else if ((boot_type == BT_IMAGE) && (image_path != NULL) && (img_report.is_iso || img_report.is_windows_img)) {
 			UpdateProgress(OP_FILE_COPY, 0.0f);
 			drive_name[2] = 0;	// Ensure our drive is something like 'D:'

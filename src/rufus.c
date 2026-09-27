@@ -82,6 +82,9 @@ static BOOL dont_process_dbt_devnodes = FALSE;
 static BOOL user_changed_label = FALSE;
 static BOOL user_deleted_rufus_dir = FALSE;
 static BOOL app_changed_label = FALSE;
+#ifdef RUFUS_TARGET_NT4
+static BOOL nt4_usb_notice_shown = FALSE;
+#endif
 static BOOL allowed_filesystem[FS_MAX] = { 0 };
 static int64_t last_iso_blocking_status;
 static int selected_pt = -1, selected_fs = FS_UNKNOWN, preselected_fs = FS_UNKNOWN;
@@ -91,6 +94,147 @@ static HWND hSelectImage = NULL, hStart = NULL;
 static char szTimer[12] = "00:00:00";
 static unsigned int timer;
 static char uppercase_select[2][64], uppercase_start[64], uppercase_close[64], uppercase_cancel[64];
+
+#ifdef RUFUS_TARGET_NT4
+static BOOL ContainsUsbMarker(const char* str)
+{
+	const char* p;
+
+	if (str == NULL)
+		return FALSE;
+	for (p = str; (p[0] != 0) && (p[1] != 0) && (p[2] != 0); p++) {
+		if (_strnicmp(p, "usb", 3) == 0)
+			return TRUE;
+	}
+	return FALSE;
+}
+
+static BOOL HasKnownNt4UsbDriverFile(void)
+{
+	static const char* driver_name[] = {
+		"usbd.sys", "usbhub.sys", "usbhid.sys", "usbrm.sys", "usbprint.sys", "usbms.sys"
+	};
+	DWORD attributes;
+	UINT i, system_length;
+	char system_directory[MAX_PATH], path[MAX_PATH];
+
+	system_length = GetSystemDirectoryA(system_directory, ARRAYSIZE(system_directory));
+	if ((system_length == 0) || (system_length >= ARRAYSIZE(system_directory)) ||
+		(system_length > MAX_PATH - 32))
+		return FALSE;
+	for (i = 0; i < ARRAYSIZE(driver_name); i++) {
+		static_sprintf(path, "%s\\drivers\\%s", system_directory, driver_name[i]);
+		attributes = GetFileAttributesA(path);
+		if ((attributes != INVALID_FILE_ATTRIBUTES) && !(attributes & FILE_ATTRIBUTE_DIRECTORY))
+			return TRUE;
+	}
+	return FALSE;
+}
+
+static BOOL IsNt4UsbDriverInstalled(void)
+{
+	HKEY services = NULL, service = NULL;
+	LONG status;
+	BOOL found = FALSE, has_usb_marker;
+	DWORD index = 0, name_size, data_size, type, start;
+	char name[256], value[MAX_PATH];
+
+	status = RegOpenKeyExA(HKEY_LOCAL_MACHINE, "SYSTEM\\CurrentControlSet\\Services",
+		0, KEY_READ, &services);
+	if (status != ERROR_SUCCESS)
+		return TRUE;
+
+	for (;;) {
+		name_size = ARRAYSIZE(name);
+		status = RegEnumKeyExA(services, index++, name, &name_size, NULL, NULL, NULL, NULL);
+		if (status == ERROR_NO_MORE_ITEMS)
+			break;
+		if (status != ERROR_SUCCESS)
+			continue;
+		if (RegOpenKeyExA(services, name, 0, KEY_READ, &service) != ERROR_SUCCESS)
+			continue;
+
+		has_usb_marker = ContainsUsbMarker(name);
+		if (!has_usb_marker) {
+			value[0] = 0;
+			data_size = sizeof(value) - 1;
+			if (RegQueryValueExA(service, "DisplayName", NULL, NULL,
+				(LPBYTE)value, &data_size) == ERROR_SUCCESS) {
+				value[min(data_size, sizeof(value) - 1)] = 0;
+				has_usb_marker = ContainsUsbMarker(value);
+			}
+		}
+		if (!has_usb_marker) {
+			value[0] = 0;
+			data_size = sizeof(value) - 1;
+			if (RegQueryValueExA(service, "ImagePath", NULL, NULL,
+				(LPBYTE)value, &data_size) == ERROR_SUCCESS) {
+				value[min(data_size, sizeof(value) - 1)] = 0;
+				has_usb_marker = ContainsUsbMarker(value);
+			}
+		}
+
+		start = 0;
+		data_size = sizeof(start);
+		if ((RegQueryValueExA(service, "Start", NULL, NULL,
+			(LPBYTE)&start, &data_size) == ERROR_SUCCESS) && (start == SERVICE_DISABLED))
+			has_usb_marker = FALSE;
+		type = SERVICE_KERNEL_DRIVER;
+		data_size = sizeof(type);
+		if ((RegQueryValueExA(service, "Type", NULL, NULL,
+			(LPBYTE)&type, &data_size) == ERROR_SUCCESS) &&
+			((type & (SERVICE_KERNEL_DRIVER | SERVICE_FILE_SYSTEM_DRIVER)) == 0))
+			has_usb_marker = FALSE;
+		RegCloseKey(service);
+		service = NULL;
+		if (has_usb_marker) {
+			found = TRUE;
+			break;
+		}
+	}
+	if (service != NULL)
+		RegCloseKey(service);
+	RegCloseKey(services);
+	return found || HasKnownNt4UsbDriverFile();
+}
+#endif
+
+static BOOL HandleDiskcopyDrop(const char* path)
+{
+	char destination[MAX_PATH];
+	const char* extension;
+
+	if ((path == NULL) || (_filesizeU(path) != DISKCOPY_SIZE))
+		return FALSE;
+	if (!IsValidDiskcopyDll(path)) {
+		extension = strrchr(path, '.');
+		if ((extension != NULL) && ((_stricmp(extension, ".dll") == 0) || (_stricmp(extension, ".blob") == 0))) {
+			uprintf("Dropped file failed 'diskcopy.dll' SHA-256 validation");
+			MessageBoxExU(hMainDialog, lmprintf(MSG_528), APPLICATION_NAME,
+				MB_OK | MB_ICONERROR | MB_IS_RTL, selected_langid);
+			return TRUE;
+		}
+		return FALSE;
+	}
+
+	static_sprintf(destination, "%s\\%s\\diskcopy.dll", app_data_dir, FILES_DIR);
+	if (IsValidDiskcopyDll(destination)) {
+		uprintf("'diskcopy.dll' is already present in '%s\\%s'", app_data_dir, FILES_DIR);
+		MessageBoxExU(hMainDialog, lmprintf(MSG_526), APPLICATION_NAME,
+			MB_OK | MB_ICONINFORMATION | MB_IS_RTL, selected_langid);
+		return TRUE;
+	}
+	if (!CopyFileU(path, destination, FALSE) || !IsValidDiskcopyDll(destination)) {
+		DeleteFileU(destination);
+		MessageBoxExU(hMainDialog, lmprintf(MSG_066), APPLICATION_NAME,
+			MB_OK | MB_ICONERROR | MB_IS_RTL, selected_langid);
+		return TRUE;
+	}
+	uprintf("Installed 'diskcopy.dll' to '%s'", destination);
+	MessageBoxExU(hMainDialog, lmprintf(MSG_527), APPLICATION_NAME,
+		MB_OK | MB_ICONINFORMATION | MB_IS_RTL, selected_langid);
+	return TRUE;
+}
 
 extern HANDLE update_check_thread, wim_thread;
 extern HIMAGELIST hUpImageList, hDownImageList;
@@ -991,6 +1135,196 @@ out:
 	return TRUE;
 }
 
+static void WriteDiagnosticQuoted(FILE* fd, const BYTE* data, DWORD size)
+{
+	DWORD i;
+
+	fputc('"', fd);
+	for (i = 0; i < size && data[i] != 0; i++) {
+		switch (data[i]) {
+		case '\\': fputs("\\\\", fd); break;
+		case '"': fputs("\\\"", fd); break;
+		case '\r': fputs("\\r", fd); break;
+		case '\n': fputs("\\n", fd); break;
+		case '\t': fputs("\\t", fd); break;
+		default:
+			if (data[i] >= 0x20)
+				fputc(data[i], fd);
+			else
+				fprintf(fd, "\\x%02X", data[i]);
+		}
+	}
+	fputc('"', fd);
+}
+
+static void WriteDiagnosticRegistryKey(FILE* fd, HKEY key, const char* path)
+{
+	HKEY subkey = NULL;
+	LONG status;
+	DWORD i, j, type, name_size, data_size;
+	DWORD subkey_count = 0, max_subkey_name = 0, value_count = 0;
+	DWORD max_value_name = 0, max_value_data = 0;
+	char *name = NULL, *subkey_name = NULL, *subkey_path = NULL;
+	BYTE* data = NULL;
+
+	fprintf(fd, "[%s]\r\n", path);
+	status = RegQueryInfoKeyA(key, NULL, NULL, NULL, &subkey_count, &max_subkey_name,
+		NULL, &value_count, &max_value_name, &max_value_data, NULL, NULL);
+	if (status != ERROR_SUCCESS) {
+		fprintf(fd, "(Unable to query key: %ld)\r\n\r\n", status);
+		return;
+	}
+	name = (char*)calloc(max_value_name + 2, 1);
+	data = (BYTE*)calloc(max_value_data + 2, 1);
+	if ((name == NULL) || (data == NULL)) {
+		fprintf(fd, "(Out of memory)\r\n\r\n");
+		goto out;
+	}
+	for (i = 0; i < value_count; i++) {
+		name_size = max_value_name + 1;
+		data_size = max_value_data + 1;
+		memset(name, 0, max_value_name + 2);
+		memset(data, 0, max_value_data + 2);
+		status = RegEnumValueA(key, i, name, &name_size, NULL, &type, data, &data_size);
+		if (status != ERROR_SUCCESS) {
+			fprintf(fd, "(Unable to read value %lu: %ld)\r\n", i, status);
+			continue;
+		}
+		fprintf(fd, "%s = ", (name[0] == 0) ? "(Default)" : name);
+		switch (type) {
+		case REG_SZ:
+		case REG_EXPAND_SZ:
+			WriteDiagnosticQuoted(fd, data, data_size);
+			break;
+		case REG_DWORD:
+			if (data_size >= sizeof(DWORD))
+				fprintf(fd, "0x%08lX (%lu)", *(DWORD*)data, *(DWORD*)data);
+			else
+				fputs("(invalid REG_DWORD)", fd);
+			break;
+#ifdef REG_QWORD
+		case REG_QWORD:
+			if (data_size >= sizeof(ULONGLONG))
+				fprintf(fd, "0x%016" PRIX64 " (%" PRIu64 ")", *(uint64_t*)data, *(uint64_t*)data);
+			else
+				fputs("(invalid REG_QWORD)", fd);
+			break;
+#endif
+		case REG_MULTI_SZ:
+			for (j = 0; j < data_size && data[j] != 0; j += (DWORD)strlen((char*)&data[j]) + 1) {
+				if (j != 0)
+					fputs("; ", fd);
+				WriteDiagnosticQuoted(fd, &data[j], data_size - j);
+			}
+			break;
+		default:
+			fprintf(fd, "hex(%lu):", type);
+			for (j = 0; j < data_size; j++)
+				fprintf(fd, "%s%02X", (j == 0) ? "" : " ", data[j]);
+			break;
+		}
+		fputs("\r\n", fd);
+	}
+	fputs("\r\n", fd);
+
+	subkey_name = (char*)calloc(max_subkey_name + 2, 1);
+	subkey_path = (char*)calloc(strlen(path) + max_subkey_name + 3, 1);
+	if ((subkey_name == NULL) || (subkey_path == NULL))
+		goto out;
+	for (i = 0; i < subkey_count; i++) {
+		name_size = max_subkey_name + 1;
+		memset(subkey_name, 0, max_subkey_name + 2);
+		if (RegEnumKeyExA(key, i, subkey_name, &name_size, NULL, NULL, NULL, NULL) != ERROR_SUCCESS)
+			continue;
+		safe_sprintf(subkey_path, strlen(path) + max_subkey_name + 3,
+			"%s\\%s", path, subkey_name);
+		if (RegOpenKeyExA(key, subkey_name, 0, KEY_READ, &subkey) == ERROR_SUCCESS) {
+			WriteDiagnosticRegistryKey(fd, subkey, subkey_path);
+			RegCloseKey(subkey);
+			subkey = NULL;
+		}
+	}
+
+out:
+	if (subkey != NULL)
+		RegCloseKey(subkey);
+	free(subkey_path);
+	free(subkey_name);
+	free(data);
+	free(name);
+}
+
+static void WriteDiagnosticRegistry(FILE* fd)
+{
+	HKEY key = NULL;
+	const char* key_path = "Software\\" REGISTRY_KEY_NAME;
+
+	if (RegOpenKeyExA(HKEY_CURRENT_USER, key_path, 0, KEY_READ, &key) != ERROR_SUCCESS) {
+		fprintf(fd, "[HKCU\\%s]\r\n(Not present)\r\n\r\n", key_path);
+		return;
+	}
+	WriteDiagnosticRegistryKey(fd, key, "HKCU\\Software\\" REGISTRY_KEY_NAME);
+	RegCloseKey(key);
+}
+
+static void WriteDiagnosticAppdataDirectory(FILE* fd, const char* root, const char* relative)
+{
+	WIN32_FIND_DATAA data = { 0 };
+	HANDLE find = INVALID_HANDLE_VALUE;
+	char directory[MAX_PATH], mask[MAX_PATH], path[MAX_PATH], child_relative[MAX_PATH];
+	uint64_t size;
+
+	if (relative[0] == 0)
+		static_strcpy(directory, root);
+	else if (PathCombineU(directory, root, relative) == NULL)
+		return;
+	if (PathCombineU(mask, directory, "*") == NULL)
+		return;
+	find = FindFirstFileU(mask, &data);
+	if (find == INVALID_HANDLE_VALUE)
+		return;
+	do {
+		if ((strcmp(data.cFileName, ".") == 0) || (strcmp(data.cFileName, "..") == 0))
+			continue;
+		if (relative[0] == 0)
+			static_strcpy(child_relative, data.cFileName);
+		else
+			safe_sprintf(child_relative, sizeof(child_relative), "%s\\%s", relative, data.cFileName);
+		if (data.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY) {
+			if (!(data.dwFileAttributes & FILE_ATTRIBUTE_REPARSE_POINT))
+				WriteDiagnosticAppdataDirectory(fd, root, child_relative);
+			continue;
+		}
+		if (PathCombineU(path, root, child_relative) == NULL)
+			continue;
+		size = ((uint64_t)data.nFileSizeHigh << 32) | data.nFileSizeLow;
+		fprintf(fd, "%s\t%" PRIu64 " bytes\r\n", child_relative, size);
+	} while (FindNextFileU(find, &data));
+	FindClose(find);
+}
+
+static BOOL SaveDiagnostics(const char* path, const char* log_buffer, DWORD log_size)
+{
+	FILE* fd;
+	char data_path[MAX_PATH];
+
+	fd = fopenU(path, "wb");
+	if (fd == NULL)
+		return FALSE;
+	fputs("# Registry\r\n\r\n", fd);
+	WriteDiagnosticRegistry(fd);
+	fputs("# Appdata\r\n\r\n", fd);
+	static_sprintf(data_path, "%s\\%s", app_data_dir, FILES_DIR);
+	fprintf(fd, "%s\r\n", data_path);
+	WriteDiagnosticAppdataDirectory(fd, data_path, "");
+	fputs("\r\n# Log\r\n\r\n", fd);
+	if ((log_buffer != NULL) && (log_size != 0))
+		fwrite(log_buffer, 1, log_size, fd);
+	if (fclose(fd) != 0)
+		return FALSE;
+	return TRUE;
+}
+
 // Callback for the log window
 BOOL CALLBACK LogCallback(HWND hDlg, UINT message, WPARAM wParam, LPARAM lParam)
 {
@@ -1001,6 +1335,7 @@ BOOL CALLBACK LogCallback(HWND hDlg, UINT message, WPARAM wParam, LPARAM lParam)
 	DWORD log_size;
 	char *log_buffer = NULL, *filepath;
 	EXT_DECL(log_ext, "rufus.log", __VA_GROUP__("*.log"), __VA_GROUP__("Rufus log"));
+	EXT_DECL(diagnostics_ext, "rufus-diagnostics.txt", __VA_GROUP__("*.txt"), __VA_GROUP__("Text file"));
 	switch (message) {
 	case WM_INITDIALOG:
 		apply_localization(IDD_LOG, hDlg);
@@ -1016,6 +1351,7 @@ BOOL CALLBACK LogCallback(HWND hDlg, UINT message, WPARAM wParam, LPARAM lParam)
 			// Yey!!! Tahoma!!!
 			hf = CreateFontA(lfHeight, 0, 0, 0, FW_NORMAL, FALSE, FALSE, FALSE,
 				DEFAULT_CHARSET, 0, 0, PROOF_QUALITY, 0,
+				(WindowsVersion.Version <= WINDOWS_NT4) ? "MS Shell Dlg" :
 				(WindowsVersion.Version <= WINDOWS_XP) ? "Tahoma" : "Consolas");
 		}
 		SendDlgItemMessageA(hDlg, IDC_LOG_EDIT, WM_SETFONT, (WPARAM)hf, TRUE);
@@ -1065,6 +1401,20 @@ BOOL CALLBACK LogCallback(HWND hDlg, UINT message, WPARAM wParam, LPARAM lParam)
 				safe_free(log_buffer);
 			}
 			break;
+		case IDC_LOG_DIAGNOSTICS:
+			log_size = GetWindowTextLengthU(hLog) + 1;
+			log_buffer = (char*)calloc(log_size, 1);
+			if (log_buffer != NULL) {
+				log_size = GetDlgItemTextU(hDlg, IDC_LOG_EDIT, log_buffer, log_size);
+				if (log_size != 0)
+					log_size--;
+				filepath = FileDialog(TRUE, user_dir, &diagnostics_ext, NULL);
+				if ((filepath != NULL) && !SaveDiagnostics(filepath, log_buffer, log_size))
+					uprintf("Could not save diagnostics to '%s': %s", filepath, WindowsErrorString());
+				safe_free(filepath);
+				safe_free(log_buffer);
+			}
+			break;
 		}
 		break;
 	case WM_CLOSE:
@@ -1080,6 +1430,7 @@ BOOL CALLBACK LogCallback(HWND hDlg, UINT message, WPARAM wParam, LPARAM lParam)
 		ResizeButtonHeight(hDlg, IDCANCEL);
 		ResizeButtonHeight(hDlg, IDC_LOG_SAVE);
 		ResizeButtonHeight(hDlg, IDC_LOG_CLEAR);
+		ResizeButtonHeight(hDlg, IDC_LOG_DIAGNOSTICS);
 		return TRUE;
 	}
 	return FALSE;
@@ -1463,6 +1814,63 @@ out:
 
 #define MAP_BIT(bit) do { map[_log2(bit)] = b; b <<= 1; } while(0)
 
+typedef struct {
+	const char* version;
+	WORD resource_id;
+} embedded_grub2_resource_t;
+
+static BYTE* GetEmbeddedGrub2(const char* version, DWORD* len, const char** matched_version)
+{
+#ifdef RUFUS_NO_EMBED
+	(void)version;
+	(void)len;
+	(void)matched_version;
+	return NULL;
+#else
+	static const embedded_grub2_resource_t resource[] = {
+		{ "2.06@e67a551a-nonstandard-gdie", IDR_GR_GRUB2_CORE_IMG_206_E67A551A_NONSTANDARD_GDIE },
+		{ "2.06@e67a551a-nonstandard", IDR_GR_GRUB2_CORE_IMG_206_E67A551A_NONSTANDARD },
+		{ "2.06@e67a551a", IDR_GR_GRUB2_CORE_IMG_206_E67A551A },
+		{ "2.06-nonstandard-gdie", IDR_GR_GRUB2_CORE_IMG_206_NONSTANDARD_GDIE },
+		{ "2.06-nonstandard", IDR_GR_GRUB2_CORE_IMG_206_NONSTANDARD },
+		{ "2.12-nonstandard-gdie", IDR_GR_GRUB2_CORE_IMG_212_NONSTANDARD_GDIE },
+		{ "2.02~beta2", IDR_GR_GRUB2_CORE_IMG_202_BETA2 },
+		{ "2.02~beta3", IDR_GR_GRUB2_CORE_IMG_202_BETA3 },
+		{ "2.06~rc1", IDR_GR_GRUB2_CORE_IMG_206_RC1 },
+		{ "2.14~rc1", IDR_GR_GRUB2_CORE_IMG_214_RC1 },
+		{ "2.00-22", IDR_GR_GRUB2_CORE_IMG_200_22 },
+		{ "2.03.5", IDR_GR_GRUB2_CORE_IMG_203_5 },
+		{ "2.02", IDR_GR_GRUB2_CORE_IMG_202 },
+		{ "2.03", IDR_GR_GRUB2_CORE_IMG_203 },
+		{ "2.04-nonstandard", IDR_GR_GRUB2_CORE_IMG_204_NONSTANDARD },
+		{ "2.04", IDR_GR_GRUB2_CORE_IMG_204 },
+		{ "2.05", IDR_GR_GRUB2_CORE_IMG_205 },
+		{ "2.06", IDR_GR_GRUB2_CORE_IMG_206 },
+		{ "2.12", IDR_GR_GRUB2_CORE_IMG_212 },
+		{ "2.14", IDR_GR_GRUB2_CORE_IMG_214 },
+	};
+	BYTE* data;
+	size_t i, version_len;
+
+	if ((version == NULL) || (version[0] == 0) || (len == NULL))
+		return NULL;
+	for (i = 0; i < ARRAYSIZE(resource); i++) {
+		version_len = strlen(resource[i].version);
+		if ((strncmp(version, resource[i].version, version_len) != 0) ||
+			((version[version_len] != 0) && (version[version_len] != '.') && (version[version_len] != '-')))
+			continue;
+		data = GetResource(hMainInstance, MAKEINTRESOURCEA(resource[i].resource_id),
+			_RT_RCDATA, "core.img", len, TRUE);
+		if (data != NULL) {
+			if (matched_version != NULL)
+				*matched_version = resource[i].version;
+			return data;
+		}
+	}
+	return NULL;
+#endif
+}
+
 // Likewise, boot check will block message processing => use a thread
 static DWORD WINAPI BootCheckThread(LPVOID param)
 {
@@ -1471,11 +1879,12 @@ static DWORD WINAPI BootCheckThread(LPVOID param)
 	uint32_t len;
 	uint8_t* buf = NULL;
 	WPARAM ret = BOOTCHECK_CANCEL;
-	BOOL in_files_dir = FALSE, esp_already_asked = FALSE;
+	BOOL in_files_dir = FALSE, esp_already_asked = FALSE, diskcopy_present;
 	BOOL is_windows_to_go = ((image_options & IMOP_WINTOGO) && (ComboBox_GetCurItemData(hImageOption) == IMOP_WIN_TO_GO));
 	const char* msg;
 	const char* grub = "grub";
 	const char* core_img = "core.img";
+	const char* embedded_grub2_version = NULL;
 	const char* ldlinux = "ldlinux";
 	const char* syslinux = "syslinux";
 	const char* ldlinux_ext[3] = { "sys", "bss", "c32" };
@@ -1804,11 +2213,23 @@ static DWORD WINAPI BootCheckThread(LPVOID param)
 				}
 				fclose(fd);
 			} else {
-				r = MessageBoxExU(hMainDialog, lmprintf(MSG_116, img_report.grub2_version, GRUB2_PACKAGE_VERSION),
-					lmprintf(MSG_115), MB_YESNOCANCEL | MB_ICONWARNING | MB_IS_RTL, selected_langid);
-				if (r == IDCANCEL)
+				grub2_buf = GetEmbeddedGrub2(img_report.grub2_version, &len, &embedded_grub2_version);
+				if (grub2_buf != NULL) {
+					grub2_len = (long)len;
+					uprintf("Will use embedded GRUB %s '%s' for version %s",
+						embedded_grub2_version, core_img, img_report.grub2_version);
+				}
+				if ((grub2_buf == NULL) && IsInternetAvailable()) {
+					r = MessageBoxExU(hMainDialog, lmprintf(MSG_116, img_report.grub2_version, GRUB2_PACKAGE_VERSION),
+						lmprintf(MSG_115), MB_YESNOCANCEL | MB_ICONWARNING | MB_IS_RTL, selected_langid);
+				} else if (grub2_buf == NULL) {
+					MessageBoxExU(hMainDialog, lmprintf(MSG_524, img_report.grub2_version, GRUB2_PACKAGE_VERSION),
+						lmprintf(MSG_115), MB_OK | MB_ICONWARNING | MB_IS_RTL, selected_langid);
+					r = IDNO;
+				}
+				if ((grub2_buf == NULL) && (r == IDCANCEL))
 					goto out;
-				else if (r == IDYES) {
+				else if ((grub2_buf == NULL) && (r == IDYES)) {
 					static_sprintf(tmp, "%s-%s", grub, img_report.grub2_version);
 					IGNORE_RETVAL(_mkdir(tmp));
 					IGNORE_RETVAL(_chdir(tmp));
@@ -1947,6 +2368,7 @@ static DWORD WINAPI BootCheckThread(LPVOID param)
 			}
 		}
 	} else if (boot_type == BT_SYSLINUX_V6) {
+#ifdef RUFUS_NO_EMBED
 		IGNORE_RETVAL(_chdirU(app_data_dir));
 		IGNORE_RETVAL(_mkdir(FILES_DIR));
 		IGNORE_RETVAL(_chdir(FILES_DIR));
@@ -1959,21 +2381,32 @@ static DWORD WINAPI BootCheckThread(LPVOID param)
 		} else {
 			static_sprintf(tmp, "%s.%s", ldlinux, ldlinux_ext[2]);
 			PrintInfo(0, MSG_206, tmp);
-			// MSG_104: "Syslinux v5.0 or later requires a '%s' file to be installed"
-			r = MessageBoxExU(hMainDialog, lmprintf(MSG_104, "Syslinux v5.0", tmp, "Syslinux v5+", tmp),
+			r = MessageBoxExU(hMainDialog,
+				lmprintf(MSG_104, "Syslinux v5.0", tmp, "Syslinux v5+", tmp),
 				lmprintf(MSG_103, tmp), MB_YESNOCANCEL | MB_ICONWARNING | MB_IS_RTL, selected_langid);
 			if (r == IDCANCEL)
 				goto out;
 			if (r == IDYES) {
 				static_sprintf(tmp, "%s-%s", syslinux, embedded_sl_version_str[1]);
 				IGNORE_RETVAL(_mkdir(tmp));
-				static_sprintf(tmp, "%s/%s-%s/%s.%s", FILES_URL, syslinux, embedded_sl_version_str[1], ldlinux, ldlinux_ext[2]);
+				static_sprintf(tmp, "%s/%s-%s/%s.%s", FILES_URL, syslinux,
+					embedded_sl_version_str[1], ldlinux, ldlinux_ext[2]);
 				if (DownloadSignedFile(tmp, &tmp[sizeof(FILES_URL)], hMainDialog, TRUE) == 0) {
 					ret = BOOTCHECK_DOWNLOAD_ERROR;
 					goto out;
 				}
 			}
 		}
+#else
+		buf = GetResource(hMainInstance, MAKEINTRESOURCEA(IDR_SL_LDLINUX_C32),
+			_RT_RCDATA, "ldlinux.c32", &len, FALSE);
+		if (buf == NULL) {
+			uprintf("Could not access embedded 'ldlinux.c32'");
+			ret = BOOTCHECK_DOWNLOAD_ERROR;
+			goto out;
+		}
+		uprintf("Will use embedded 'ldlinux.c32' for Syslinux installation");
+#endif
 	} else if (boot_type == BT_MSDOS) {
 		if ((size_check) && (ComboBox_GetCurItemData(hClusterSize) >= 65536)) {
 			// MS-DOS cannot boot from a drive using a 64 kilobytes Cluster size
@@ -1981,28 +2414,39 @@ static DWORD WINAPI BootCheckThread(LPVOID param)
 			goto out;
 		}
 		static_sprintf(tmp, "%s\\%s\\diskcopy.dll", app_data_dir, FILES_DIR);
-		if (_accessU(tmp, 0) != -1) {
+		diskcopy_present = (_accessU(tmp, 0) != -1);
+		if (IsValidDiskcopyDll(tmp)) {
 			uprintf("Will reuse '%s' for MS-DOS installation", tmp);
 		} else {
-			// Use local diskcopy.dll on NT5 (port)
-			if (WindowsVersion.Version < WINDOWS_VISTA) {
-				uprintf("'diskcopy.dll' is not present in the Rufus data directory; MS-DOS files are unavailable");
-				ret = BOOTCHECK_DOWNLOAD_ERROR;
+			if (!IsInternetAvailable()) {
+				static_sprintf(tmp2, "%s\\%s", app_data_dir, FILES_DIR);
+				if (diskcopy_present) {
+					uprintf("'%s' failed SHA-256 validation", tmp);
+					MessageBoxExU(hMainDialog, lmprintf(MSG_528), APPLICATION_NAME,
+						MB_OK | MB_ICONERROR | MB_IS_RTL, selected_langid);
+				} else {
+					uprintf("'diskcopy.dll' is not present in '%s'", tmp2);
+					MessageBoxExU(hMainDialog, lmprintf(MSG_525, DISKCOPY_URL), lmprintf(MSG_115),
+						MB_OK | MB_ICONINFORMATION | MB_IS_RTL, selected_langid);
+				}
 				goto out;
 			}
-			r = MessageBoxExU(hMainDialog, lmprintf(MSG_337), lmprintf(MSG_115),
+			r = MessageBoxExU(hMainDialog, lmprintf(MSG_337, "diskcopy.dll"), lmprintf(MSG_115),
 				MB_YESNO | MB_ICONWARNING | MB_IS_RTL, selected_langid);
 			if (r != IDYES)
 				goto out;
 			IGNORE_RETVAL(_chdirU(app_data_dir));
 			IGNORE_RETVAL(_mkdir(FILES_DIR));
 			IGNORE_RETVAL(_chdir(FILES_DIR));
-			if (DownloadToFileOrBufferEx(DISKCOPY_URL, tmp, SYMBOL_SERVER_USER_AGENT, NULL, hMainDialog, FALSE) != DISKCOPY_SIZE) {
+			if ((DownloadToFileOrBufferEx(DISKCOPY_URL, tmp, SYMBOL_SERVER_USER_AGENT, NULL, hMainDialog, FALSE) != DISKCOPY_SIZE) ||
+				!IsValidDiskcopyDll(tmp)) {
+				DeleteFileU(tmp);
 				ret = BOOTCHECK_DOWNLOAD_ERROR;
 				goto out;
 			}
 		}
 	} else if (boot_type == BT_GRUB4DOS) {
+#ifdef RUFUS_NO_EMBED
 		IGNORE_RETVAL(_chdirU(app_data_dir));
 		IGNORE_RETVAL(_mkdir(FILES_DIR));
 		IGNORE_RETVAL(_chdir(FILES_DIR));
@@ -2015,7 +2459,8 @@ static DWORD WINAPI BootCheckThread(LPVOID param)
 		} else {
 			static_sprintf(tmp, "grldr");
 			PrintInfo(0, MSG_206, tmp);
-			r = MessageBoxExU(hMainDialog, lmprintf(MSG_104, "Grub4DOS 0.4", tmp, "Grub4DOS", tmp),
+			r = MessageBoxExU(hMainDialog,
+				lmprintf(MSG_104, "Grub4DOS 0.4", tmp, "Grub4DOS", tmp),
 				lmprintf(MSG_103, tmp), MB_YESNOCANCEL | MB_ICONWARNING | MB_IS_RTL, selected_langid);
 			if (r == IDCANCEL)
 				goto out;
@@ -2029,6 +2474,16 @@ static DWORD WINAPI BootCheckThread(LPVOID param)
 				}
 			}
 		}
+#else
+		buf = GetResource(hMainInstance, MAKEINTRESOURCEA(IDR_GR_GRUB4DOS_GRLDR),
+			_RT_RCDATA, "grldr", &len, FALSE);
+		if (buf == NULL) {
+			uprintf("Could not access embedded 'grldr'");
+			ret = BOOTCHECK_DOWNLOAD_ERROR;
+			goto out;
+		}
+		uprintf("Will use embedded 'grldr' for Grub4DOS installation");
+#endif
 	}
 
 uefi_target:
@@ -2133,7 +2588,8 @@ static void InitDialog(HWND hDlg)
 	if (hInfoFont == NULL) {
 		// Ta ho ma ta ho ma ta ho ma
 		hInfoFont = CreateFontA(lfHeight, 0, 0, 0, FW_NORMAL, FALSE, FALSE, FALSE, DEFAULT_CHARSET,
-			0, 0, PROOF_QUALITY, 0, (WindowsVersion.Version <= WINDOWS_XP) ? "Tahoma" : "Segoe UI");
+			0, 0, PROOF_QUALITY, 0, (WindowsVersion.Version <= WINDOWS_NT4) ? "MS Shell Dlg" :
+			(WindowsVersion.Version <= WINDOWS_XP) ? "Tahoma" : "Segoe UI");
 	}
 
 	// Create the title bar icon
@@ -2213,7 +2669,7 @@ static void InitDialog(HWND hDlg)
 	// Avoid errors in the log (port)
 	if (WindowsVersion.Version >= WINDOWS_7) {
 		CreateTaskbarList();
-		SetTaskbarProgressState(TASKBAR_NORMAL);
+		SetTaskbarProgressState(TASKBAR_NOPROGRESS);
 	}
 
 	// Use maximum granularity for the progress bar
@@ -2339,7 +2795,7 @@ static const char* GetLegacyGptWarning(void)
 /*
  * Main dialog callback
  */
-static INT_PTR CALLBACK MainCallback(HWND hDlg, UINT message, WPARAM wParam, LPARAM lParam)
+INT_PTR CALLBACK MainCallback(HWND hDlg, UINT message, WPARAM wParam, LPARAM lParam)
 {
 	static DWORD DeviceNum = 0;
 	static uint64_t LastRefresh = 0;
@@ -2363,7 +2819,7 @@ static INT_PTR CALLBACK MainCallback(HWND hDlg, UINT message, WPARAM wParam, LPA
 	PAINTSTRUCT ps;
 	DWORD log_size;
 	int nDeviceIndex, i, nWidth, nHeight, nb_devices, selected_language, offset, tb_state, tb_flags;
-	char tmp[MAX_PATH], *log_buffer = NULL;
+	char tmp[MAX_PATH], *dropped_path = NULL, *log_buffer = NULL;
 	wchar_t* wbuffer = NULL;
 	loc_cmd* lcmd = NULL;
 
@@ -2380,6 +2836,8 @@ static INT_PTR CALLBACK MainCallback(HWND hDlg, UINT message, WPARAM wParam, LPA
 			selected_language = LOWORD(wParam) - UM_LANGUAGE_MENU;
 			i = 0;
 			list_for_each_entry(lcmd, &locale_list, loc_cmd, list) {
+				if (!IsLocaleAvailableOnLegacyWindows(lcmd))
+					continue;
 				if (i++ == selected_language) {
 					if (selected_locale != lcmd) {
 						selected_locale = lcmd;
@@ -2740,6 +3198,14 @@ static INT_PTR CALLBACK MainCallback(HWND hDlg, UINT message, WPARAM wParam, LPA
 			partition_type = (int)ComboBox_GetCurItemData(hPartitionScheme);
 			target_type = (int)ComboBox_GetCurItemData(hTargetSystem);
 			fs_type = (int)ComboBox_GetCurItemData(hFileSystem);
+			if (IS_EXT(fs_type) && (image_path == NULL) && (boot_type == BT_IMAGE))
+				boot_type = BT_NON_BOOTABLE;
+			if ((WindowsVersion.Version >= WINDOWS_VISTA) && !zero_drive &&
+				(SelectedDrive.DiskSize >= 16 * GB) && IS_EXT(fs_type)) {
+				if (MessageBoxExU(hMainDialog, lmprintf(MSG_523), APPLICATION_NAME,
+					MB_OKCANCEL | MB_ICONWARNING | MB_IS_RTL, selected_langid) != IDOK)
+					break;
+			}
 			write_as_image = FALSE;
 			write_as_esp = FALSE;
 			unattend_xml_flags = 0;
@@ -2749,7 +3215,7 @@ static INT_PTR CALLBACK MainCallback(HWND hDlg, UINT message, WPARAM wParam, LPA
 			LastWriteError = 0;
 			StrArrayClear(&BlockingProcessList);
 			no_confirmation_on_cancel = FALSE;
-			SendMessage(hMainDialog, UM_PROGRESS_INIT, 0, 0);
+			SendMessage(hMainDialog, UM_PROGRESS_INIT, 0, TRUE);
 			selection_default = (int)ComboBox_GetCurItemData(hBootType);
 			// Create a thread to validate options and download files as needed (so that we can update the UI).
 			// On exit, this thread sends message UM_FORMAT_START back to this dialog.
@@ -3069,18 +3535,26 @@ static INT_PTR CALLBACK MainCallback(HWND hDlg, UINT message, WPARAM wParam, LPA
 				wbuffer = calloc(MAX_PATH, sizeof(wchar_t));
 				if (wbuffer == NULL) {
 					uprintf("Failed to alloc buffer for drag-n-drop");
-						break;
+					DragFinish(droppedFileInfo);
+					break;
 				}
 			DragQueryFileW(droppedFileInfo, 0, wbuffer, MAX_PATH);
-				safe_free(image_path);
-				image_path = wchar_to_utf8(wbuffer);
+				dropped_path = wchar_to_utf8(wbuffer);
 				safe_free(wbuffer);
 
-				if (image_path != NULL) {
+				if (dropped_path != NULL) {
+					if (HandleDiskcopyDrop(dropped_path)) {
+						safe_free(dropped_path);
+						DragFinish(droppedFileInfo);
+						break;
+					}
+					safe_free(image_path);
+					image_path = dropped_path;
 					img_provided = TRUE;
 					// Simulate image selection click
 					SendMessage(hDlg, WM_COMMAND, IDC_SELECT, 0);
 				}
+			DragFinish(droppedFileInfo);
 		}
 		break;
 
@@ -3110,11 +3584,14 @@ static INT_PTR CALLBACK MainCallback(HWND hDlg, UINT message, WPARAM wParam, LPA
 		SendMessage(hProgress, PBM_SETSTATE, (WPARAM)PBST_NORMAL, 0);
 		if (isMarquee) {
 			SendMessage(hProgress, PBM_SETMARQUEE, TRUE, 0);
-			SetTaskbarProgressState(TASKBAR_INDETERMINATE);
+			if (!lParam)
+				SetTaskbarProgressState(TASKBAR_INDETERMINATE);
 		} else {
 			SendMessage(hProgress, PBM_SETPOS, 0, 0);
-			SetTaskbarProgressState(TASKBAR_NORMAL);
-			SetTaskbarProgressValue(0, MAX_PROGRESS);
+			if (!lParam) {
+				SetTaskbarProgressState(TASKBAR_NORMAL);
+				SetTaskbarProgressValue(0, MAX_PROGRESS);
+			}
 		}
 		break;
 
@@ -3211,6 +3688,8 @@ static INT_PTR CALLBACK MainCallback(HWND hDlg, UINT message, WPARAM wParam, LPA
 		nDeviceIndex = ComboBox_GetCurSel(hDeviceList);
 		DeviceNum = (DWORD)ComboBox_GetItemData(hDeviceList, nDeviceIndex);
 		InitProgress(zero_drive || write_as_image);
+		SetTaskbarProgressState(TASKBAR_NORMAL);
+		SetTaskbarProgressValue(0, MAX_PROGRESS);
 		format_thread = CreateThread(NULL, 0, FormatThread, (LPVOID)(uintptr_t)DeviceNum, 0, NULL);
 		if (format_thread == NULL) {
 			uprintf("Unable to start formatting thread");
@@ -3228,6 +3707,7 @@ static INT_PTR CALLBACK MainCallback(HWND hDlg, UINT message, WPARAM wParam, LPA
 	aborted_start:
 		// Clean up Windows To Go when canceled, before formatting starts (port)
 		CleanupWinToGoTemp();
+		SetTaskbarProgressState(TASKBAR_NOPROGRESS);
 		zero_drive = FALSE;
 		if (queued_hotplug_event)
 			SendMessage(hDlg, UM_MEDIA_CHANGE, 0, 0);
@@ -3438,7 +3918,6 @@ int WINAPI WinMain(_In_ HINSTANCE hInstance, _In_opt_ HINSTANCE hPrevInstance, _
 int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine, int nCmdShow)
 #endif
 {
-	const char* rufus_loc = "rufus.loc";
 	// Use regional language for startup locale (port)
 	DWORD startup_version = GetVersion();
 	int i, opt, option_index = 0, argc = 0, si = 0, lcid =
@@ -3474,6 +3953,7 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine
 	};
 
 	GetWindowsVersion(&WindowsVersion);
+
 
 	// Disable loading system DLLs from the current directory (side-loading mitigation)
 	// PS: You know that official MSDN documentation for SetDllDirectory() that explicitly
@@ -3816,7 +4296,7 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine
 	init_localization();
 
 	// Seek for a loc file in the application directory
-	static_sprintf(loc_file, "%s%s", app_dir, rufus_loc);
+	static_sprintf(loc_file, "%srufus.loc", app_dir);
 	if (GetFileAttributesU(loc_file) == INVALID_FILE_ATTRIBUTES) {
 		uprintf("loc file not found in current directory - embedded one will be used");
 
@@ -3853,6 +4333,12 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine
 			"Fatal error", MB_ICONSTOP|MB_SYSTEMMODAL);
 		goto out;
 	}
+	// Avoid starting legacy Windows in a locale that its UI font cannot render.
+	if (!IsLocaleAvailableOnLegacyWindows(selected_locale)) {
+		uprintf("localization: locale '%s' is not supported on this Windows version; falling back to English",
+			selected_locale->txt[0]);
+		selected_locale = get_locale_from_name("en-US", TRUE);
+	}
 	selected_langid = get_language_id(selected_locale);
 
 	// Force a version if specified as parameter, but without allowing folks running
@@ -3865,7 +4351,7 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine
 	if (!IsCurrentProcessElevated()) {
 		uprintf("FATAL: No administrative privileges!");
 		// Load the translation before we print the error
-		get_loc_data_file(loc_file, selected_locale);
+		get_loc_data_file(loc_file, GetEffectiveLocaleForLegacyWindows(selected_locale));
 		right_to_left_mode = ((selected_locale->ctrl_id) & LOC_RIGHT_TO_LEFT);
 		MessageBoxExU(NULL, lmprintf(MSG_289), lmprintf(MSG_288), MB_ICONSTOP | MB_IS_RTL | MB_SYSTEMMODAL, selected_langid);
 		goto out;
@@ -3883,7 +4369,7 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine
 	}
 	if ((mutex == NULL) || (GetLastError() == ERROR_ALREADY_EXISTS)) {
 		// Load the translation before we print the error
-		get_loc_data_file(loc_file, selected_locale);
+		get_loc_data_file(loc_file, GetEffectiveLocaleForLegacyWindows(selected_locale));
 		right_to_left_mode = ((selected_locale->ctrl_id) & LOC_RIGHT_TO_LEFT);
 		// Set MB_SYSTEMMODAL to prevent Far Manager from stealing focus...
 		MessageBoxExU(NULL, lmprintf(MSG_002), lmprintf(MSG_001), MB_ICONSTOP | MB_IS_RTL | MB_SYSTEMMODAL, selected_langid);
@@ -3909,8 +4395,19 @@ relaunch:
 	select_index = 0;
 	safe_free(fido_url);
 	SetProcessDefaultLayout(right_to_left_mode ? LAYOUT_RTL : 0);
-	if (get_loc_data_file(loc_file, selected_locale))
+	if (get_loc_data_file(loc_file, GetEffectiveLocaleForLegacyWindows(selected_locale)))
 		WriteSettingStr(SETTING_LOCALE, selected_locale->txt[0]);
+
+#ifdef RUFUS_TARGET_NT4
+	if ((WindowsVersion.Version == WINDOWS_NT4) && !nt4_usb_notice_shown) {
+		nt4_usb_notice_shown = TRUE;
+		if (!IsNt4UsbDriverInstalled()) {
+			uprintf("No USB driver installation was detected (NT4)");
+			MessageBoxExU(NULL, lmprintf(MSG_529), APPLICATION_NAME,
+				MB_OK | MB_ICONWARNING | MB_IS_RTL | MB_SYSTEMMODAL, selected_langid);
+		}
+	}
+#endif
 
 	if (!vc) {
 		if (MessageBoxExU(NULL, lmprintf(MSG_296), lmprintf(MSG_295),

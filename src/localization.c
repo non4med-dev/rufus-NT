@@ -623,6 +623,107 @@ const char* get_name_from_id(int id)
 }
 
 /*
+ * Restrict language choices on legacy Windows versions where the available
+ * system fonts cannot render every translation correctly.
+ *
+ * NT4 keeps the languages verified to render correctly, plus the languages
+ * that only lose some special characters. Windows 2000/XP only exclude
+ * Arabic, which does not render correctly with their UI font setup.
+ */
+typedef struct {
+	const char* regular;
+	const char* nt4_ascii;
+} nt4_locale_pair;
+
+static const nt4_locale_pair nt4_ascii_locales[] = {
+	{ "hr-HR", "hr-NT4" }, { "cs-CZ", "cs-NT4" },
+	{ "lv-LV", "lv-NT4" }, { "lt-LT", "lt-NT4" },
+	{ "pl-PL", "pl-NT4" }, { "ro-RO", "ro-NT4" },
+	{ "sr-RS", "sr-NT4" }, { "sk-SK", "sk-NT4" },
+	{ "sl-SI", "sl-NT4" }, { "vi-VN", "vi-NT4" }
+};
+
+static BOOL IsNT4AsciiLocale(loc_cmd* lcmd)
+{
+	size_t i;
+
+	if ((lcmd == NULL) || (lcmd->txt[0] == NULL))
+		return FALSE;
+	for (i = 0; i < ARRAYSIZE(nt4_ascii_locales); i++) {
+		if (safe_strcmp(lcmd->txt[0], nt4_ascii_locales[i].nt4_ascii) == 0)
+			return TRUE;
+	}
+	return FALSE;
+}
+
+BOOL IsNT4LimitedLocale(loc_cmd* lcmd)
+{
+	size_t i;
+
+	if ((lcmd == NULL) || (lcmd->txt[0] == NULL))
+		return FALSE;
+	for (i = 0; i < ARRAYSIZE(nt4_ascii_locales); i++) {
+		if (safe_strcmp(lcmd->txt[0], nt4_ascii_locales[i].regular) == 0)
+			return TRUE;
+	}
+	return FALSE;
+}
+
+loc_cmd* GetEffectiveLocaleForLegacyWindows(loc_cmd* lcmd)
+{
+	size_t i;
+	loc_cmd* nt4_locale;
+
+	if ((WindowsVersion.Version != WINDOWS_NT4) || !IsNT4LimitedLocale(lcmd))
+		return lcmd;
+
+	for (i = 0; i < ARRAYSIZE(nt4_ascii_locales); i++) {
+		if (safe_strcmp(lcmd->txt[0], nt4_ascii_locales[i].regular) == 0) {
+			nt4_locale = get_locale_from_name((char*)nt4_ascii_locales[i].nt4_ascii, FALSE);
+			return (nt4_locale != NULL) ? nt4_locale : lcmd;
+		}
+	}
+	return lcmd;
+}
+
+BOOL IsLocaleAvailableOnLegacyWindows(loc_cmd* lcmd)
+{
+	static const char* nt4_fully_supported[] = {
+		"en-US", "da-DK", "nl-NL", "fi-FI", "fr-FR", "de-DE",
+		"hu-HU", "id-ID", "it-IT", "ms-MY", "nb-NO", "pt-BR",
+		"pt-PT", "es-ES", "sv-SE", "tr-TR"
+	};
+	size_t i;
+
+	if ((lcmd == NULL) || (lcmd->txt[0] == NULL))
+		return FALSE;
+
+	// Internal NT4 ASCII variants are never shown as separate languages.
+	if (IsNT4AsciiLocale(lcmd))
+		return FALSE;
+
+	if (WindowsVersion.Version > WINDOWS_XP)
+		return TRUE;
+
+	// Arabic is not usable with the Windows 2000/XP UI font setup.
+	if ((WindowsVersion.Version >= WINDOWS_2000) &&
+		(safe_strcmp(lcmd->txt[0], "ar-SA") == 0))
+		return FALSE;
+
+	if (WindowsVersion.Version != WINDOWS_NT4)
+		return TRUE;
+
+	if (IsNT4LimitedLocale(lcmd))
+		return TRUE;
+
+	for (i = 0; i < ARRAYSIZE(nt4_fully_supported); i++) {
+		if (safe_strcmp(lcmd->txt[0], nt4_fully_supported[i]) == 0)
+			return TRUE;
+	}
+	return FALSE;
+}
+
+/*
  * This call is used to get a supported Windows Language identifier we
  * should pass to MessageBoxEx to try to get the buttons displayed in
  * the currently selected language. This relies on the relevant language

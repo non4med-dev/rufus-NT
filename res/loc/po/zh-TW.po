@@ -147,6 +147,10 @@ msgstr "清除"
 msgid "Save"
 msgstr "儲存"
 
+#. • IDD_LOG → IDC_LOG_DIAGNOSTICS
+msgid "Diagnostics"
+msgstr "診斷"
+
 #. • IDD_UPDATE_POLICY → IDD_UPDATE_POLICY
 msgid "Update policy and settings"
 msgstr "版本更新"
@@ -2115,6 +2119,118 @@ msgstr "著作權"
 #. • MSG_519
 msgid "and contributors"
 msgstr "及貢獻者"
+
+#. • MSG_520
+msgid "exFAT support"
+msgstr "exFAT 支援"
+
+#. • MSG_521
+msgid "Windows XP requires KB955704 for exFAT support.\n\nDo you want to download the update for the detected system locale?\n\nSystem locale: 0x%04X (%s)"
+msgstr "Windows XP 需要 KB955704 才能支援 exFAT。\n\n是否要下載適用於偵測到的系統地區設定的更新？\n\n系統地區設定：0x%04X (%s)"
+
+#. • MSG_522
+msgid "No exFAT update is available for the detected system locale. You must install exFAT support manually.\n\nSystem locale: 0x%04X (%s)"
+msgstr "沒有適用於偵測到的系統地區設定的 exFAT 更新。您必須手動安裝 exFAT 支援。\n\n系統地區設定：0x%04X (%s)"
+
+#. • MSG_523
+msgid "A USB drive of 16 GB or larger was detected. Formatting it as ext2 or ext3 could take a very long time (about 30 minutes).\n\nDo you want to continue?"
+msgstr "偵測到容量為 16 GB 或更大的 USB 磁碟機。將其格式化為 ext2 或 ext3 可能需要很長時間（約 30 分鐘）。\n\n是否繼續？"
+
+#. • MSG_524
+msgid "This image uses GRUB %s, but Rufus only includes files for GRUB %s.\n\nThe required files could not be downloaded. Rufus will use the included version instead."
+msgstr "此映像使用 GRUB %s，但 Rufus 僅包含 GRUB %s 的檔案。\n\n無法下載所需檔案。Rufus 將改用內建版本。"
+
+#. • MSG_525
+msgid "'diskcopy.dll' is required to create an MS-DOS drive and could not be downloaded.\n\nDownload it from:\n%s\n\nThen drag and drop the downloaded file into the main window."
+msgstr "建立 MS-DOS 磁碟需要 'diskcopy.dll'，但無法下載該檔案。\n\n請從以下位置下載：\n%s\n\n然後將下載的檔案拖放到主視窗中。"
+
+#. • MSG_526
+msgid "'diskcopy.dll' is already installed."
+msgstr "'diskcopy.dll' 已安裝。"
+
+#. • MSG_527
+msgid "'diskcopy.dll' was installed successfully."
+msgstr "'diskcopy.dll' 安裝成功。"
+
+#. • MSG_528
+msgid "The selected file is not a valid copy of 'diskcopy.dll'."
+msgstr "所選檔案不是有效的 'diskcopy.dll'。"
+
+#. • MSG_529
+msgid "No USB drivers were detected. USB drivers are required for most Rufus functionality."
+msgstr "未偵測到 USB 驅動程式。Rufus 的大多數功能都需要 USB 驅動程式。"
+
+#. • MSG_530
+msgid "Rufus requires TLS 1.2 for networking functionality.\n\nWould you like Rufus to enable TLS 1.2?"
+msgstr "Rufus 的網路功能需要 TLS 1.2。\n\n是否要讓 Rufus 啟用 TLS 1.2？"
+
+#. • MSG_531
+msgid "TLS 1.2 Required"
+msgstr "需要 TLS 1.2"
+
+#. • MSG_532
+msgid "Embedded bootloader components"
+msgstr "內嵌式開機載入程式元件"
+
+#. • MSG_533
+msgid "PowerShell 7 Required"
+msgstr ""
+
+#. • MSG_534
+msgid "PowerShell 7 is required to run Fido, but it was not found in the registered installation or in:\n\n%s\n\nThe system PATH was not searched."
+msgstr ""
+
+#. • MSG_535
+msgid "PowerShell Signature Warning"
+msgstr ""
+
+#. • MSG_536
+msgid "PowerShell 7 at:\n\n%s\n\ndoes not have a valid Microsoft digital signature and may have been tampered with. What should Rufus do?"
+msgstr ""
+
+#. • MSG_537
+msgid "Use it and remember this location"
+msgstr ""
+
+#. • MSG_538
+msgid "Ignore it and keep searching"
+msgstr ""
+
+#. • MSG_539
+msgid "Cancel the Fido operation"
+msgstr ""
+
+#. • MSG_540
+msgid "PowerShell 7 is required to run Fido."
+msgstr ""
+
+#. • MSG_541
+msgid "Windows Vista Extended Kernel, version 10192022 or newer, is required.\n\nWould you like to open the installation guide?"
+msgstr ""
+
+#. • MSG_542
+msgid "Would you like to download PowerShell 7.2.24?"
+msgstr ""
+
+#. • MSG_543
+msgid "Would you like to download PowerShell 7?"
+msgstr ""
+
+#. • MSG_544
+msgid "Windows Vista requires the May 2018 or a later security update to support TLS 1.2.\n\nWould you like to open Microsoft Update Catalog?"
+msgstr "Windows Vista 必須安裝 2018 年 5 月或更新的安全性更新才能支援 TLS 1.2。\n\n是否要開啟 Microsoft Update Catalog？"
+
+#. • MSG_545
+msgid "Security Update Required"
+msgstr "需要安全性更新"
+
+#. • MSG_546
+msgid "Windows Vista requires an additional Internet Explorer setting change to use TLS 1.2.\n\nWould you like Rufus to apply it?"
+msgstr "Windows Vista 必須額外變更 Internet Explorer 設定才能使用 TLS 1.2。\n\n是否要讓 Rufus 套用此變更？"
+
+#. • MSG_547
+msgid "Networking requires the May 2018 or later security update"
+msgstr "網路功能需要 2018 年 5 月或更新版本的安全性更新"
 
 #. • MSG_900
 #.

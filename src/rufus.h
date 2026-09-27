@@ -62,7 +62,7 @@
 #define STR_NO_LABEL                "NO_LABEL"
 
 // Update level
-#define UPDATE_LEVEL                "Update 4"
+#define UPDATE_LEVEL                "Update 5"
 
 // Yes, there exist characters between these seemingly empty quotes!
 #define LEFT_TO_RIGHT_MARK          "‎"
@@ -835,6 +835,7 @@ extern void SetFidoCheck(void);
 extern BOOL SetUpdateCheck(void);
 extern BOOL CheckForUpdates(BOOL force);
 extern BOOL NetworkStartupPreflight(BOOL log_tls_warning);
+extern BOOL IsInternetAvailable(void);
 // Experimental GPT setting (port)
 extern void RefreshPartitionScheme(void);
 extern void DownloadNewVersion(void);
@@ -859,6 +860,7 @@ extern char* GetSignatureName(const char* path, const char* country_code, BOOL b
 extern int GetIssuerCertificateInfo(uint8_t* cert, uint32_t cert_size, cert_info_t* info);
 extern uint64_t GetSignatureTimeStamp(const char* path);
 extern LONG ValidateSignature(HWND hDlg, const char* path);
+extern LONG ValidateMicrosoftSignature(const char* path);
 extern BOOL ValidateOpensslSignature(BYTE* pbBuffer, DWORD dwBufferLen, BYTE* pbSignature, DWORD dwSigLen);
 extern BOOL ParseSKUSiPolicy(void);
 extern BOOL IsFontAvailable(const char* font_name);
@@ -871,6 +873,7 @@ extern BOOL SetThreadAffinity(DWORD_PTR* thread_affinity, size_t num_threads);
 extern BOOL DetectSHA1Acceleration(void);
 extern BOOL DetectSHA256Acceleration(void);
 extern BOOL HashFile(const unsigned type, const char* path, uint8_t* sum);
+extern BOOL IsValidDiskcopyDll(const char* path);
 extern BOOL PE256Buffer(uint8_t* buf, uint32_t len, uint8_t* hash);
 extern void UpdateMD5Sum(const char* dest_dir, const char* md5sum_name);
 extern BOOL HashBuffer(const unsigned type, const uint8_t* buf, const size_t len, uint8_t* sum);

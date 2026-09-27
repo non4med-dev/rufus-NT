@@ -326,7 +326,7 @@ void PositionMainControls(HWND hDlg)
 	HWND hCtrl, hPrevCtrl;
 	SIZE sz;
 	DWORD padding;
-	int i, x, button_fudge = 2;
+	int i, x, legacy_advanced_gap = 3, button_fudge = 2;
 
 	// Start by resizing the whole dialog
 	GetWindowRect(hDlg, &rc);
@@ -362,6 +362,20 @@ void PositionMainControls(HWND hDlg)
 	MapWindowPoints(NULL, hDlg, (POINT*)&rc, 2);
 	rh -= rc.top;
 
+	// On NT4/2000 and XP, classic/themed common-control metrics leave the
+	// advanced-options toolbar text very close to the first checkbox. Add a
+	// small legacy-only gap, and account for it in the collapsible section
+	// heights below so collapsed layout remains unchanged.
+	if (WindowsVersion.Version <= WINDOWS_XP) {
+		for (i = 0; i < ARRAYSIZE(advanced_device_move_ids); i++)
+			MoveCtrlY(hDlg, advanced_device_move_ids[i], legacy_advanced_gap);
+
+		for (i = 0; i < ARRAYSIZE(advanced_format_toggle_ids); i++)
+			MoveCtrlY(hDlg, advanced_format_toggle_ids[i], legacy_advanced_gap);
+		for (i = 0; i < ARRAYSIZE(advanced_format_move_ids); i++)
+			MoveCtrlY(hDlg, advanced_format_move_ids[i], legacy_advanced_gap);
+	}
+
 	// Get the height of the advanced options
 	hCtrl = GetDlgItem(hDlg, IDC_LIST_USB_HDD);
 	GetWindowRect(hCtrl, &rc);
@@ -380,6 +394,10 @@ void PositionMainControls(HWND hDlg)
 	GetWindowRect(hCtrl, &rc);
 	MapWindowPoints(NULL, hDlg, (POINT*)&rc, 2);
 	advanced_format_section_height = rc.bottom - advanced_format_section_height;
+	if (WindowsVersion.Version <= WINDOWS_XP) {
+		advanced_device_section_height += legacy_advanced_gap;
+		advanced_format_section_height += legacy_advanced_gap;
+	}
 
 	// Get the vertical position of the sections text
 	hCtrl = GetDlgItem(hDlg, IDS_DRIVE_PROPERTIES_TXT);
@@ -530,6 +548,7 @@ static void ResizeDialogs(int shift)
 	MoveWindow(hLogDialog, rc.left, rc.top, point.x, point.y + shift, TRUE);
 	MoveCtrlY(hLogDialog, IDC_LOG_CLEAR, shift);
 	MoveCtrlY(hLogDialog, IDC_LOG_SAVE, shift);
+	MoveCtrlY(hLogDialog, IDC_LOG_DIAGNOSTICS, shift);
 	MoveCtrlY(hLogDialog, IDCANCEL, shift);
 	GetWindowRect(hLog, &rc);
 	point.x = (rc.right - rc.left);
@@ -596,6 +615,7 @@ void SetSectionHeaders(HWND hDlg, HFONT* hFont)
 		*hFont = CreateFontA(-MulDiv(14, GetDeviceCaps(hDC, LOGPIXELSY), 72),
 			0, 0, 0, FW_SEMIBOLD, FALSE, FALSE, FALSE, DEFAULT_CHARSET,
 			0, 0, PROOF_QUALITY, 0,
+			(WindowsVersion.Version <= WINDOWS_NT4) ? "MS Shell Dlg" :
 			(WindowsVersion.Version <= WINDOWS_XP) ? "Tahoma" : "Segoe UI");
 		safe_release_dc(hMainDialog, hDC);
 	}
@@ -1725,6 +1745,8 @@ void ShowLanguageMenu(RECT rcExclude)
 	UM_LANGUAGE_MENU_MAX = UM_LANGUAGE_MENU;
 	menu = CreatePopupMenu();
 	list_for_each_entry(lcmd, &locale_list, loc_cmd, list) {
+		if (!IsLocaleAvailableOnLegacyWindows(lcmd))
+			continue;
 		// The appearance of LTR languages must be fixed for RTL menus
 		if ((right_to_left_mode) && (!(lcmd->ctrl_id & LOC_RIGHT_TO_LEFT))) {
 			str = safe_strdup(lcmd->txt[1]);

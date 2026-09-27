@@ -16,10 +16,14 @@
     Foundation, Inc., 675 Mass Ave, Cambridge, MA 02139, USA.
 ******************************************************************/
 #include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
 
 #include "file.h"
 #include "fat32.h"
+#ifdef RUFUS_TARGET_NT4
+#include "../nt4.h"
+#endif
 
 int is_fat_32_fs(FILE *fp)
 {
@@ -123,6 +127,67 @@ int write_fat_32_fd_br(FILE *fp, int bKeepLabel)
 	      to write 0xff 0xff 0xff 0xff 0xff 0xff 0xff 0xff here. */
 	   write_data(fp, 0x3f0, br_fat32_0x3f0, sizeof(br_fat32_0x3f0)) );
 } /* write_fat_32_fd_br */
+
+static int write_fat_32_nt4_data(FILE *fp, const unsigned char *boot_code,
+	 size_t boot_code_len, const unsigned char *cluster_code, size_t cluster_code_len,
+	 int secondary)
+{
+   #include "label_11_char.h"
+   #include "br_fat32_0x0.h"
+
+	int r = 0;
+	size_t len = 0x3f0 + cluster_code_len;
+	unsigned char *buf = (unsigned char*)malloc(len);
+#ifndef RUFUS_TARGET_NT4
+	(void)secondary;
+#endif
+
+	if (buf == NULL)
+		return 0;
+#ifdef RUFUS_TARGET_NT4
+	NT4_SetDiskStage(secondary ? "124 preparing secondary FAT32 boot sector" :
+		"123 preparing primary FAT32 boot sector");
+#endif
+	if (!read_data(fp, 0, buf, len))
+		goto out;
+   memcpy(&buf[0x0], br_fat32_0x0, sizeof(br_fat32_0x0));
+   memcpy(&buf[0x47], label_11_char, sizeof(label_11_char));
+   buf[0x40] = 0x80;
+   memcpy(&buf[0x52], boot_code, boot_code_len);
+   memcpy(&buf[0x3f0], cluster_code, cluster_code_len);
+#ifdef RUFUS_TARGET_NT4
+	NT4_SetDiskStage(secondary ? "126 writing secondary FAT32 boot sector" :
+		"125 writing primary FAT32 boot sector");
+#endif
+	r = write_data_once(fp, 0, buf, len);
+out:
+   free(buf);
+   return r;
+}
+
+static int write_fat_32_nt4_standard_br(FILE *fp, int secondary)
+{
+   #include "br_fat32_0x52.h"
+   #include "br_fat32_0x3f0.h"
+
+	return write_fat_32_nt4_data(fp, br_fat32_0x52, sizeof(br_fat32_0x52),
+		br_fat32_0x3f0, sizeof(br_fat32_0x3f0), secondary);
+}
+
+static int write_fat_32_nt4_freedos_br(FILE *fp, int secondary)
+{
+   #include "br_fat32fd_0x52.h"
+   #include "br_fat32fd_0x3f0.h"
+
+	return write_fat_32_nt4_data(fp, br_fat32_0x52, sizeof(br_fat32_0x52),
+		br_fat32_0x3f0, sizeof(br_fat32_0x3f0), secondary);
+}
+
+int write_fat_32_nt4_br(FILE *fp, int bFreeDOS, int secondary)
+{
+	return bFreeDOS ? write_fat_32_nt4_freedos_br(fp, secondary) :
+		write_fat_32_nt4_standard_br(fp, secondary);
+}
 
 int entire_fat_32_nt_br_matches(FILE *fp)
 {

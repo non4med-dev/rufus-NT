@@ -116,6 +116,7 @@ typedef BOOLEAN (WINAPI* EnableVolumeCompression_t)(
 #define IMG_COMPRESSION_VHDX    (BLED_COMPRESSION_MAX + 2)
 
 BOOL WritePBR(HANDLE hLogicalDrive);
+BOOL WritePBRAtOffset(HANDLE hDrive, uint64_t offset);
 BOOL FormatLargeFAT32(DWORD DriveIndex, uint64_t PartitionOffset, DWORD ClusterSize, LPCSTR FSName, LPCSTR Label, DWORD Flags);
 BOOL FormatExtFs(DWORD DriveIndex, uint64_t PartitionOffset, DWORD BlockSize, LPCSTR FSName, LPCSTR Label, DWORD Flags);
 BOOL FormatPartition(DWORD DriveIndex, uint64_t PartitionOffset, DWORD UnitAllocationSize, USHORT FSType, LPCSTR Label, DWORD Flags);

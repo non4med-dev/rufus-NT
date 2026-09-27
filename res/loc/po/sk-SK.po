@@ -147,6 +147,10 @@ msgstr "Vyčistiť"
 msgid "Save"
 msgstr "Uložiť"
 
+#. • IDD_LOG → IDC_LOG_DIAGNOSTICS
+msgid "Diagnostics"
+msgstr "Diagnostika"
+
 #. • IDD_UPDATE_POLICY → IDD_UPDATE_POLICY
 msgid "Update policy and settings"
 msgstr "Zásady a nastavenia aktualizácií"
@@ -2126,6 +2130,118 @@ msgstr "Autorské práva"
 #. • MSG_519
 msgid "and contributors"
 msgstr "a prispievatelia"
+
+#. • MSG_520
+msgid "exFAT support"
+msgstr "Podpora exFAT"
+
+#. • MSG_521
+msgid "Windows XP requires KB955704 for exFAT support.\n\nDo you want to download the update for the detected system locale?\n\nSystem locale: 0x%04X (%s)"
+msgstr "Windows XP vyžaduje na podporu exFAT aktualizáciu KB955704.\n\nChcete prevziať aktualizáciu pre zistené miestne nastavenie systému?\n\nMiestne nastavenie systému: 0x%04X (%s)"
+
+#. • MSG_522
+msgid "No exFAT update is available for the detected system locale. You must install exFAT support manually.\n\nSystem locale: 0x%04X (%s)"
+msgstr "Pre zistené miestne nastavenie systému nie je k dispozícii žiadna aktualizácia exFAT. Podporu exFAT musíte nainštalovať manuálne.\n\nMiestne nastavenie systému: 0x%04X (%s)"
+
+#. • MSG_523
+msgid "A USB drive of 16 GB or larger was detected. Formatting it as ext2 or ext3 could take a very long time (about 30 minutes).\n\nDo you want to continue?"
+msgstr "Bola zistená jednotka USB s veľkosťou 16 GB alebo viac. Formátovanie na ext2 alebo ext3 môže trvať veľmi dlho (približne 30 minút).\n\nChcete pokračovať?"
+
+#. • MSG_524
+msgid "This image uses GRUB %s, but Rufus only includes files for GRUB %s.\n\nThe required files could not be downloaded. Rufus will use the included version instead."
+msgstr "Tento obraz používa GRUB %s, ale Rufus obsahuje súbory iba pre GRUB %s.\n\nPožadované súbory sa nepodarilo prevziať. Rufus namiesto nich použije pribalenú verziu."
+
+#. • MSG_525
+msgid "'diskcopy.dll' is required to create an MS-DOS drive and could not be downloaded.\n\nDownload it from:\n%s\n\nThen drag and drop the downloaded file into the main window."
+msgstr "Súbor 'diskcopy.dll' je potrebný na vytvorenie jednotky MS-DOS a nepodarilo sa ho prevziať.\n\nPrevezmite ho z:\n%s\n\nPotom presuňte prevzatý súbor do hlavného okna."
+
+#. • MSG_526
+msgid "'diskcopy.dll' is already installed."
+msgstr "'diskcopy.dll' je už nainštalovaný."
+
+#. • MSG_527
+msgid "'diskcopy.dll' was installed successfully."
+msgstr "'diskcopy.dll' bol úspešne nainštalovaný."
+
+#. • MSG_528
+msgid "The selected file is not a valid copy of 'diskcopy.dll'."
+msgstr "Vybratý súbor nie je platnou kópiou súboru 'diskcopy.dll'."
+
+#. • MSG_529
+msgid "No USB drivers were detected. USB drivers are required for most Rufus functionality."
+msgstr "Neboli zistené žiadne ovládače USB. Ovládače USB sú potrebné pre väčšinu funkcií programu Rufus."
+
+#. • MSG_530
+msgid "Rufus requires TLS 1.2 for networking functionality.\n\nWould you like Rufus to enable TLS 1.2?"
+msgstr "Rufus vyžaduje TLS 1.2 pre sieťové funkcie.\n\nChcete, aby Rufus povolil TLS 1.2?"
+
+#. • MSG_531
+msgid "TLS 1.2 Required"
+msgstr "Vyžaduje sa TLS 1.2"
+
+#. • MSG_532
+msgid "Embedded bootloader components"
+msgstr "Vložené súčasti zavádzača"
+
+#. • MSG_533
+msgid "PowerShell 7 Required"
+msgstr ""
+
+#. • MSG_534
+msgid "PowerShell 7 is required to run Fido, but it was not found in the registered installation or in:\n\n%s\n\nThe system PATH was not searched."
+msgstr ""
+
+#. • MSG_535
+msgid "PowerShell Signature Warning"
+msgstr ""
+
+#. • MSG_536
+msgid "PowerShell 7 at:\n\n%s\n\ndoes not have a valid Microsoft digital signature and may have been tampered with. What should Rufus do?"
+msgstr ""
+
+#. • MSG_537
+msgid "Use it and remember this location"
+msgstr ""
+
+#. • MSG_538
+msgid "Ignore it and keep searching"
+msgstr ""
+
+#. • MSG_539
+msgid "Cancel the Fido operation"
+msgstr ""
+
+#. • MSG_540
+msgid "PowerShell 7 is required to run Fido."
+msgstr ""
+
+#. • MSG_541
+msgid "Windows Vista Extended Kernel, version 10192022 or newer, is required.\n\nWould you like to open the installation guide?"
+msgstr ""
+
+#. • MSG_542
+msgid "Would you like to download PowerShell 7.2.24?"
+msgstr ""
+
+#. • MSG_543
+msgid "Would you like to download PowerShell 7?"
+msgstr ""
+
+#. • MSG_544
+msgid "Windows Vista requires the May 2018 or a later security update to support TLS 1.2.\n\nWould you like to open Microsoft Update Catalog?"
+msgstr "Windows Vista vyžaduje na podporu TLS 1.2 aktualizáciu zabezpečenia z mája 2018 alebo novšiu.\n\nChcete otvoriť katalóg služby Microsoft Update?"
+
+#. • MSG_545
+msgid "Security Update Required"
+msgstr "Vyžaduje sa aktualizácia zabezpečenia"
+
+#. • MSG_546
+msgid "Windows Vista requires an additional Internet Explorer setting change to use TLS 1.2.\n\nWould you like Rufus to apply it?"
+msgstr "Windows Vista vyžaduje na používanie TLS 1.2 ďalšiu zmenu nastavenia Internet Explorera.\n\nChcete, aby ju Rufus použil?"
+
+#. • MSG_547
+msgid "Networking requires the May 2018 or later security update"
+msgstr "Sieť vyžaduje bezpečnostnú aktualizáciu z mája 2018 alebo novšiu"
 
 #. • MSG_900
 #.

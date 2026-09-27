@@ -64,6 +64,8 @@ extern char* ini_file;
 #define SETTING_PERSISTENT_LOG              "PersistentLog"
 #define SETTING_PREFERRED_SAVE_IMAGE_TYPE   "PreferredSaveImageType"
 #define SETTING_PRESERVE_TIMESTAMPS         "PreserveTimestamps"
+#define SETTING_POWERSHELL_PATH              "PowerShellPath"
+#define SETTING_TLS_UPDATES_CHECK            "TLSUpdatesCheck"
 #define SETTING_VERBOSE_UPDATES             "VerboseUpdateCheck"
 #define SETTING_WUE_OPTIONS                 "WindowsUserExperienceOptions"
 

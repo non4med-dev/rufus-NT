@@ -1,0 +1,2327 @@
+msgid ""
+msgstr ""
+"Project-Id-Version: 4.14\n"
+"Report-Msgid-Bugs-To: pete@akeo.ie\n"
+"POT-Creation-Date: 2026-04-22 21:20+0700\n"
+"PO-Revision-Date: 2026-04-23 16:15+0100\n"
+"Last-Translator: \n"
+"Language-Team: \n"
+"Language: vi_NT4
+"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+"X-Poedit-SourceCharset: UTF-8\n"
+"X-Rufus-LanguageName: Vietnamese (Tieng Viet)\n"
+"X-Rufus-LCID: 0
+"
+"X-Generator: Poedit 3.9\n"
+
+#. • IDD_DIALOG → IDS_DRIVE_PROPERTIES_TXT
+msgid "Drive Properties"
+msgstr "Thuoc tinh thiet bi luu"
+
+#. • IDD_DIALOG → IDS_DEVICE_TXT
+msgid "Device"
+msgstr "Thiet bi luu"
+
+#. • IDD_DIALOG → IDS_BOOT_SELECTION_TXT
+msgid "Boot selection"
+msgstr "Tuy chon khoi dong"
+
+#. • IDD_DIALOG → IDC_SELECT
+msgid "Select"
+msgstr "Chon"
+
+#. • IDD_DIALOG → IDS_IMAGE_OPTION_TXT
+msgid "Image Option"
+msgstr "Tuy chon tep tin"
+
+#. • IDD_DIALOG → IDS_PARTITION_TYPE_TXT
+msgid "Partition scheme"
+msgstr "So do phan vung"
+
+#. • IDD_DIALOG → IDS_TARGET_SYSTEM_TXT
+msgid "Target system"
+msgstr "He thong khoi dong"
+
+#. • IDD_DIALOG → IDC_LIST_USB_HDD
+msgid "List USB Hard Drives"
+msgstr "Liet ke danh sach o USB"
+
+#. • IDD_DIALOG → IDC_OLD_BIOS_FIXES
+#.
+#. It is acceptable to drop the parenthesis () if you are running out of space
+#. as there is a tooltip (MSG_169) providing these details.
+msgid "Add fixes for old BIOSes (extra partition, align, etc.)"
+msgstr "Them cac ban sua loi cho BIOS cu (phan vung phu, can le phan vung, v.v...)"
+
+#. • IDD_DIALOG → IDC_UEFI_MEDIA_VALIDATION
+#.
+#. It is acceptable to drop the "runtime" if you are running out of space
+msgid "Enable runtime UEFI media validation"
+msgstr "Bat xac minh thiet bi UEFI trong thoi gian chay"
+
+#. • IDD_DIALOG → IDS_FORMAT_OPTIONS_TXT
+msgid "Format Options"
+msgstr "Tuy chon dinh dang"
+
+#. • IDD_DIALOG → IDS_FILE_SYSTEM_TXT
+msgid "File system"
+msgstr "He thong tap tin"
+
+#. • IDD_DIALOG → IDS_CLUSTER_SIZE_TXT
+msgid "Cluster size"
+msgstr "Kich thuoc cum"
+
+#. • IDD_DIALOG → IDS_LABEL_TXT
+msgid "Volume label"
+msgstr "Nhan thiet bi luu"
+
+#. • IDD_DIALOG → IDC_QUICK_FORMAT
+msgid "Quick format"
+msgstr "Dinh dang nhanh"
+
+#. • IDD_DIALOG → IDC_BAD_BLOCKS
+msgid "Check device for bad blocks"
+msgstr "Kiem tra loi khoi tren thiet bi luu tru"
+
+#. • IDD_DIALOG → IDC_EXTENDED_LABEL
+msgid "Create extended label and icon files"
+msgstr "Tao nhan mo rong va tep tin bieu tuong"
+
+#. • IDD_DIALOG → IDS_STATUS_TXT
+msgid "Status"
+msgstr "Trang thai"
+
+#. • IDD_DIALOG → IDCANCEL
+#. • IDD_LICENSE → IDCANCEL
+#. • IDD_LOG → IDCANCEL
+#. • IDD_UPDATE_POLICY → IDCANCEL
+#. • IDD_NEW_VERSION → IDCANCEL
+#. • MSG_006
+msgid "Close"
+msgstr "Dong"
+
+#. • IDD_DIALOG → IDC_START
+msgid "Start"
+msgstr "Bat dau"
+
+#. • IDD_ABOUTBOX → IDD_ABOUTBOX
+msgid "About Rufus"
+msgstr "Thong tin ve Rufus"
+
+#. • IDD_ABOUTBOX → IDC_ABOUT_LICENSE
+msgid "License"
+msgstr "Giay phep"
+
+#. • IDD_ABOUTBOX → IDOK
+msgid "OK"
+msgstr ""
+
+#. • IDD_LICENSE → IDD_LICENSE
+msgid "Rufus License"
+msgstr "Giay phep Rufus"
+
+#. • IDD_NOTIFICATION → IDC_MORE_INFO
+msgid "More information"
+msgstr "Thong tin them"
+
+#. • IDD_NOTIFICATION → IDYES
+#. • MSG_008
+msgid "Yes"
+msgstr "Co"
+
+#. • IDD_NOTIFICATION → IDNO
+#. • MSG_009
+msgid "No"
+msgstr "Khong"
+
+#. • IDD_LOG → IDD_LOG
+msgid "Log"
+msgstr "Nhat ky"
+
+#. • IDD_LOG → IDC_LOG_CLEAR
+msgid "Clear"
+msgstr "Xoa"
+
+#. • IDD_LOG → IDC_LOG_SAVE
+msgid "Save"
+msgstr "Luu"
+
+#. • IDD_LOG → IDC_LOG_DIAGNOSTICS
+msgid "Diagnostics"
+msgstr "Chan doan"
+
+#. • IDD_UPDATE_POLICY → IDD_UPDATE_POLICY
+msgid "Update policy and settings"
+msgstr "Cap nhat chinh sach va thiet lap"
+
+#. • IDD_UPDATE_POLICY → IDS_UPDATE_SETTINGS_GRP
+msgid "Settings"
+msgstr "Thiet lap"
+
+#. • IDD_UPDATE_POLICY → IDS_UPDATE_FREQUENCY_TXT
+msgid "Check for updates"
+msgstr "Kiem tra cap nhat"
+
+#. • IDD_UPDATE_POLICY → IDS_INCLUDE_BETAS_TXT
+msgid "Include beta versions"
+msgstr "Bao gom ban thu nghiem"
+
+#. • IDD_UPDATE_POLICY → IDC_CHECK_NOW
+msgid "Check Now"
+msgstr "Kiem tra ngay"
+
+#. • IDD_NEW_VERSION → IDD_NEW_VERSION
+msgid "Check For Updates - Rufus"
+msgstr "Kiem tra cap nhat - Rufus"
+
+#. • IDD_NEW_VERSION → IDS_NEW_VERSION_AVAIL_TXT
+msgid "A newer version is available. Please download the latest version!"
+msgstr "Da co phien ban moi hon. Vui long tai phien ban moi nhat!"
+
+#. • IDD_NEW_VERSION → IDC_WEBSITE
+msgid "Click here to go to the website"
+msgstr "Nhan vao day de truy cap website"
+
+#. • IDD_NEW_VERSION → IDS_NEW_VERSION_NOTES_GRP
+msgid "Release Notes"
+msgstr "Ghi chu phat hanh"
+
+#. • IDD_NEW_VERSION → IDS_NEW_VERSION_DOWNLOAD_GRP
+#. • IDD_NEW_VERSION → IDC_DOWNLOAD
+#. • MSG_040
+msgid "Download"
+msgstr "Tai xuong"
+
+#. • MSG_001
+msgid "Other instance detected"
+msgstr "Da phat hien tien trinh chay dong thoi"
+
+#. • MSG_002
+msgid ""
+"Another Rufus application is running.\n"
+"Please close the first application before running another one."
+msgstr ""
+"Ung dung Rufus khac dang chay.\n"
+"Vui long dong ung dung dau tien truoc khi chay mot ung dung moi."
+
+#. • MSG_003
+msgid ""
+"WARNING: ALL DATA ON DEVICE '%s' WILL BE DESTROYED.\n"
+"To continue with this operation, click OK. To quit click CANCEL."
+msgstr ""
+"CANH BAO: TAT CA DU LIEU TREN THIET BI '%s' SE BI XOA.\n"
+"De tiep tuc tien trinh nay, nhan OK. De thoat nhan HUY."
+
+#. • MSG_004
+msgid "Rufus update policy"
+msgstr "Chinh sach cap nhat Rufus"
+
+#. • MSG_005
+msgid "Do you want to allow Rufus to check for application updates online?"
+msgstr "Ban co muon cho phep Rufus kiem tra cac ban cap nhat ung dung truc tuyen?"
+
+#. • MSG_007
+msgid "Cancel"
+msgstr "Huy"
+
+#. • MSG_010
+msgid "Bad blocks found"
+msgstr "Phat hien khoi hong"
+
+#. • MSG_011
+msgid ""
+"Check completed: %d bad block(s) found\n"
+"  %d read error(s)\n"
+"  %d write error(s)\n"
+"  %d corruption error(s)"
+msgstr ""
+"Kiem tra hoan tat: phat hien %d khoi hong\n"
+"  %d loi doc\n"
+"  %d loi ghi\n"
+"  %d loi cau truc"
+
+#. • MSG_012
+#.
+#. This contains the formatted message from MSG_001 as well as the name of the bad blocks logfile
+msgid ""
+"%s\n"
+"A more detailed report can be found in:\n"
+"%s"
+msgstr ""
+"%s\n"
+"Mot bao cao chi tiet hon co the tim thay trong:\n"
+"%s"
+
+#. • MSG_013
+msgid "Disabled"
+msgstr "Da vo hieu"
+
+#. • MSG_014
+msgid "Daily"
+msgstr "Hang ngay"
+
+#. • MSG_015
+msgid "Weekly"
+msgstr "Hang tuan"
+
+#. • MSG_016
+msgid "Monthly"
+msgstr "Hang thang"
+
+#. • MSG_017
+msgid "Custom"
+msgstr "Tuy chinh"
+
+#. • MSG_018
+msgid "Your version: %d.%d (Build %d)"
+msgstr "Phien ban cua ban: %d.%d (Ban dung %d)"
+
+#. • MSG_019
+msgid "Latest version: %d.%d (Build %d)"
+msgstr "Phien ban moi nhat: %d.%d (Ban dung %d)"
+
+#. • MSG_020
+#. • MSG_026
+msgid "bytes"
+msgstr ""
+
+#. • MSG_021
+#.
+#. *Short* version of the kilobyte size suffix
+msgid "KB"
+msgstr ""
+
+#. • MSG_022
+#.
+#. *Short* version of the megabyte size suffix
+msgid "MB"
+msgstr ""
+
+#. • MSG_023
+#.
+#. *Short* version of the gigabyte size suffix
+msgid "GB"
+msgstr ""
+
+#. • MSG_024
+#.
+#. *Short* version of the terabyte size suffix
+msgid "TB"
+msgstr ""
+
+#. • MSG_025
+#.
+#. *Short* version of the petabyte size suffix
+msgid "PB"
+msgstr ""
+
+#. • MSG_027
+msgid "kilobytes"
+msgstr ""
+
+#. • MSG_028
+msgid "megabytes"
+msgstr ""
+
+#. • MSG_029
+msgid "Default"
+msgstr "Mac dinh"
+
+#. • MSG_030
+#.
+#. This gets appended to the file system, cluster size, etc.
+msgid "%s (Default)"
+msgstr "%s (Mac dinh)"
+
+#. • MSG_031
+msgid "BIOS (or UEFI-CSM)"
+msgstr "BIOS (hoac UEFI-CSM)"
+
+#. • MSG_032
+msgid "UEFI (non CSM)"
+msgstr "UEFI (khong CSM)"
+
+#. • MSG_033
+msgid "BIOS or UEFI"
+msgstr "BIOS hoac UEFI"
+
+#. • MSG_034
+#.
+#. Number of bad block check passes (singular for 1 pass)
+msgid "%d pass"
+msgstr "Dat %d lan"
+
+#. • MSG_035
+#.
+#. Number of bad block check passes (plural for 2 or more passes).
+#. See MSG_087 for the message that %s gets replaced with.
+msgid "%d passes %s"
+msgstr "Da dat %d lan %s"
+
+#. • MSG_036
+msgid "ISO Image"
+msgstr "Tep ISO"
+
+#. • MSG_037
+msgid "Application"
+msgstr "Ung dung"
+
+#. • MSG_038
+msgid "Abort"
+msgstr "Huy bo"
+
+#. • MSG_039
+msgid "Launch"
+msgstr "Khoi chay"
+
+#. • MSG_041
+msgid "Operation cancelled by the user"
+msgstr "Tien trinh da bi huy boi nguoi dung"
+
+#. • MSG_042
+msgid "Error"
+msgstr "Loi"
+
+#. • MSG_043
+msgid "Error: %s"
+msgstr "Loi: %s"
+
+#. • MSG_044
+msgid "File download"
+msgstr "Tai xuong tap tin"
+
+#. • MSG_045
+msgid "USB Storage Device (Generic)"
+msgstr "Thiet bi luu tru USB (Co ban)"
+
+#. • MSG_046
+msgid "%s (Disk %d) [%s]"
+msgstr "%s (Dia %d) [%s]"
+
+#. • MSG_047
+#.
+#. Used when a drive is detected that contains more than one partition
+msgid "Multiple Partitions"
+msgstr "Da phan vung"
+
+#. • MSG_048
+msgid "Rufus - Flushing buffers"
+msgstr "Rufus - Dang xa bo dem"
+
+#. • MSG_049
+msgid "Rufus - Cancellation"
+msgstr "Rufus - Huy bo"
+
+#. • MSG_050
+msgid "Success."
+msgstr "Thanh cong."
+
+#. • MSG_051
+msgid "Undetermined error while formatting."
+msgstr "Loi khong xac dinh khi dang dinh dang."
+
+#. • MSG_052
+msgid "Cannot use the selected file system for this media."
+msgstr "Khong the dung he thong tap tin da chon cho thiet bi nay."
+
+#. • MSG_053
+msgid "Access to the device is denied."
+msgstr "Truy cap toi thiet bi da bi tu choi."
+
+#. • MSG_054
+msgid "Media is write protected."
+msgstr "Thiet bi dang duoc bao ve ghi."
+
+#. • MSG_055
+msgid "The device is in use by another process. Please close any other process that may be accessing the device."
+msgstr "Thiet bi dang duoc dung boi tien trinh khac. Vui long dong moi tien trinh co the dang truy cap thiet bi."
+
+#. • MSG_056
+msgid "Quick format is not available for this device."
+msgstr "Dinh dang nhanh khong kha dung voi thiet bi nay."
+
+#. • MSG_057
+msgid "The volume label is invalid."
+msgstr "Nhan o dia khong hop le."
+
+#. • MSG_058
+msgid "The device handle is invalid."
+msgstr "Tham chieu thiet bi khong hop le."
+
+#. • MSG_059
+msgid "The selected cluster size is not valid for this device."
+msgstr "Kich thuoc cum da chon khong hop le voi thiet bi nay."
+
+#. • MSG_060
+msgid "The volume size is invalid."
+msgstr "Kich co thiet bi khong hop le."
+
+#. • MSG_061
+msgid "Please insert a removable media in drive."
+msgstr "Vui long cam thiet bi luu tru di dong vao o."
+
+#. • MSG_062
+msgid "An unsupported command was received."
+msgstr "Da nhan mot lenh khong duoc ho tro."
+
+#. • MSG_063
+msgid "Memory allocation error."
+msgstr "Loi sap xep bo nho."
+
+#. • MSG_064
+msgid "Read error."
+msgstr "Loi doc."
+
+#. • MSG_065
+msgid "Write error."
+msgstr "Loi ghi."
+
+#. • MSG_066
+msgid "Installation failure"
+msgstr "Cai dat that bai"
+
+#. • MSG_067
+msgid "Could not open media. It may be in use by another process. Please re-plug the media and try again."
+msgstr "Khong the mo thiet bi. Co the no dang duoc tien trinh khac su dung. Vui long cam lai thiet bi va thu lai."
+
+#. • MSG_068
+msgid "Could not partition drive."
+msgstr "Khong the phan vung thiet bi."
+
+#. • MSG_069
+msgid "Could not copy files to target drive."
+msgstr "Khong the sao chep tep vao thiet bi dich."
+
+#. • MSG_070
+msgid "Cancelled by user."
+msgstr "Da huy boi nguoi dung."
+
+#. • MSG_071
+#.
+#. See http://en.wikipedia.org/wiki/Thread_%28computing%29
+msgid "Unable to start thread."
+msgstr "Khong the bat dau luong."
+
+#. • MSG_072
+msgid "Bad blocks check didn't complete."
+msgstr "Kiem tra khoi hong chua hoan tat."
+
+#. • MSG_073
+msgid "ISO image scan failure."
+msgstr "Quet tep ISO that bai."
+
+#. • MSG_074
+msgid "ISO image extraction failure."
+msgstr "Trich xuat tep ISO that bai."
+
+#. • MSG_075
+msgid "Unable to remount volume."
+msgstr "Khong the tai gan o dia."
+
+#. • MSG_076
+msgid "Unable to patch/setup files for boot."
+msgstr "Khong the va/cai dat tap tin cho viec khoi dong."
+
+#. • MSG_077
+msgid "Unable to assign a drive letter."
+msgstr "Khong the gan ky tu o dia."
+
+#. • MSG_078
+msgid "Can't mount GUID volume."
+msgstr "Khong the gan ket phan vung GUID."
+
+#. • MSG_079
+msgid "The device is not ready."
+msgstr "Thiet bi chua san sang."
+
+#. • MSG_080
+msgid ""
+"Rufus detected that Windows is still flushing its internal buffers onto the USB device.\n"
+"\n"
+"Depending on the speed of your USB device, this operation may take a long time to complete, especially for large files.\n"
+"\n"
+"We recommend that you let Windows finish, to avoid corruption. But if you grow tired of waiting, you can just unplug the device..."
+msgstr ""
+"Rufus da phat hien Windows van dang xa bo dem ben trong thiet bi USB.\n"
+"\n"
+"Tuy thuoc vao toc do thiet bi USB cua ban, hoat dong nay co the mat mot thoi gian dai de hoan tat, dac biet voi nhung tap tin lon.\n"
+"\n"
+"Chung toi khuyen rang ban nen de Windows ket thuc de phong hong du lieu. Nhung neu ban cam thay qua lau, hay cu thao thiet bi ra..."
+
+#. • MSG_081
+msgid "Unsupported image"
+msgstr "Tep tin khong duoc ho tro"
+
+#. • MSG_082
+msgid "This image is either non-bootable, or it uses a boot or compression method that is not supported by Rufus..."
+msgstr "Tep nay khong co kha nang khoi dong hoac su dung mot tuy chon khoi dong hoac nen khong duoc Rufus ho tro..."
+
+#. • MSG_083
+msgid "Replace %s?"
+msgstr "Thay the %s?"
+
+#. • MSG_084
+msgid ""
+"This ISO image seems to use an obsolete version of '%s'.\n"
+"Boot menus may not display properly because of this.\n"
+"\n"
+"A newer version can be downloaded by Rufus to fix this issue:\n"
+"- Choose 'Yes' to connect to the internet and download the file\n"
+"- Choose 'No' to leave the existing ISO file unmodified\n"
+"If you don't know what to do, you should select 'Yes'.\n"
+"\n"
+"Note: The new file will be downloaded in the current directory and once a '%s' exists there, it will be reused automatically."
+msgstr ""
+"Tep ISO nay co ve la phien ban loi thoi cua '%s'.\n"
+"Cac menu khoi dong co the khong hien chinh xac vi dieu nay.\n"
+"\n"
+"Mot phien ban moi co the duoc tai xuong boi Rufus de khac phuc van de nay:\n"
+"- Chon 'Co' de ket noi voi Internet va tai tap tin xuong\n"
+"- Chon 'Khong' de khong thay doi tap tin ISO dang co\n"
+"Neu ban khong biet phai lam gi, ban nen chon 'Co'.\n"
+"\n"
+"Ghi chu: Tap tin moi se duoc tai xuong vao thu muc hien tai va mot khi '%s' ton tai trong do, no se duoc tu dong tai su dung."
+
+#. • MSG_085
+msgid "Downloading %s"
+msgstr "Dang tai xuong %s"
+
+#. • MSG_086
+msgid "No image selected"
+msgstr "Chua tep tin nao duoc chon"
+
+#. • MSG_087
+#.
+#. This message appears in Advanced format options → Check device for bad blocks → dropdown menu
+#. %s will be replaced with SLC, MLC or TLC, which is a type of NAND (or flash memory). In other
+#. words, this message should mean "for a flash memory device of type %s". *Please* try to keep
+#. the translation as short as possible so that it won't result in an overly large dropdown...
+#. If you prefer, it's okay to use "type" or "device" instead of "NAND" (e.g. "for TLC type").
+#. See also MSG_035.
+msgid "for %s NAND"
+msgstr "cho %s NAND"
+
+#. • MSG_088
+msgid "Image is too big"
+msgstr "Tep tin qua lon"
+
+#. • MSG_089
+msgid "The image is too big for the selected target."
+msgstr "Tep tin qua lon cho thiet bi dich da chon."
+
+#. • MSG_090
+msgid "Unsupported ISO"
+msgstr "ISO khong duoc ho tro"
+
+#. • MSG_091
+msgid "When using UEFI Target Type, only EFI bootable ISO images are supported. Please select an EFI bootable ISO or set the Target Type to BIOS."
+msgstr "Khi su dung kieu he thong khoi dong UEFI, chi ho tro cac tep ISO co kha nang khoi dong bang EFI. Vui long chon mot tep ISO co ho tro EFI hoac chuyen kieu he thong khoi dong sang BIOS."
+
+#. • MSG_092
+msgid "Unsupported filesystem"
+msgstr "He thong tap tin khong duoc ho tro"
+
+#. • MSG_093
+msgid ""
+"IMPORTANT: THIS DRIVE CONTAINS MULTIPLE PARTITIONS!!\n"
+"\n"
+"This may include partitions/volumes that aren't listed or even visible from Windows. Should you wish to proceed, you are responsible for any data loss on these partitions."
+msgstr ""
+"QUAN TRONG: O DIA NAY CHUA NHIEU PHAN VUNG!!\n"
+"\n"
+"Co the bao gom phan vung/o dia khong co trong danh sach hoac khong hien thi trong Windows. Neu ban tien hanh, ban se phai chiu trach nhiem ve moi ton that du lieu tren nhung phan vung nay."
+
+#. • MSG_094
+msgid "Multiple partitions detected"
+msgstr "Da phat hien nhieu phan vung"
+
+#. • MSG_095
+msgid "DD Image"
+msgstr "Tep tin DD"
+
+#. • MSG_096
+msgid "The file system currently selected can not be used with this type of ISO. Please select a different file system or use a different ISO."
+msgstr "Khong the dung loai ISO nay voi he thong tap tin da chon. Vui long chon mot he thong tap tin hoac chon tep ISO khac."
+
+#. • MSG_097
+msgid "'%s' can only be applied if the file system is NTFS."
+msgstr "Chi co the ap dung '%s' neu he thong tap tin la NTFS."
+
+#. • MSG_098
+msgid ""
+"IMPORTANT: You are trying to install 'Windows To Go', but your target drive doesn't have the 'FIXED' attribute. Because of this Windows will most likely freeze during boot, as Microsoft hasn't designed it to work with drives that instead have the 'REMOVABLE' attribute.\n"
+"\n"
+"Do you still want to proceed?\n"
+"\n"
+"Note: The 'FIXED/REMOVABLE' attribute is a hardware property that can only be changed using custom tools from the drive manufacturer. However those tools are ALMOST NEVER provided to the public..."
+msgstr ""
+"QUAN TRONG: Ban dang co cai dat Windows To Go, nhung o dia dich cua ban khong co thuoc tinh 'CO DINH' (FIXED). Do do, Windows co the bi treo khi khoi dong, vi Microsoft khong thiet ke Windows To Go de hoat dong voi o dia co thuoc tinh 'THAO ROI' (REMOVABLE).\n"
+"\n"
+"Ban co chac chan muon tiep tuc khong?\n"
+"\n"
+"Luu y: Thuoc tinh 'CO DINH/THAO ROI' la mot dac diem phan cung va chi co the thay doi bang cong cu dac biet tu nha san xuat o dia. Tuy nhien, nhung cong cu nay HAU NHU KHONG bao gio duoc cung cap cho nguoi dung pho thong..."
+
+#. • MSG_099
+msgid "Filesystem limitation"
+msgstr "Gioi han tap tin he thong"
+
+#. • MSG_100
+msgid "This ISO image contains a file larger than 4 GB, which is more than the maximum size allowed for a FAT or FAT32 file system."
+msgstr "Tep ISO nay co chua mot tap tin lon hon 4 GB, lon hon kich thuoc tap tin toi da duoc he thong FAT hoac FAT32 cho phep."
+
+#. • MSG_101
+msgid "Missing WIM support"
+msgstr "Thieu ho tro WIM"
+
+#. • MSG_102
+msgid ""
+"Your platform cannot extract files from WIM archives. WIM extraction is required to create EFI bootable Windows 7 and Windows Vista USB drives. You can fix that by installing a recent version of 7-Zip.\n"
+"Do you want to visit the 7-zip download page?"
+msgstr ""
+"Nen tang cua ban khong the giai nen tep tu luu tru WIM. Viec giai nen WIM la can thiet de tao dia USB khoi dong Windows 7 va Windows Vista co ho tro EFI. Ban co the khac phuc dieu nay bang cach cai phien ban moi nhat cua 7-Zip.\n"
+"Ban muon truy cap trang tai xuong cua 7-Zip?"
+
+#. • MSG_103
+msgid "Download %s?"
+msgstr "Tai xuong %s?"
+
+#. • MSG_104
+#.
+#. Example: "Grub4DOS v0.4 or later requires a 'grldr' file to be installed. Because this
+#. file is more than 100 KB in size, and always present on Grub4DOS ISO images (...)"
+msgid ""
+"%s or later requires a '%s' file to be installed.\n"
+"Because this file is more than 100 KB in size, and always present on %s ISO images, it is not embedded in Rufus.\n"
+"\n"
+"Rufus can download the missing file for you:\n"
+"- Select 'Yes' to connect to the internet and download the file\n"
+"- Select 'No' if you want to manually copy this file on the drive later\n"
+"\n"
+"Note: The file will be downloaded in the current directory and once a '%s' exists there, it will be reused automatically."
+msgstr ""
+"%s hoac moi hon yeu cau tap tin '%s' duoc cai dat.\n"
+"Vi tap tin nay lon hon 100 KB, va luon co trong cac tep ISO %s, no khong duoc kem theo trong Rufus.\n"
+"\n"
+"Rufus co the tai xuong tap tin con thieu cho ban:\n"
+"- Chon 'Co' de ket noi voi Internet va tai tap tin\n"
+"- Chon 'Khong' neu ban muon tu chep tap tin nay tren dia luc khac\n"
+"\n"
+"Ghi chu: tap tin se duoc tai xuong thu muc hien tai va khi '%s' ton tai o do, no se tu dong duoc tai su dung."
+
+#. • MSG_105
+msgid ""
+"Cancelling may leave the device in an UNUSABLE state.\n"
+"If you are sure you want to cancel, click YES. Otherwise, click NO."
+msgstr ""
+"Huy bo co the lam thiet bi roi vao trang thai KHONG THE SU DUNG.\n"
+"Neu ban chac chan muon huy, chon CO. Neu khong, hay chon KHONG."
+
+#. • MSG_106
+msgid "Please select folder"
+msgstr "Vui long chon thu muc"
+
+#. • MSG_107
+msgid "All files"
+msgstr "Tat ca tap tin"
+
+#. • MSG_108
+msgid "Rufus log"
+msgstr "Nhat ky Rufus"
+
+#. • MSG_109
+msgid "0x%02X (Disk %d)"
+msgstr "0x%02X (Dia %d)"
+
+#. • MSG_110
+#.
+#. "Cluster size" should be the same as the label for IDS_CLUSTER_SIZE_TXT
+#. "kilobytes" should be the same as in MSG_027
+msgid ""
+"MS-DOS cannot boot from a drive using a 64 kilobytes Cluster size.\n"
+"Please change the Cluster size or use FreeDOS."
+msgstr ""
+"MS-DOS khong the khoi dong tu o dia co kich thuoc cum la 64 kilobyte.\n"
+"Vui long thay doi kich thuoc cum hoac su dung FreeDOS thay the."
+
+#. • MSG_111
+msgid "Incompatible Cluster size"
+msgstr "Kich thuoc cum khong tuong thich"
+
+#. • MSG_112
+#.
+#. "%d:%02d" is a duration (mins:secs)
+msgid "Formatting a large UDF volumes can take a lot of time. At USB 2.0 speeds, the estimated formatting duration is %d:%02d, during which the progress bar will appear frozen. Please be patient!"
+msgstr "Dinh dang o UDF lon co the mat nhieu thoi gian. Voi toc do cua USB 2.0, thoi gian dinh dang du kien la %d:%02d, trong luc nay thanh tien trinh se khong thay doi. Vui long kien nhan!"
+
+#. • MSG_113
+msgid "Large UDF volume"
+msgstr "O UDF lon"
+
+#. • MSG_114
+msgid ""
+"This image uses Syslinux %s%s but this application only includes the installation files for Syslinux %s%s.\n"
+"\n"
+"As new versions of Syslinux are not compatible with one another, and it wouldn't be possible for Rufus to include them all, two additional files must be downloaded from the Internet ('ldlinux.sys' and 'ldlinux.bss'):\n"
+"- Select 'Yes' to connect to the Internet and download these files\n"
+"- Select 'No' to cancel the operation\n"
+"\n"
+"Note: The files will be downloaded in the current application directory and will be reused automatically if present."
+msgstr ""
+"Tep nay dung Syslinux %s%s nhung ung dung nay chi bao gom tap tin cai dat cho Syslinux %s%s.\n"
+"\n"
+"Phien ban moi cua Syslinux khong tuong thich voi cac phien ban khac, va Rufus khong the kem theo tat ca chung, ban phai tai xuong them hai tap tin tu Internet ('ldlinux.sys' va 'ldlinux.bss'):\n"
+"- Chon 'Co' de ket noi toi Internet va tai xuong nhung tap tin nay\n"
+"- Chon 'Khong' de huy hoat dong\n"
+"\n"
+"Chu y: Cac tap tin se duoc tai xuong vao thu muc ung dung hien tai va se duoc tu tai su dung neu co."
+
+#. • MSG_115
+msgid "Download required"
+msgstr "Yeu cau tai xuong"
+
+#. • MSG_116
+#.
+#. You should be able to test this message with Super Grub2 Disk ISO:
+#. https://sourceforge.net/projects/supergrub2/files/2.00s2/super_grub2_disk_hybrid_2.00s2.iso/download (11.9 MB)
+msgid ""
+"This image uses Grub %s but the application only includes the installation files for Grub %s.\n"
+"\n"
+"As different versions of Grub may not be compatible with one another, and it is not possible to include them all, Rufus will attempt to locate a version of the Grub installation file ('core.img') that matches the one from your image:\n"
+"- Select 'Yes' to connect to the Internet and attempt to download it\n"
+"- Select 'No' to use the default version from Rufus\n"
+"- Select 'Cancel' to abort the operation\n"
+"\n"
+"Note: The file will be downloaded in the current application directory and will be reused automatically if present. If no match can be found online, then the default version will be used."
+msgstr ""
+"Tep nay dung Grub %s nhung ung dung nay chi bao gom tap tin cai dat cho Grub %s.\n"
+"\n"
+"Cac phien ban khac nhau cua Grub co the khong tuong thich voi nhau, va Rufus khong the kem theo tat ca chung, ung dung se co tim mot phien ban tap tin cai dat Grub ('core.img') khop voi phien ban co trong tep cua ban:\n"
+"- Chon 'Co' de ket noi toi Internet va thu tai no xuong\n"
+"- Chon 'Khong' de dung phien ban mac dinh tu Rufus\n"
+"- Chon 'Huy' de bo qua hoat dong\n"
+"\n"
+"Chu y: Cac tap tin se duoc tai xuong vao thu muc ung dung hien tai va se duoc tu tai su dung neu co. Neu khong tim thay ban trung khop nao truc tuyen thi phien ban mac dinh se duoc su dung."
+
+#. • MSG_117
+msgid "Standard Windows installation"
+msgstr "Cai dat Windows tieu chuan"
+
+#. • MSG_118
+#.
+#. Only translate this message *if* Microsoft has a specific name for
+#. http://en.wikipedia.org/wiki/Windows_To_Go in your language.
+#. Otherwise, you may add a parenthesis eg. "Windows To Go (<hint at what it does>)"
+msgid "Windows To Go"
+msgstr ""
+
+#. • MSG_119
+msgid "advanced drive properties"
+msgstr "thuoc tinh o dia nang cao"
+
+#. • MSG_120
+msgid "advanced format options"
+msgstr "tuy chon dinh dang nang cao"
+
+#. • MSG_121
+msgid "Show %s"
+msgstr "Hien %s"
+
+#. • MSG_122
+msgid "Hide %s"
+msgstr "An %s"
+
+#. • MSG_123
+#.
+#. A persistent partitions can be used with "Live" USB media to store data.
+#. It means that data can be preserved across reboots on "Live" USB drives.
+#. To test this feature, please download and select 'casper_test.iso' from:
+#. https://github.com/pbatard/rufus/raw/master/res/loc/test/casper_test.iso
+msgid "Persistent partition size"
+msgstr "Kich thuoc phan vung co dinh"
+
+#. • MSG_124
+#.
+#. This message appears in the persistence 'Size' control when the slider is set to 0.
+#. It is okay to use "No partition" or "None" or "Deactivated" to indicate that a persistent partition will not be
+#. created if the width of the control is too small (since the 'Size' edit control is *not* adjusted for width).
+msgid "No persistence"
+msgstr "Khong co dinh"
+
+#. • MSG_125
+#.
+#. Tooltips used for the persistence size slider and edit control
+msgid "Set the size of the persistent partition for live USB media. Setting the size to 0 disables the persistent partition."
+msgstr "Dat kich thuoc phan vung co dinh cho live USB. Dat kich thuoc la 0 de bo phan vung co dinh."
+
+#. • MSG_126
+msgid "Set the partition size units."
+msgstr "Chon don vi kich thuoc cho phan vung."
+
+#. • MSG_127
+msgid "Do not show this message again"
+msgstr "Khong hien thi lai thong bao nay"
+
+#. • MSG_128
+msgid "Important notice about %s"
+msgstr "Chu y quan trong ve %s"
+
+#. • MSG_129
+msgid ""
+"You have just created a media that uses the UEFI:NTFS bootloader. Please remember that, to boot this media, YOU MUST DISABLE SECURE BOOT.\n"
+"For details on why this is necessary, see the 'More Information' button below."
+msgstr ""
+"Ban vua moi tao o dia su dung UEFI:NTFS bootloader. Hay nho rang de khoi dong duoc dia nay BAN PHAI VO HIEU SECURE BOOT.\n"
+"De hieu tai sao no quan trong, xem trong phan 'Thong tin them' phia duoi."
+
+#. • MSG_130
+msgid "Windows image selection"
+msgstr "Chon file anh Windows"
+
+#. • MSG_131
+msgid ""
+"This ISO contains multiple Windows images.\n"
+"Please select the image you wish to use for this installation:"
+msgstr ""
+"File ISO nay chua nhieu tep anh Windows.\n"
+"Hay chon tep anh ban muon su dung cho viec cai dat nay:"
+
+#. • MSG_132
+msgid "Another program or process is accessing this drive. Do you want to format it anyway?"
+msgstr "Co mot chuong trinh hoac tien trinh khac dang truy cap o. Ban van muon dinh dang o dia?"
+
+#. • MSG_133
+msgid ""
+"Rufus has detected that you are attempting to create a 'Windows To Go' media based on a 1809 ISO.\n"
+"\n"
+"Because of a *MICROSOFT BUG*, this media will crash during Windows boot (Blue Screen Of Death), unless you manually replace the file 'WppRecorder.sys' with a 1803 version.\n"
+"\n"
+"Also note that the reason Rufus cannot automatically fix this for you is that 'WppRecorder.sys' is a Microsoft copyrighted file, so we cannot legally embed a copy of the file in the application..."
+msgstr ""
+"Rufus nhan thay ban dang co gang tao o dia Windows To Go dua vao ISO phien ban 1809.\n"
+"\n"
+"Boi vi mot *LOI CUA MICROSOFT*, o dia nay se bi loi trong qua trinh khoi dong Windows (Man hinh xanh chet choc), tru khi ban tu tay thay the file 'WppRecorder.sys' cua phien ban 1803.\n"
+"\n"
+"Cung xin luu y rang Rufus khong the tu dong sua loi nay vi file 'WppRecorder.sys' thuoc ban quyen cua Microsoft, vi vay chung toi khong the nhung file nay vao chuong trinh..."
+
+#. • MSG_134
+msgid ""
+"Because MBR has been selected for the partition scheme, Rufus can only create a partition up to 2 TB on this media, which will leave %s of disk space unavailable.\n"
+"\n"
+"Are you sure you want to continue?"
+msgstr ""
+"Boi vi MBR duoc chon de dinh dang phan vung, Rufus chi co the tao phan vung toi 2 TB cho o dia nay, viec nay se bo phi %s khong duoc su dung.\n"
+"\n"
+"Ban co muon tiep tuc?"
+
+#. • MSG_135
+msgid "Version"
+msgstr "Phien ban"
+
+#. • MSG_136
+msgid "Release"
+msgstr "Phat hanh"
+
+#. • MSG_137
+msgid "Edition"
+msgstr "Che ban"
+
+#. • MSG_138
+msgid "Language"
+msgstr "Ngon ngu"
+
+#. • MSG_139
+msgid "Architecture"
+msgstr "Kien truc"
+
+#. • MSG_140
+msgid "Continue"
+msgstr "Tiep tuc"
+
+#. • MSG_141
+msgid "Back"
+msgstr "Quay lai"
+
+#. • MSG_142
+msgid "Please wait..."
+msgstr "Vui long doi..."
+
+#. • MSG_143
+msgid "Download using a browser"
+msgstr "Tai bang trinh duyet"
+
+#. • MSG_144
+msgid "Download of Windows ISOs is unavailable due to Microsoft having altered their website to prevent it."
+msgstr "Viec tai cac tep ISO Windows khong co san boi Microsoft da chinh lai trang web cua ho de chong lai dieu nay."
+
+#. • MSG_145
+msgid "PowerShell 3.0 or later is required to run this script."
+msgstr "Yeu cau phien ban PowerShell 3.0 hoac cao hon de chay doan ma nay."
+
+#. • MSG_146
+msgid "Do you want to go online and download it?"
+msgstr "Ban co muon ket noi Internet va tai no?"
+
+#. • MSG_148
+msgid "Running download script..."
+msgstr "Dang chay doan ma tai file..."
+
+#. • MSG_149
+msgid "Download ISO Image"
+msgstr "Tai tep tin ISO"
+
+#. • MSG_150
+msgid "Type of computer you plan to use this bootable drive with. It is your responsibility to determine whether your target is of BIOS or UEFI type before you start creating the drive, as it may fail to boot otherwise."
+msgstr "Loai may tinh ma ban dinh su dung voi o co the khoi dong nay. Ban co trach nhiem phai tim hieu may do la kieu BIOS hay UEFI truoc khi ban tao o dia, boi no co the bi loi khi khoi dong."
+
+#. • MSG_151
+#.
+#. You shouldn't translate 'Legacy Mode' as this is an option that usually appears in English in the UEFI settings.
+msgid "'UEFI-CSM' means that the device will only boot in BIOS emulation mode (also known as 'Legacy Mode') under UEFI, and not in native UEFI mode."
+msgstr "'UEFI-CSM' nghia la thiet bi chi co the boot o che do gia lap BIOS (hay con goi la 'Legacy Mode') ben trong che do UEFI, va no khong phai la che do thuan UEFI."
+
+#. • MSG_152
+msgid "'non CSM' means that the device will only boot in native UEFI mode, and not in BIOS emulation mode (also known as 'Legacy Mode')."
+msgstr "'non CSM' nghia la thiet bi chi co the boot o che do thuan UEFI ma khong phai che do gia lap BIOS (hay con goi la 'Legacy Mode')"
+
+#. • MSG_153
+msgid "Test pattern: 0x%02X"
+msgstr "Mau thu: 0x%02X"
+
+#. • MSG_154
+msgid "Test pattern: 0x%02X, 0x%02X"
+msgstr "Mau thu: 0x%02X, 0x%02X"
+
+#. • MSG_155
+msgid "Test pattern: 0x%02X, 0x%02X, 0x%02X"
+msgstr "Mau thu: 0x%02X, 0x%02X, 0x%02X"
+
+#. • MSG_156
+msgid "Test pattern: 0x%02X, 0x%02X, 0x%02X, 0x%02X"
+msgstr "Mau thu: 0x%02X, 0x%02X, 0x%02X, 0x%02X"
+
+#. • MSG_157
+msgid "Sets the target filesystem"
+msgstr "Dat loai he thong tap tin"
+
+#. • MSG_158
+msgid "Minimum size that a block of data will occupy in the filesystem"
+msgstr "Kich thuoc toi thieu cua khoi du lieu se chiem dung trong he thong tap tin"
+
+#. • MSG_159
+msgid ""
+"Use this field to set the drive label.\n"
+"International characters are accepted."
+msgstr ""
+"Dung truong nay de dat ten dia.\n"
+"Cac ky tu quoc te duoc chap nhan."
+
+#. • MSG_160
+msgid "Toggle advanced options"
+msgstr "Bat/tat cac tuy chon nang cao"
+
+#. • MSG_161
+msgid "Check the device for bad blocks using a test pattern"
+msgstr "Kiem tra thiet bi tim khoi loi bang mau kiem tra"
+
+#. • MSG_162
+msgid "Uncheck this box to use the \"slow\" format method"
+msgstr "Bo chon muc nay de dung cach dinh dang \"cham\""
+
+#. • MSG_163
+msgid "Method that will be used to create partitions"
+msgstr "Cach thuc de tao phan vung"
+
+#. • MSG_164
+msgid "Method that will be used to make the drive bootable"
+msgstr "Cach thuc de tao o dia co the khoi dong"
+
+#. • MSG_165
+msgid "Click to select or download an image..."
+msgstr "Nhan de chon hoac tai file anh..."
+
+#. • MSG_166
+msgid "Check this box to allow the display of international labels and set a device icon (creates an autorun.inf)"
+msgstr "Chon muc nay de cho phep hien ten o dia toan he thong va dat bieu tuong thiet bi (khoi tao autorun.inf)"
+
+#. • MSG_167
+msgid "Install a UEFI bootloader, that will perform MD5Sum file validation of the media"
+msgstr "Cai dat bo khoi dong UEFI, cung voi viec tien trinh xac thuc MD5Sum cua phuong tien"
+
+#. • MSG_169
+msgid ""
+"Create an extra hidden partition and try to align partitions boundaries.\n"
+"This can improve boot detection for older BIOSes."
+msgstr ""
+"Tao mot phan vung an khac va thu sap xep ranh gioi phan vung.\n"
+"Dieu nay co the cai thien kha nang phat hien khoi dong cho BIOS cu."
+
+#. • MSG_170
+msgid "Enable the listing of USB Hard Drive enclosures. USE AT YOUR OWN RISKS!!!"
+msgstr "Bat hien thi cac o cung gan ngoai qua USB. TU CHIU RUI RO KHI SU DUNG!!!"
+
+#. • MSG_171
+msgid ""
+"Start the formatting operation.\n"
+"This will DESTROY any data on the target!"
+msgstr ""
+"Bat dau hoat dong dinh dang.\n"
+"Viec nay se TIEU HUY moi du lieu tren dia da chon!"
+
+#. • MSG_172
+#.
+#. As of Rufus 3.2, *ALL* downloads from the servers are digitally signed, and their signature is validated using the
+#. public key that is embedded in the application. This message appears in an error dialog if the validation fails.
+msgid "Invalid download signature"
+msgstr "Chu ki tai xuong khong hop le"
+
+#. • MSG_173
+msgid "Click to select..."
+msgstr "Nhan de chon..."
+
+#. • MSG_174
+msgid "Rufus - The Reliable USB Formatting Utility"
+msgstr "Rufus - Tien ich Dinh dang USB Dang tin cay"
+
+#. • MSG_175
+msgid "Version %d.%d (Build %d)"
+msgstr "Phien ban %d.%d (Ban dung %d)"
+
+#. • MSG_176
+msgid "English translation: Pete Batard <mailto:pete@akeo.ie>"
+msgstr "Ban dich Tieng Viet:\\line* thanhtai2009 <mailto:thanhtai2009@outlook.com>\\line* caobach <mailto:caobach@gmail.com>\\line* Nguyen Quang Minh (MinhNQ101) <mailto:admin@quangminh.name.vn>\\line* Tran Thai An <mailto:igl.antrnn@gmail.com>"
+
+#. • MSG_177
+msgid "Report bugs or request enhancements at:"
+msgstr "Bao loi hoac yeu cau cai tien tai:"
+
+#. • MSG_178
+msgid "Additional Copyrights:"
+msgstr "Cac ban quyen bo sung:"
+
+#. • MSG_179
+msgid "Update Policy:"
+msgstr "Chinh sach cap nhat:"
+
+#. • MSG_180
+msgid "If you choose to allow this program to check for application updates, you agree that the following information may be collected on our server(s):"
+msgstr "Neu ban chon cho phep chuong trinh nay kiem tra cap nhat ung dung, ban dong y rang nhung thong tin duoi day co the duoc thu thap tren (cac) may chu cua chung toi:"
+
+#. • MSG_181
+msgid "Your operating system's architecture and version"
+msgstr "Kien truc va phien ban he dieu hanh cua ban"
+
+#. • MSG_182
+msgid "The version of the application you use"
+msgstr "Phien ban cua ung dung ban dang dung"
+
+#. • MSG_183
+msgid "Your IP address"
+msgstr "Dia chi IP cua ban"
+
+#. • MSG_184
+msgid "For the purpose of generating private usage statistics, we may keep the information collected, \\b for at most a year\\b0 . However, we will not willingly disclose any of this individual data to third parties."
+msgstr "Vi muc dich tao thong ke su dung rieng tu, chung toi co the giu thong tin da thu thap, \\b toi da mot nam\\b0 . Tuy nhien, chung toi se khong tiet lo bat ky du lieu ca nhan nao cho ben thu ba."
+
+#. • MSG_185
+msgid "Update Process:"
+msgstr "Tien trinh cap nhat:"
+
+#. • MSG_186
+msgid ""
+"Rufus does not install or run background services, therefore update checks are performed only when the main application is running.\\line\n"
+"Internet access is of course required when checking for updates."
+msgstr ""
+"Rufus khong cai dat hoac chay dich vu nen, do do viec kiem tra cap nhat chi duoc thuc hien khi ung dung chinh dang chay.\\line\n"
+"Quyen truy cap Internet di nhien can thiet khi kiem tra cap nhat."
+
+#. • MSG_187
+msgid "Invalid image for selected boot option"
+msgstr "Tep tin khong hop le cho tuy chon khoi dong da chon"
+
+#. • MSG_188
+msgid "The current image doesn't match the boot option selected. Please use a different image or choose a different boot option."
+msgstr "Tep tin hien tai khong hop voi tuy chon khoi dong da chon. Vui long chon tep hoac tuy chon khoi dong khac."
+
+#. • MSG_189
+msgid "This ISO image is not compatible with the selected filesystem"
+msgstr "Tep ISO khong tuong thich voi he thong tap tin da chon"
+
+#. • MSG_190
+msgid "Incompatible drive detected"
+msgstr "Phat hien o dia khong tuong thich"
+
+#. • MSG_191
+#.
+#. Used in MSG_235
+msgid "Write pass"
+msgstr "Ghi da dat"
+
+#. • MSG_192
+#.
+#. Used in MSG_235
+msgid "Read pass"
+msgstr "Doc da dat"
+
+#. • MSG_193
+msgid "Downloaded %s"
+msgstr "Da tai xuong %s"
+
+#. • MSG_194
+msgid "Could not download %s"
+msgstr "Khong the tai xuong %s"
+
+#. • MSG_195
+#.
+#. Example: "Using embedded version of Grub2 file(s)"
+msgid "Using embedded version of %s file(s)"
+msgstr "Dung phien ban (cac) tap tin %s duoc nhung san"
+
+#. • MSG_196
+msgid ""
+"IMPORTANT: THIS DRIVE USES A NONSTANDARD SECTOR SIZE!\n"
+"\n"
+"Conventional drives use a 512-byte sector size but this drive uses a %d-byte one. In many cases, this means that you will NOT be able to boot from this drive.\n"
+"Rufus can try to create a bootable drive, but there is NO WARRANTY that it will work."
+msgstr ""
+"QUAN TRONG: DIA NAY DUNG KICH CO CUNG KHONG CHUAN!\n"
+"\n"
+"O cung thong thuong dung kich co cung 512-byte nhung o dia nay lai dung %d byte. Trong nhieu truong hop, dieu nay co nghia ban se KHONG the khoi dong tu o dia nay.\n"
+"Rufus co the thu tao mot o dia khoi dong, nhung KHONG DAM BAO rang no se hoat dong."
+
+#. • MSG_197
+msgid "Nonstandard sector size detected"
+msgstr "Phat hien kich co cung khong chuan"
+
+#. • MSG_198
+msgid "'Windows To Go' can only be installed on a GPT partitioned drive if it has the FIXED attribute set. The current drive was not detected as FIXED."
+msgstr "'Windows To Go chi co the duoc cai dat tren o dia da phan vung GPT neu no co tap thuoc tinh CO DINH. O dia hien tai khong phai CO DINH."
+
+#. • MSG_199
+msgid "This feature is not available on this platform."
+msgstr "Tinh nang nay khong kha dung tren nen tang nay."
+
+#. • MSG_201
+msgid "Cancelling - Please wait..."
+msgstr "Dang huy - Vui long cho..."
+
+#. • MSG_202
+msgid "Scanning image..."
+msgstr "Dang quet tep..."
+
+#. • MSG_203
+msgid "Failed to scan image"
+msgstr "Khong the quet tep"
+
+#. • MSG_204
+#.
+#. %s is the name of an obsolete Syslinux .c32 module. Example: "Obsolete vesamenu.c32 detected"
+msgid "Obsolete %s detected"
+msgstr "Da phat hien %s loi thoi"
+
+#. • MSG_205
+#.
+#. Display the name of the image selected. eg: "Using image: en_win7_x64_sp1.iso"
+msgid "Using image: %s"
+msgstr "Dang dung tep: %s"
+
+#. • MSG_206
+#.
+#. Example: "Missing ldlinux.c32 file"
+msgid "Missing %s file"
+msgstr "Thieu tap tin %s"
+
+#. • MSG_207
+#.
+#. The name proposed by Windows' Computer Management → Disk Management when you try to format
+#. a drive with an empty label. For an example, see https://rufus.ie/pics/default_name.png.
+msgid "New Volume"
+msgstr "O_DIA_MOI"
+
+#. • MSG_208
+#.
+#. Singular. Example: "1 device found"
+msgid "%d device found"
+msgstr "Phat hien %d thiet bi"
+
+#. • MSG_209
+#.
+#. Plural. Example: "3 devices found"
+msgid "%d devices found"
+msgstr "Phat hien %d thiet bi"
+
+#. • MSG_210
+msgid "READY"
+msgstr "SAN SANG"
+
+#. • MSG_211
+msgid "Cancelled"
+msgstr "Da huy"
+
+#. • MSG_212
+msgid "Failed"
+msgstr "That bai"
+
+#. • MSG_213
+#.
+#. Used when a new update has been downloaded and launched
+msgid "Launching new application..."
+msgstr "Dang khoi chay ung dung moi..."
+
+#. • MSG_214
+msgid "Failed to launch new application"
+msgstr "Khong the khoi chay ung dung moi"
+
+#. • MSG_215
+#.
+#. Example: "Opened some_file.txt"
+msgid "Opened %s"
+msgstr "Da mo %s"
+
+#. • MSG_216
+#.
+#. Example: "Saved rufus.log"
+msgid "Saved %s"
+msgstr "Da luu %s"
+
+#. • MSG_217
+#.
+#. Formatting status
+msgid "Formatting: %s"
+msgstr "Dang dinh dang: %s"
+
+#. • MSG_218
+msgid "Creating file system: Task %d/%d completed"
+msgstr "Dang tao he thong tap tin: Tac vu da hoan tat %d/%d"
+
+#. • MSG_219
+msgid "NTFS Fixup: %d%% completed"
+msgstr "Sap xep NTFS: %d%% da hoan thanh"
+
+#. • MSG_220
+#.
+#. Parameter: the file system and an estimated duration in mins and secs.
+#. Example: "Formatting (UDF) - Estimated duration 3:21..."
+#. If "estimated duration" is too long, just use "estimated" or an abbreviation
+msgid "Formatting (%s) - estimated duration %d:%02d..."
+msgstr "Dang dinh dang (%s) - thoi gian du kien %d:%02d..."
+
+#. • MSG_221
+msgid "Setting label (%s)..."
+msgstr "Dang dat ten (%s)..."
+
+#. • MSG_222
+#.
+#. Example: "Formatting (FAT32)..."
+msgid "Formatting (%s)..."
+msgstr "Dang dinh dang (%s)..."
+
+#. • MSG_223
+msgid "NTFS Fixup (Checkdisk)..."
+msgstr "Sap xep NTFS (Kiem tra dia)..."
+
+#. • MSG_224
+msgid "Clearing MBR/PBR/GPT structures..."
+msgstr "Dang xoa cau truc MBR/PBR/GPT..."
+
+#. • MSG_225
+msgid "Requesting disk access..."
+msgstr "Dang yeu cau truy cap dia..."
+
+#. • MSG_226
+msgid "Analyzing existing boot records..."
+msgstr "Dang phan tich ban ghi khoi dong dang co..."
+
+#. • MSG_227
+msgid "Closing existing volume..."
+msgstr "Dang dong o dang co..."
+
+#. • MSG_228
+msgid "Writing Master Boot Record..."
+msgstr "Dang ghi ban ghi khoi dong chinh..."
+
+#. • MSG_229
+msgid "Writing Partition Boot Record..."
+msgstr "Dang ghi ban ghi khoi dong phan vung..."
+
+#. • MSG_230
+msgid "Copying DOS files..."
+msgstr "Dang chep cac tap tin DOS..."
+
+#. • MSG_231
+msgid "Copying ISO files: %s"
+msgstr "Dang chep cac tap tin ISO: %s"
+
+#. • MSG_232
+msgid "Win7 EFI boot setup (%s)..."
+msgstr "Cai dat khoi dong Win7 EFI (%s)..."
+
+#. • MSG_233
+msgid "Finalizing, please wait..."
+msgstr "Dang hoan thien, vui long cho..."
+
+#. • MSG_234
+#.
+#. Takes a Syslinux version as parameter.
+#. Example: "Installing Syslinux v5.10..."
+msgid "Installing Syslinux %s..."
+msgstr "Dang cai dat Syslinux %s..."
+
+#. • MSG_235
+#.
+#. Bad blocks status. Example: "Bad Blocks: Write pass 1/2 - 12.34% (0/0/1 errors)"
+#. See MSG_191 & MSG_192 for "Write pass"/"Read pass" translation.
+msgid "Bad Blocks: %s %d/%d - %0.2f%% (%d/%d/%d errors)"
+msgstr "Khoi hong: %s %d/%d - %0.2f%% (%d/%d/%d loi)"
+
+#. • MSG_236
+msgid "Bad Blocks: Testing with random pattern"
+msgstr "Khoi hong: Kiem tra voi mau ngau nhien"
+
+#. • MSG_237
+msgid "Bad Blocks: Testing with pattern 0x%02X"
+msgstr "Khoi hong: Kiem tra voi mau 0x%02X"
+
+#. • MSG_238
+#.
+#. Example: "Partitioning (MBR)..."
+msgid "Partitioning (%s)..."
+msgstr "Dang phan vung (%s)..."
+
+#. • MSG_239
+msgid "Deleting partitions (%s)..."
+msgstr "Dang xoa phan vung (%s)..."
+
+#. • MSG_240
+#.
+#. This message has to do with the signature validation that Rufus uses when downloading an update.
+msgid ""
+"The signature for the downloaded update can not be validated. This could mean that your system is improperly configured for signature validation or indicate a malicious download.\n"
+"\n"
+"The download will be deleted. Please check the log for more details."
+msgstr ""
+"Chu ki cho ban cap nhat khong the chung thuc. Loi nay co the do he thong cua ban khong duoc cau hinh chuan de chung thuc chu ky hoac ban tai bi loi.\n"
+"\n"
+"File tai se bi xoa. Kiem tra log de biet them thong tin."
+
+#. • MSG_241
+msgid "Downloading: %s"
+msgstr "Dang tai xuong: %s"
+
+#. • MSG_242
+msgid "Failed to download file."
+msgstr "Khong the tai xuong tap tin."
+
+#. • MSG_243
+msgid "Checking for Rufus updates..."
+msgstr "Dang kiem tra cap nhat Rufus..."
+
+#. • MSG_244
+msgid "Updates: Unable to connect to the internet"
+msgstr "Cap nhat: Khong the ket noi voi Internet"
+
+#. • MSG_245
+msgid "Updates: Unable to access version data"
+msgstr "Cap nhat: Khong the truy cap du lieu phien ban"
+
+#. • MSG_246
+msgid "A new version of Rufus is available!"
+msgstr "Da co phien ban moi cua Rufus!"
+
+#. • MSG_247
+msgid "No new version of Rufus was found"
+msgstr "Khong tim thay phien ban moi cua Rufus"
+
+#. • MSG_248
+msgid "Application registry keys successfully deleted"
+msgstr "Da xoa cac khoa registry cua ung dung thanh cong"
+
+#. • MSG_249
+msgid "Failed to delete application registry keys"
+msgstr "Khong the xoa cac khoa registry cua ung dung"
+
+#. • MSG_250
+#.
+#. Example: "Fixed disk detection enabled", "ISO size check disabled", etc.
+msgid "%s enabled"
+msgstr "%s duoc kich hoat"
+
+#. • MSG_251
+msgid "%s disabled"
+msgstr "%s bi vo hieu"
+
+#. • MSG_252
+msgid "Size checks"
+msgstr "Kiem tra kich co"
+
+#. • MSG_253
+msgid "Hard disk detection"
+msgstr "Phat hien dia cung"
+
+#. • MSG_254
+msgid "Force large FAT32 formatting"
+msgstr "Buoc dinh dang FAT32 lon"
+
+#. • MSG_255
+msgid "NoDriveTypeAutorun will be deleted on exit"
+msgstr "NoDriveTypeAutorun se bi xoa khi thoat"
+
+#. • MSG_256
+msgid "Fake drive detection"
+msgstr "Phat hien o dia gia"
+
+#. • MSG_257
+msgid "Joliet support"
+msgstr "Ho tro Joliet"
+
+#. • MSG_258
+msgid "Rock Ridge support"
+msgstr "Ho tro Rock Ridge"
+
+#. • MSG_259
+msgid "Force update"
+msgstr "Buoc cap nhat"
+
+#. • MSG_260
+msgid "NTFS compression"
+msgstr "Nen NTFS"
+
+#. • MSG_261
+msgid "Writing image: %s"
+msgstr "Ghi tep: %s"
+
+#. • MSG_262
+#.
+#. Cheat mode message to disable ISO Support, so that only DD images can be opened
+msgid "ISO Support"
+msgstr "Ho tro ISO"
+
+#. • MSG_263
+#.
+#. Cheat mode to force legacy size units, where 1 KB is 1024 bytes and NOT that fake 1000 bytes abomination!
+msgid "Use PROPER size units"
+msgstr "Dung don vi kich co DUNG"
+
+#. • MSG_264
+msgid "Deleting directory '%s'"
+msgstr "Dang xoa thu muc '%s'"
+
+#. • MSG_265
+msgid "VMWare disk detection"
+msgstr "Phat hien dia VMWare"
+
+#. • MSG_266
+msgid "Dual UEFI/BIOS mode"
+msgstr "Che do Dual UEFI/BIOS"
+
+#. • MSG_267
+msgid "Applying Windows image: %s"
+msgstr "Dang ap dung tep Windows: %s"
+
+#. • MSG_268
+msgid "Applying Windows image..."
+msgstr "Dang ap dung tep Windows..."
+
+#. • MSG_269
+msgid "Preserve timestamps"
+msgstr "Giu dau thoi gian"
+
+#. • MSG_270
+msgid "USB debug"
+msgstr "Go roi USB"
+
+#. • MSG_271
+msgid "Computing image checksums: %s"
+msgstr "Dang tinh toan kiem tong tep: %s"
+
+#. • MSG_272
+msgid "Compute the MD5, SHA1 and SHA256 checksums for the selected image"
+msgstr "Tinh toan gia tri tong kiem tra MD5, SHA1 va SHA256 voi tep da chon"
+
+#. • MSG_273
+msgid "Change the application language"
+msgstr "Thay doi ngon ngu ung dung"
+
+#. • MSG_274
+msgid "%s image detected"
+msgstr "Da phat hien tep %s"
+
+#. • MSG_275
+#.
+#. '%s' will be replaced with your translations for MSG_036 ("ISO Image") and MSG_095 ("DD Image")
+msgid ""
+"The image you have selected is an 'ISOHybrid' image. This means it can be written either in %s (file copy) mode or %s (disk image) mode.\n"
+"Rufus recommends using %s mode, so that you always have full access to the drive after writing it.\n"
+"However, if you encounter issues during boot, you can try writing this image again in %s mode.\n"
+"\n"
+"Please select the mode that you want to use to write this image:"
+msgstr ""
+"Tep ban da chon la mot tep 'ISOHybrid'. Dieu nay co nghia no co the duoc ghi trong che do %s (chep tap tin) hoac %s (tep dia).\n"
+"Rufus khuyen cao su dung che do %s, de ban luon co toan quyen truy cap o dia sau khi ghi no.\n"
+"Tuy nhien, neu ban gap van de trong luc khoi dong, ban co the thu ghi lai tep nay trong che do %s.\n"
+"\n"
+"Hay chon che do ma ban muon dung de ghi tep nay:"
+
+#. • MSG_276
+#.
+#. '%s' will be replaced with your translation for MSG_036 ("ISO Image")
+msgid "Write in %s mode (Recommended)"
+msgstr "Ghi voi che do %s (Khuyen cao)"
+
+#. • MSG_277
+#.
+#. '%s' will be replaced with your translation for MSG_095 ("DD Image")
+msgid "Write in %s mode"
+msgstr "Ghi voi che do %s"
+
+#. • MSG_278
+msgid "Checking for conflicting processes..."
+msgstr "Dang kiem tra cac tien trinh xung dot..."
+
+#. • MSG_279
+msgid "Non bootable"
+msgstr "Khong co kha nang khoi dong"
+
+#. • MSG_280
+msgid "Disk or ISO image"
+msgstr "Dia hoac tep tin ISO"
+
+#. • MSG_281
+msgid "%s (Please select)"
+msgstr "%s (Vui long chon)"
+
+#. • MSG_282
+msgid "Exclusive USB drive locking"
+msgstr "Chan truy cap o USB tu chuong trinh khac"
+
+#. • MSG_283
+msgid "Invalid signature"
+msgstr "Chu ky khong hop le"
+
+#. • MSG_284
+msgid "The downloaded executable is missing a digital signature."
+msgstr "Tap tin thuc thi da tai xuong thieu chu ky so."
+
+#. • MSG_285
+msgid ""
+"The downloaded executable is signed by '%s'.\n"
+"This is not a signature we recognize and could indicate some form of malicious activity...\n"
+"Are you sure you want to run this file?"
+msgstr ""
+"Tap tin thuc thi da tai xuong duoc ky boi '%s'.\n"
+"Day khong phai chu ky so chung toi cong nhan va co the xac dinh la mot dang hoat dong nguy hiem...\n"
+"Ban chac muon chay tap tin nay?"
+
+#. • MSG_286
+msgid "Zeroing drive: %s"
+msgstr "Dang ghi de gia tri 0 len o: %s"
+
+#. • MSG_287
+msgid "Detection of non-USB removable drives"
+msgstr "Phat hien o dia thao duoc khong phai USB"
+
+#. • MSG_288
+msgid "Missing elevated privileges"
+msgstr "Thieu quyen quan tri"
+
+#. • MSG_289
+msgid "This application can only run with elevated privileges"
+msgstr "Ung dung nay chi co the chay voi dac quyen quan tri"
+
+#. • MSG_290
+msgid "File Indexing"
+msgstr "Lap chi muc tap tin"
+
+#. • MSG_291
+msgid "Version selection"
+msgstr "Chon phien ban"
+
+#. • MSG_292
+msgid "Please select the version of Windows you want to install:"
+msgstr "Hay chon phien ban Windows ban muon cai dat:"
+
+#. • MSG_293
+msgid "Unsupported Windows version"
+msgstr "Phien ban Windows khong duoc ho tro"
+
+#. • MSG_294
+msgid ""
+"This version of Windows is no longer supported by Rufus.\n"
+"The last version of Rufus compatible with this platform is v%d.%d."
+msgstr ""
+"Phien ban nay cua Windows khong con duoc Rufus ho tro nua.\n"
+"Phien ban cuoi cung cua Rufus tuong thich voi nen tang nay la v%d.%d."
+
+#. • MSG_295
+msgid "Warning: Unofficial version"
+msgstr "Canh bao: Phien ban khong chinh thuc"
+
+#. • MSG_296
+msgid ""
+"This version of Rufus was not produced by its official developer(s).\n"
+"\n"
+"Are you sure you want to run it?"
+msgstr ""
+"Phien ban Rufus nay KHONG PHAI do chinh tac gia tao ra.\n"
+"\n"
+"Ban chac muon tiep tuc chay chu?"
+
+#. • MSG_297
+msgid "Truncated ISO detected"
+msgstr "Da phat hien ISO bi cat xen"
+
+#. • MSG_298
+msgid ""
+"The ISO file you have selected does not match its declared size: %s of data is missing!\n"
+"\n"
+"If you obtained this file from the Internet, you should try to download a new copy and verify that the MD5 or SHA checksums match the official ones.\n"
+"\n"
+"Note that you can compute the MD5 or SHA in Rufus by clicking the (✓) button."
+msgstr ""
+"Tap tin ISO ban da chon khong trung khop kich co cua no: thieu mat %s du lieu!\n"
+"\n"
+"neu ban tai tap tin nay tu Internet, ban nen tai lai mot ban sao moi va xac nhan rang ma MD5 hoac SHA trung khop voi ban chinh thuc.\n"
+"\n"
+"Hay nho rang ban co the tinh ma MD5 hoac SHA trong Rufus bang cach chon nut ()."
+
+#. • MSG_299
+msgid "Timestamp validation error"
+msgstr "Loi xac thuc dau thoi gian"
+
+#. • MSG_300
+msgid ""
+"Rufus could not validate that the timestamp of the downloaded update is more recent than the one for the current executable.\n"
+"\n"
+"In order to prevent potential attack scenarios, the update process has been aborted and the download will be deleted. Please check the log for more details."
+msgstr ""
+"Rufus khong the xac thuc lieu dau thoi gian tren phien ban cap nhat duoc tai xuong gan day co moi hon so voi phien ban dang chay.\n"
+"\n"
+"De tranh nguy co bi tan cong tiem an, qua trinh cap nhat da bi huy va file tai se bi xoa. Hay kiem tra log de biet them thong tin."
+
+#. • MSG_301
+msgid "Show application settings"
+msgstr "Hien thi cai dat chuong trinh"
+
+#. • MSG_302
+msgid "Show information about this application"
+msgstr "Hien thong tin ve chuong trinh"
+
+#. • MSG_303
+msgid "Show the log"
+msgstr "Hien thi log"
+
+#. • MSG_304
+msgid "Create a disk image of the selected device"
+msgstr "Tao file anh o dia tu thiet bi duoc chon"
+
+#. • MSG_305
+msgid "Use this option to indicate if you plan to install Windows to a different disk, or if you want to run Windows directly from this drive (Windows To Go)."
+msgstr "Su dung tuy chon nay de chi thi rang hoac ban muon cai Windows len mot o dia khac, hoac neu ban muon chay Windows truc tiep tu thiet bi nay (Windows To Go)."
+
+#. • MSG_306
+#.
+#. You can see this status message by pressing <Ctrl>-<Alt>-<Z> and then selecting START.
+#. It's the same as MSG_286 but with a process that *may* be faster, hence the name.
+msgid "Fast-zeroing drive: %s"
+msgstr "Dang ghi de nhanh gia tri 0 len o dia: %s"
+
+#. • MSG_307
+msgid "this may take a while"
+msgstr "dieu nay co the mat mot thoi gian"
+
+#. • MSG_308
+msgid "VHD detection"
+msgstr "Phat hien VHD"
+
+#. • MSG_309
+msgid "Compressed archive"
+msgstr "Luu tru da nen"
+
+#. • MSG_310
+msgid ""
+"The ISO you have selected uses UEFI and is small enough to be written as an EFI System Partition (ESP). Writing to an ESP, instead of writing to a generic data partition occupying the whole disk, can be preferable for some types of installations.\n"
+"\n"
+"Please select the mode that you want to use to write this image:"
+msgstr ""
+"ISO ban da chon su dung UEFI va du nho de ghi duoi dang Phan vung he thong EFI (ESP). Ghi vao mot ESP, thay vi ghi vao mot phan vung du lieu chung chiem toan bo dia, co the thich hop hon doi voi mot so loai cai dat.\n"
+"\n"
+"Vui long chon che do ma ban muon su dung de viet hinh anh nay:"
+
+#. • MSG_311
+msgid "Use %s (in the main application window) to enable."
+msgstr "Su dung %s (tai cua so chinh cua phan mem) de thuc thi."
+
+#. • MSG_312
+msgid "Extra hashes (SHA512)"
+msgstr "Cac bam them (SHA512)"
+
+#. • MSG_313
+msgid "Save to VHD"
+msgstr "Luu vao VHD"
+
+#. • MSG_314
+msgid "Compute image checksums"
+msgstr "Dang tinh tong kiem cua tep"
+
+#. • MSG_315
+msgid "Multiple buttons"
+msgstr "Nhieu nut"
+
+#. • MSG_316
+msgid "Number of passes"
+msgstr "So luong da dat"
+
+#. • MSG_317
+msgid "Disk ID"
+msgstr "ID o dia"
+
+#. • MSG_318
+msgid "Default thread priority: %d"
+msgstr "Mac dinh thu tu uu tien luong: %d"
+
+#. • MSG_319
+msgid "Ignore Boot Marker"
+msgstr "Bo qua danh dau khoi dong"
+
+#. • MSG_320
+msgid "Refreshing partition layout (%s)..."
+msgstr "Dang lam moi bo cuc phan vung (%s)..."
+
+#. • MSG_321
+msgid ""
+"The image you have selected is an ISOHybrid, but its creators have not made it compatible with ISO/File copy mode.\n"
+"As a result, DD image writing mode will be enforced."
+msgstr ""
+"Hinh anh ban da chon la mot ISOHybrid, nhung nhung nguoi tao ra no da khong lam cho no tuong thich voi che do sao chep ISO/Tep.\n"
+"Do do, che do ghi hinh anh DD se duoc thuc thi."
+
+#. • MSG_322
+msgid "Unable to open or read '%s'"
+msgstr "Khong the mo hoac doc '%s'"
+
+#. • MSG_323
+msgid "Apply SkuSiPolicy.p7b on installation (See KB5042562)"
+msgstr "Ap dung SkuSiPolicy.p7b trong khi cai dat (Xem KB5042562)"
+
+#. • MSG_324
+msgid "QoL improvements (Don't force Copilot, OneDrive, Outlook, Fast Startup, etc.)"
+msgstr "Nhung cai \"QoL\" (Khong ep buoc Copilot, OneDrive, Outlook, Khoi dong Nhanh, v.v.)"
+
+#. • MSG_325
+msgid "Applying Windows customization: %s"
+msgstr "Dang ap dung tuy bien Windows: %s"
+
+#. • MSG_326
+msgid "Applying user options..."
+msgstr "Dang ap dung cac cai dat nguoi dung..."
+
+#. • MSG_327
+msgid "Windows User Experience"
+msgstr "Trai nghiem Nguoi dung Windows"
+
+#. • MSG_328
+msgid "Customize Windows installation?"
+msgstr "Tuy bien cai dat Windows?"
+
+#. • MSG_329
+msgid "Remove requirement for 4GB+ RAM, Secure Boot and TPM 2.0"
+msgstr "Loai bo yeu cau 4GB+ RAM, Secure Boot va TPM 2.0"
+
+#. • MSG_330
+msgid "Remove requirement for an online Microsoft account"
+msgstr "Loai bo yeu cau tai khoan Microsoft truc tuyen"
+
+#. • MSG_331
+msgid "Disable data collection (Skip privacy questions)"
+msgstr "Loai bo thu thap thong tin (Bo qua cac cau hoi rieng tu)"
+
+#. • MSG_332
+msgid "Prevent Windows To Go from accessing internal disks"
+msgstr "Ngan can Windows To Go truy cap o dia trong"
+
+#. • MSG_333
+msgid "Create a local account with username:"
+msgstr "Tao tai khoan noi bo voi ten nguoi dung:"
+
+#. • MSG_334
+msgid "Set regional options to the same values as this user's"
+msgstr "Dat cac cai dat dia phuong cung gia tri voi nguoi dung hien tai"
+
+#. • MSG_335
+msgid "Disable BitLocker automatic device encryption"
+msgstr "Vo hieu tu dong ma hoa thiet bi BitLocker"
+
+#. • MSG_336
+msgid "Persistent log"
+msgstr "Nhat ky luu vinh vien"
+
+#. • MSG_337
+msgid ""
+"An additional file ('%s') must be downloaded from Microsoft to use this feature:\n"
+"- Select 'Yes' to connect to the Internet and download it\n"
+"- Select 'No' to cancel the operation\n"
+"\n"
+"Note: The file will be downloaded in the application's directory and will be reused automatically if present."
+msgstr ""
+"Mot tep tin bo sung ('%s') can duoc tai xuong tu Microsoft de su dung tinh nang nay:\n"
+"- Chon 'Co' de ket noi toi Internet va tai no xuong\n"
+"- Chon 'Khong' de huy tien trinh\n"
+"\n"
+"Ghi chu: Tep tin se duoc tai xuong tai duong dan cua phan mem va se duoc tu dong tai su dung neu co san."
+
+#. • MSG_338
+msgid "Revoked UEFI bootloader detected"
+msgstr "Da phat hien bo khoi dong UEFI bi thu hoi"
+
+#. • MSG_339
+msgid ""
+"Rufus detected that the ISO you have selected contains a UEFI bootloader that has been revoked and that will produce %s, when Secure Boot is enabled on a fully up to date UEFI system.\n"
+"\n"
+"- If you obtained this ISO image from a non reputable source, you should consider the possibility that it might contain UEFI malware and avoid booting from it.\n"
+"- If you obtained it from a trusted source, you should try to locate a more up to date version, that will not produce this warning."
+msgstr ""
+"Rufus da phat hien ra rang tep ISO ban da chon co chua mot bo khoi dong UEFI da bi thu hoi va no se tao ra %s, khi Secure Boot duoc kich hoat tren mot he thong UEFI duoc cap nhat day du va moi nhat.\n"
+"\n"
+"- Neu ban so huu tep ISO nay tu mot nguon khong dang tin cay, ban nen can nhac kha nang co the chua ma doc UEFI va tranh khoi dong tu no.\n"
+"- Neu ban so huu tu mot nguon uy tin, ban nen thu tim mot ban moi hon, theo do canh bao nay se khong hien ra."
+
+#. • MSG_340
+msgid "a \"Security Violation\" screen"
+msgstr "mot man hinh \"Vi pham Bao mat\""
+
+#. • MSG_341
+msgid "a Windows Recovery Screen (BSOD) with '%s'"
+msgstr "mot Man hinh Khoi phuc Windows (BSOD) voi '%s'"
+
+#. • MSG_342
+msgid "Compressed VHDX Image"
+msgstr "Tep VHDX da nen"
+
+#. • MSG_343
+msgid "Uncompressed VHD Image"
+msgstr "Tep VHD chua nen"
+
+#. • MSG_344
+msgid "Full Flash Update Image"
+msgstr "Ghi Day du Tep Cap nhat"
+
+#. • MSG_345
+msgid ""
+"Some additional data must be downloaded from Microsoft to use this functionality:\n"
+"- Select 'Yes' to connect to the Internet and download it\n"
+"- Select 'No' to cancel the operation"
+msgstr ""
+"Mot vai du lieu phai duoc tai xuong tu Microsoft de su dung tinh nang nay:\n"
+"- Chon 'Co' de ket noi toi Internet va tai xuong no\n"
+"- Chon 'Khong' de huy tien trinh"
+
+#. • MSG_346
+msgid "Restrict Windows to S-Mode (INCOMPATIBLE with online account bypass)"
+msgstr "Gioi han Windows vao S-Mode (KHONG TUONG THICH voi viec bo qua tai khoan truc tuyen)"
+
+#. • MSG_347
+msgid "Expert Mode"
+msgstr "Che do Chuyen nghiep"
+
+#. • MSG_348
+msgid "Extracting archive files: %s"
+msgstr "Dang giai nen tep luu tru: %s"
+
+#. • MSG_349
+msgid "Use Rufus MBR"
+msgstr "Su dung Rufus MBR"
+
+#. • MSG_350
+msgid "Use 'Windows CA 2023' signed bootloaders (Requires a compatible target PC)"
+msgstr "Su dung bootloader da duoc ky boi chung chi 'Windows UEFI CA 2023' (Can co PC tuong thich)"
+
+#. • MSG_351
+msgid "Checking for UEFI bootloader revocation..."
+msgstr "Dang kiem tra trang thai thu hoi cua bootloader UEFI..."
+
+#. • MSG_352
+msgid "Checking for UEFI DBX updates..."
+msgstr "Dang kiem tra cap nhat co so du lieu chan (DBX) cua UEFI..."
+
+#. • MSG_353
+msgid "DBX update available"
+msgstr "Da phat hien ban cap nhat DBX cua UEFI"
+
+#. • MSG_354
+msgid ""
+"Rufus has found an updated version of the DBX files used to perform UEFI Secure Boot revocation checks. Do you want to download this update?\n"
+"- Select 'Yes' to connect to the Internet and download this content\n"
+"- Select 'No' to cancel the operation\n"
+"\n"
+"Note: The files will be downloaded in the application's directory and will be reused automatically if present."
+msgstr ""
+"Rufus da phat hien phien ban cap nhat cua cac tep DBX, duoc dung de kiem tra thu hoi Secure Boot trong UEFI. Ban co muon tai ban cap nhat nay khong?\n"
+"- Chon 'Co' de ket noi Internet va tai noi dung nay.\n"
+"- Chon 'Khong' de huy thao tac.\n"
+"\n"
+"Luu y: Cac tep se duoc tai ve thu muc cua ung dung va se tu dong duoc su dung lai neu da co san."
+
+#. • MSG_355
+msgid "⚠SILENTLY⚠ erase disk and install:"
+msgstr "Xoa sach o cung va cai dat MOT CACH AM THAM:"
+
+#. • MSG_356
+msgid ""
+"You have selected to use the \"silent\" Windows installation option.\n"
+"\n"
+"This is an advanced option, reserved for people who want to create media that does not prompt the user during Windows installation and therefore UNCONDITIONALLY ERASES the first detected disk on the target system. If you are not careful, using this option can result in IRREVERSIBLE DATA LOSS!\n"
+"\n"
+"If this is not what you want, please select 'No' to go back and uncheck the option.\n"
+"Otherwise, if you select 'Yes', you agree that the whole responsibility for any data loss will be entirely with YOU."
+msgstr ""
+"Ban da lua chon phuong thuc cai dat Windows \"im lang\".\n"
+"\n"
+"Day la mot tuy chon nang cao, danh rieng cho nhung nguoi muon tao mot ban cai dat khong thong bao cho nguoi dung xuyen suot qua trinh cai dat Windows va qua do XOA SACH VO DIEU KIEN o dia duoc nhan dien dau tien. Neu ban khong can than, su dung tuy chon nao co the gay ra MAT HOAN TOAN DU LIEU\n"
+"\n"
+"Neu do khong phai thu ban muon, vui long chon 'Khong' de quay tro lai va huy chon tuy chon do.\n"
+"Thay vao do, neu ban chon 'Co', ban chap thuan rang moi trach nhiem ve du lieu bi mat hoan toan thuoc ve BAN."
+
+#. • MSG_358
+msgid "Unsupported image location"
+msgstr "Vi tri tap tin anh dia khong duoc ho tro"
+
+#. • MSG_359
+msgid ""
+"You cannot use an image that is located on the target drive, since that drive is going to be completely erased. It's the same thing as trying to saw the branch you are sitting on!\n"
+"\n"
+"Please move the image to a different location and try again."
+msgstr ""
+"Ban khong the su dung mot anh dia nam tren thiet bi muc tieu, vi thiet bi do se bi xoa hoan toan. No giong nhu viec ban tu chat canh cay ma ban dang dung len vay!\n"
+"\n"
+"Vui long di chuyen anh dia toi mot vi tri khac va thu lai."
+
+#. • MSG_360
+msgid "It is safe to leave this option enabled even if you have a TPM or more RAM, as this option only bypasses the setup requirements and does not actually prevent Windows from using all the hardware available."
+msgstr "Viec bat tuy chon nay la hoan toan an toan ke ca khi ban co TPM hay nhieu RAM hon, vi tuy chon nay chi bo qua nhung yeu cau cai dat va khong ngan Windows su dung moi tai nguyen phan cung co the."
+
+#. • MSG_361
+msgid "For this option to work, network/Internet MUST be disconnected during installation!"
+msgstr "De tuy chon nay co hieu qua, cac mang PHAI duoc ngat ket noi trong qua trinh cai dat!"
+
+#. • MSG_362
+msgid "Automatically answer 'no' to the Windows setup questions relating to the sharing of data with Microsoft, instead of prompting the user."
+msgstr "Tu dong tra loi 'khong' cho nhung cau hoi lien quan toi viec chia se du lieu cho Microsoft, thay vi thong bao cho nguoi dung."
+
+#. • MSG_363
+msgid "You should leave this option enabled, unless you are okay with 'Windows To Go' accessing internal disks and silently performing irreversible file system upgrades."
+msgstr "Ban nen de tuy chon nay o muc 'Bat', tru khi ban on voi viec Windows To Go truy cap vao cac thiet bi noi bo va am tham tao ra nhung ban cap nhat he thong khong the hoan tac."
+
+#. • MSG_364
+msgid "Automatically create a local account with the specified user name, using an empty password that will need to be changed on next logon."
+msgstr "Tu dong tao mot tai khoan noi bo voi ten nguoi dung da neu, cung mot mat khau rong se can phai thay doi trong lan dang nhap tiep theo."
+
+#. • MSG_365
+msgid "Duplicate the regional settings from this PC (keyboard, timezone, currency), instead of prompting the user."
+msgstr "Sao chep nhung cai dat ve vung tu PC nay (ban phim, mui gio, don vi), thay vi thong bao cho nguoi dung."
+
+#. • MSG_366
+msgid "Don't encrypt the system disk, unless explicitly requested by the user."
+msgstr "Khong ma hoa o dia he thong, tru khi duoc nguoi dung dich danh yeu cau."
+
+#. • MSG_367
+msgid "Use this option only if you know what S-Mode is and understand that your system may be locked into S-Mode even after you completely erase and reinstall Windows."
+msgstr "Chi su dung tuy chon nay khi ban biet S-Mode la gi va ban hieu rang he thong cua ban co the bi khoa o S-Mode ke ca khi ban xoa sach va cai dat lai Windows."
+
+#. • MSG_368
+msgid "Use this option if the system you plan to install Windows on is using fully up-to-date Secure Boot certificates. If needed, you can look into using 'Mosby' to update your system."
+msgstr "Dung tuy chon nay neu he thong ban muon cai dat Windows dang su dung nhung chung chi Secure Boot (che do khoi dong bao mat) moi nhat. Neu can thiet, ban co the tim hieu viec dung 'Mosby' de cap nhat he thong cua ban."
+
+#. • MSG_369
+msgid "Use this option if you want to revoke additional potentially unsafe Windows bootloaders, but with the potential of also preventing standard Windows media from booting."
+msgstr "Dung tuy chon nay neu ban muon thu hoi nhung trinh khoi dong Windows co nguy co, nhung cung co kha nang ngan anh dia Windows co ban khoi dong."
+
+#. • MSG_370
+msgid "\"Quality of Life\" enhancements: Disable most of the unwanted features Microsoft is trying to force onto end users."
+msgstr "Nhung nang cap \"tien ich trai nghiem\": Vo hieu hoa da so nhung tinh nang khong mong muon Microsoft dang co nhoi nhet cho nguoi dung."
+
+#. • MSG_371
+msgid "If you use this option, please make sure to disconnect every disk from the target PC, except the one you want to install Windows on, as well as not leave the media plugged into any PC you don't want to erase."
+msgstr "Neu ban su dung tuy chon nay, hay chac chan rang ban da ngat ket noi tat ca cac o dia khoi PC dich, ngoai tru o ban muon cai Windows, cung nhu la khong cam anh dia vao bat ki PC nao ban khong muon xoa sach."
+
+#. • MSG_500
+msgid "Enable GPT"
+msgstr "Bat GPT"
+
+#. • MSG_501
+msgid "Windows XP cannot access drives that use the GPT partition scheme.\n\nRufus can still create this drive for use on another computer. Continue only if you are creating EFI-bootable media and the target computer supports UEFI.\n\nDo you want to continue?"
+msgstr "Windows XP khong the truy cap cac o dia su dung so do phan vung GPT.\n\nRufus van co the tao o dia nay de su dung tren mot may tinh khac. Chi tiep tuc neu ban dang tao phuong tien khoi dong EFI va may tinh dich ho tro UEFI.\n\nBan co muon tiep tuc khong?"
+
+#. • MSG_502
+msgid "Rufus"
+msgstr "Rufus"
+
+#. • MSG_503
+msgid "Choose how Rufus should write this ISOHybrid image.\n\nYes - ISO mode (recommended)\nNo - EFI System Partition (ESP) mode"
+msgstr "Chon cach Rufus ghi anh ISOHybrid nay.\n\nCo - Che do ISO (khuyen nghi)\nKhong - Che do phan vung he thong EFI (ESP)"
+
+#. • MSG_504
+msgid "Choose how Rufus should write this EFI image.\n\nYes - ISO mode (recommended)\nNo - EFI System Partition (ESP) mode"
+msgstr "Chon cach Rufus ghi anh EFI nay.\n\nCo - Che do ISO (khuyen nghi)\nKhong - Che do phan vung he thong EFI (ESP)"
+
+#. • MSG_505
+msgid "Rufus-NT is not affiliated with nor endorsed by the Rufus project"
+msgstr "Rufus-NT khong lien ket va cung khong duoc du an Rufus chung thuc"
+
+#. • MSG_506
+msgid "The original Rufus project can be found here"
+msgstr "Co the tim thay du an Rufus goc tai day"
+
+#. • MSG_507
+msgid "Copyright © 2011 - 2026 Pete Batard"
+msgstr "Ban quyen (c) 2011 - 2026 Pete Batard"
+
+#. • MSG_508
+msgid "This project wouldn't have been possible without..."
+msgstr "Du an nay se khong the thuc hien duoc neu khong co..."
+
+#. • MSG_509
+msgid "Public Domain"
+msgstr "Pham vi cong cong"
+
+#. • MSG_510
+msgid "Rufus Changelog"
+msgstr "Rufus -- Thay doi"
+
+#. • MSG_511
+msgid "Rufus-NT Changelog"
+msgstr "Rufus-NT -- Thay doi"
+
+#. • MSG_512
+msgid "UI redesign concept by Fahad Al-Riyami"
+msgstr "Y tuong thiet ke lai giao dien boi Fahad Al-Riyami"
+
+#. • MSG_513
+msgid "Used with kind authorization"
+msgstr "Duoc su dung voi su cho phep"
+
+#. • MSG_514
+msgid "Rufus icon by PC Unleashed:"
+msgstr "Bieu tuong Rufus boi PC Unleashed:"
+
+#. • MSG_515
+msgid "Freeware"
+msgstr "Phan mem mien phi"
+
+#. • MSG_516
+msgid "Additional icons courtesy of Axialis Software:"
+msgstr "Cac bieu tuong bo sung do Axialis Software cung cap:"
+
+#. • MSG_517
+msgid "CC BY-ND 4.0, when used as native resolution bitmaps"
+msgstr "CC BY-ND 4.0, khi duoc dung duoi dang anh bitmap o do phan giai goc"
+
+#. • MSG_518
+msgid "Copyright"
+msgstr "Ban quyen"
+
+#. • MSG_519
+msgid "and contributors"
+msgstr "va nhung nguoi dong gop"
+
+#. • MSG_520
+msgid "exFAT support"
+msgstr "Ho tro exFAT"
+
+#. • MSG_521
+msgid "Windows XP requires KB955704 for exFAT support.\n\nDo you want to download the update for the detected system locale?\n\nSystem locale: 0x%04X (%s)"
+msgstr "Windows XP yeu cau KB955704 de ho tro exFAT.\n\nBan co muon tai xuong ban cap nhat cho ngon ngu he thong da phat hien khong?\n\nNgon ngu he thong: 0x%04X (%s)"
+
+#. • MSG_522
+msgid "No exFAT update is available for the detected system locale. You must install exFAT support manually.\n\nSystem locale: 0x%04X (%s)"
+msgstr "Khong co ban cap nhat exFAT cho ngon ngu he thong da phat hien. Ban phai cai dat ho tro exFAT theo cach thu cong.\n\nNgon ngu he thong: 0x%04X (%s)"
+
+#. • MSG_523
+msgid "A USB drive of 16 GB or larger was detected. Formatting it as ext2 or ext3 could take a very long time (about 30 minutes).\n\nDo you want to continue?"
+msgstr "Da phat hien o USB co dung luong tu 16 GB tro len. Viec dinh dang thanh ext2 hoac ext3 co the mat rat nhieu thoi gian (khoang 30 phut).\n\nBan co muon tiep tuc khong?"
+
+#. • MSG_524
+msgid "This image uses GRUB %s, but Rufus only includes files for GRUB %s.\n\nThe required files could not be downloaded. Rufus will use the included version instead."
+msgstr "Anh nay su dung GRUB %s, nhung Rufus chi bao gom cac tep cho GRUB %s.\n\nKhong the tai xuong cac tep can thiet. Rufus se dung phien ban di kem thay the."
+
+#. • MSG_525
+msgid "'diskcopy.dll' is required to create an MS-DOS drive and could not be downloaded.\n\nDownload it from:\n%s\n\nThen drag and drop the downloaded file into the main window."
+msgstr "Can co 'diskcopy.dll' de tao o dia MS-DOS nhung khong the tai xuong.\n\nHay tai xuong tu:\n%s\n\nSau do keo va tha tep da tai xuong vao cua so chinh."
+
+#. • MSG_526
+msgid "'diskcopy.dll' is already installed."
+msgstr "'diskcopy.dll' da duoc cai dat."
+
+#. • MSG_527
+msgid "'diskcopy.dll' was installed successfully."
+msgstr "Da cai dat 'diskcopy.dll' thanh cong."
+
+#. • MSG_528
+msgid "The selected file is not a valid copy of 'diskcopy.dll'."
+msgstr "Tep da chon khong phai la ban sao hop le cua 'diskcopy.dll'."
+
+#. • MSG_529
+msgid "No USB drivers were detected. USB drivers are required for most Rufus functionality."
+msgstr "Khong phat hien thay trinh dieu khien USB. Hau het chuc nang cua Rufus deu yeu cau trinh dieu khien USB."
+
+#. • MSG_530
+msgid "Rufus requires TLS 1.2 for networking functionality.\n\nWould you like Rufus to enable TLS 1.2?"
+msgstr "Rufus yeu cau TLS 1.2 cho chuc nang mang.\n\nBan co muon Rufus bat TLS 1.2 khong?"
+
+#. • MSG_531
+msgid "TLS 1.2 Required"
+msgstr "Yeu cau TLS 1.2"
+
+#. • MSG_532
+msgid "Embedded bootloader components"
+msgstr "Cac thanh phan bo nap khoi dong duoc nhung"
+
+#. • MSG_533
+msgid "PowerShell 7 Required"
+msgstr ""
+
+#. • MSG_534
+msgid "PowerShell 7 is required to run Fido, but it was not found in the registered installation or in:\n\n%s\n\nThe system PATH was not searched."
+msgstr ""
+
+#. • MSG_535
+msgid "PowerShell Signature Warning"
+msgstr ""
+
+#. • MSG_536
+msgid "PowerShell 7 at:\n\n%s\n\ndoes not have a valid Microsoft digital signature and may have been tampered with. What should Rufus do?"
+msgstr ""
+
+#. • MSG_537
+msgid "Use it and remember this location"
+msgstr ""
+
+#. • MSG_538
+msgid "Ignore it and keep searching"
+msgstr ""
+
+#. • MSG_539
+msgid "Cancel the Fido operation"
+msgstr ""
+
+#. • MSG_540
+msgid "PowerShell 7 is required to run Fido."
+msgstr ""
+
+#. • MSG_541
+msgid "Windows Vista Extended Kernel, version 10192022 or newer, is required.\n\nWould you like to open the installation guide?"
+msgstr ""
+
+#. • MSG_542
+msgid "Would you like to download PowerShell 7.2.24?"
+msgstr ""
+
+#. • MSG_543
+msgid "Would you like to download PowerShell 7?"
+msgstr ""
+
+#. • MSG_544
+msgid "Windows Vista requires the May 2018 or a later security update to support TLS 1.2.\n\nWould you like to open Microsoft Update Catalog?"
+msgstr "Windows Vista yeu cau ban cap nhat bao mat thang 5 nam 2018 hoac moi hon de ho tro TLS 1.2.\n\nBan co muon mo Danh muc Microsoft Update khong?"
+
+#. • MSG_545
+msgid "Security Update Required"
+msgstr "Yeu cau ban cap nhat bao mat"
+
+#. • MSG_546
+msgid "Windows Vista requires an additional Internet Explorer setting change to use TLS 1.2.\n\nWould you like Rufus to apply it?"
+msgstr "Windows Vista yeu cau thay doi them mot thiet dat Internet Explorer de su dung TLS 1.2.\n\nBan co muon Rufus ap dung thay doi nay khong?"
+
+#. • MSG_547
+msgid "Networking requires the May 2018 or later security update"
+msgstr "Mang yeu cau ban cap nhat bao mat thang 5 nam 2018 hoac moi hon"
+
+#. • MSG_900
+#.
+#. The following messages are for the Windows Store listing only and are not used by the application
+msgid "Rufus is a utility that helps format and create bootable USB flash drives, such as USB keys/pendrives, memory sticks, etc."
+msgstr "Rufus la mot tien ich giup dinh dang va tao kha nang khoi dong cho cac thiet bi USB, vi du nhu the USB/dia di dong, the nho, v.v..."
+
+#. • MSG_901
+msgid "Official site: %s"
+msgstr "Trang web chinh thuc: %s"
+
+#. • MSG_902
+msgid "Source Code: %s"
+msgstr "Ma nguon: %s"
+
+#. • MSG_903
+msgid "ChangeLog: %s"
+msgstr "Nhat ky thay doi: %s"
+
+#. • MSG_904
+#.
+#. The gnu.org website has many translations of the GPL (such as https://www.gnu.org/licenses/gpl-3.0.zh-cn.html, https://www.gnu.org/licenses/gpl-3.0.fr.html)
+#. Please make sure you try to locate the relevant https://www.gnu.org/licenses/gpl-3.0.<LANG-ID>.html for your language and use it here.
+msgid ""
+"This application is licensed under the terms of the GNU Public License (GPL) version 3.\n"
+"See https://www.gnu.org/licenses/gpl-3.0.en.html for details."
+msgstr ""
+"Phan mem nay da duoc cap phep duoi cac dieu khoan cua GNU Public License (GPL) phien ban 3.\n"
+"Xem tai https://www.gnu.org/licenses/gpl-3.0.html de biet them chi tiet."
+
+#. • MSG_905
+#.
+#. Keyword for "boot" will be used for search in the Windows Store
+msgid "Boot"
+msgstr "Khoi dong"
+
+#. • MSG_910
+#.
+#. This and subsequent messages will be listed in the 'Features' section of the Windows Store page
+msgid "Format USB, flash card and virtual drives to FAT/FAT32/NTFS/UDF/exFAT/ReFS/ext2/ext3"
+msgstr "Dinh dang USB, the nho hoac o nho ao voi FAT/FAT32/NTFS/UDF/exFAT/ReFS/ext2/ext3"
+
+#. • MSG_911
+msgid "Create FreeDOS bootable USB drives"
+msgstr "Tao USB co the khoi dong voi FreeDOS"
+
+#. • MSG_912
+msgid "Create bootable drives from bootable ISOs (Windows, Linux, etc.)"
+msgstr "Tao o dia co the khoi dong tu cac file ISO co the khoi dong (Windows, Linux, v.v...)"
+
+#. • MSG_913
+msgid "Create bootable drives from bootable disk images, including compressed ones"
+msgstr "Tao o dia co the khoi dong tu cac tep dia co the khoi dong, bao gom ca tep nen"
+
+#. • MSG_914
+msgid "Create BIOS or UEFI bootable drives, including UEFI bootable NTFS"
+msgstr "Tao o dia co the khoi dong voi he thong BIOS hoac UEFI, bao gom ca NTFS co the khoi dong voi UEFI"
+
+#. • MSG_915
+msgid "Create 'Windows To Go' drives"
+msgstr "Tao o dia 'Windows To Go'"
+
+#. • MSG_916
+msgid "Create Windows 11 installation drives for PCs that don't have TPM or Secure Boot"
+msgstr "Tao o dia cai dat Windows 11 cho cac may tinh khong co TPM hoac Secure Boot"
+
+#. • MSG_917
+msgid "Create persistent Linux partitions"
+msgstr "Tao phan vung Linux lien tuc"
+
+#. • MSG_918
+msgid "Create VHD/DD images of the selected drive"
+msgstr "Tao tep VHD/DD tu o dia da chon"
+
+#. • MSG_919
+msgid "Compute MD5, SHA-1, SHA-256 and SHA-512 checksums of the selected image"
+msgstr "Tinh tong kiem MD5, SHA-1, SHA-256 va SHA-512 cua tep da chon"
+
+#. • MSG_920
+msgid "Perform bad blocks checks, including detection of \"fake\" flash drives"
+msgstr "Thuc hien kiem tra diem loi, bao gom phat hien o dia \"gia\""
+
+#. • MSG_921
+msgid "Download official Microsoft Windows retail ISOs"
+msgstr "Tai xuong cac tep Microsoft Windows ISO ban le chinh thuc"
+
+#. • MSG_922
+msgid "Download UEFI Shell ISOs"
+msgstr "Tai xuong cac tep UEFI Shell ISO"

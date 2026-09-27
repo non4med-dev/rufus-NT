@@ -149,6 +149,10 @@ msgstr "مسح الكل"
 msgid "Save"
 msgstr "حفظ"
 
+#. • IDD_LOG → IDC_LOG_DIAGNOSTICS
+msgid "Diagnostics"
+msgstr "التشخيصات"
+
 #. • IDD_UPDATE_POLICY → IDD_UPDATE_POLICY
 msgid "Update policy and settings"
 msgstr "تحديث السياسة والإعدادات"
@@ -2122,6 +2126,118 @@ msgstr "حقوق النشر"
 #. • MSG_519
 msgid "and contributors"
 msgstr "والمساهمون"
+
+#. • MSG_520
+msgid "exFAT support"
+msgstr "دعم exFAT"
+
+#. • MSG_521
+msgid "Windows XP requires KB955704 for exFAT support.\n\nDo you want to download the update for the detected system locale?\n\nSystem locale: 0x%04X (%s)"
+msgstr "يتطلب Windows XP التحديث KB955704 لدعم exFAT.\n\nهل تريد تنزيل التحديث الخاص بإعدادات النظام المحلية المكتشفة؟\n\nإعدادات النظام المحلية: 0x%04X (%s)"
+
+#. • MSG_522
+msgid "No exFAT update is available for the detected system locale. You must install exFAT support manually.\n\nSystem locale: 0x%04X (%s)"
+msgstr "لا يتوفر تحديث exFAT لإعدادات النظام المحلية المكتشفة. يجب تثبيت دعم exFAT يدويًا.\n\nإعدادات النظام المحلية: 0x%04X (%s)"
+
+#. • MSG_523
+msgid "A USB drive of 16 GB or larger was detected. Formatting it as ext2 or ext3 could take a very long time (about 30 minutes).\n\nDo you want to continue?"
+msgstr "تم اكتشاف محرك أقراص USB بسعة 16 غيغابايت أو أكبر. قد تستغرق تهيئته بنظام ext2 أو ext3 وقتًا طويلاً جدًا (حوالي 30 دقيقة).\n\nهل تريد المتابعة؟"
+
+#. • MSG_524
+msgid "This image uses GRUB %s, but Rufus only includes files for GRUB %s.\n\nThe required files could not be downloaded. Rufus will use the included version instead."
+msgstr "تستخدم هذه الصورة GRUB %s، لكن Rufus لا يتضمن سوى ملفات GRUB %s.\n\nتعذر تنزيل الملفات المطلوبة. سيستخدم Rufus الإصدار المضمّن بدلاً منها."
+
+#. • MSG_525
+msgid "'diskcopy.dll' is required to create an MS-DOS drive and could not be downloaded.\n\nDownload it from:\n%s\n\nThen drag and drop the downloaded file into the main window."
+msgstr "يلزم 'diskcopy.dll' لإنشاء محرك MS-DOS، وتعذر تنزيله.\n\nقم بتنزيله من:\n%s\n\nثم اسحب الملف الذي تم تنزيله وأفلته في النافذة الرئيسية."
+
+#. • MSG_526
+msgid "'diskcopy.dll' is already installed."
+msgstr "الملف 'diskcopy.dll' مثبت بالفعل."
+
+#. • MSG_527
+msgid "'diskcopy.dll' was installed successfully."
+msgstr "تم تثبيت 'diskcopy.dll' بنجاح."
+
+#. • MSG_528
+msgid "The selected file is not a valid copy of 'diskcopy.dll'."
+msgstr "الملف المحدد ليس نسخة صالحة من 'diskcopy.dll'."
+
+#. • MSG_529
+msgid "No USB drivers were detected. USB drivers are required for most Rufus functionality."
+msgstr "لم يتم اكتشاف أي برامج تشغيل USB. برامج تشغيل USB مطلوبة لمعظم وظائف Rufus."
+
+#. • MSG_530
+msgid "Rufus requires TLS 1.2 for networking functionality.\n\nWould you like Rufus to enable TLS 1.2?"
+msgstr "يتطلب Rufus بروتوكول TLS 1.2 لوظائف الشبكة.\n\nهل تريد أن يقوم Rufus بتمكين TLS 1.2؟"
+
+#. • MSG_531
+msgid "TLS 1.2 Required"
+msgstr "مطلوب TLS 1.2"
+
+#. • MSG_532
+msgid "Embedded bootloader components"
+msgstr "مكونات محمل الإقلاع المضمنة"
+
+#. • MSG_533
+msgid "PowerShell 7 Required"
+msgstr ""
+
+#. • MSG_534
+msgid "PowerShell 7 is required to run Fido, but it was not found in the registered installation or in:\n\n%s\n\nThe system PATH was not searched."
+msgstr ""
+
+#. • MSG_535
+msgid "PowerShell Signature Warning"
+msgstr ""
+
+#. • MSG_536
+msgid "PowerShell 7 at:\n\n%s\n\ndoes not have a valid Microsoft digital signature and may have been tampered with. What should Rufus do?"
+msgstr ""
+
+#. • MSG_537
+msgid "Use it and remember this location"
+msgstr ""
+
+#. • MSG_538
+msgid "Ignore it and keep searching"
+msgstr ""
+
+#. • MSG_539
+msgid "Cancel the Fido operation"
+msgstr ""
+
+#. • MSG_540
+msgid "PowerShell 7 is required to run Fido."
+msgstr ""
+
+#. • MSG_541
+msgid "Windows Vista Extended Kernel, version 10192022 or newer, is required.\n\nWould you like to open the installation guide?"
+msgstr ""
+
+#. • MSG_542
+msgid "Would you like to download PowerShell 7.2.24?"
+msgstr ""
+
+#. • MSG_543
+msgid "Would you like to download PowerShell 7?"
+msgstr ""
+
+#. • MSG_544
+msgid "Windows Vista requires the May 2018 or a later security update to support TLS 1.2.\n\nWould you like to open Microsoft Update Catalog?"
+msgstr "يتطلب Windows Vista تحديث الأمان الصادر في مايو 2018 أو تحديثًا أحدث لدعم TLS 1.2.\n\nهل تريد فتح كتالوج Microsoft Update؟"
+
+#. • MSG_545
+msgid "Security Update Required"
+msgstr "يلزم تثبيت تحديث أمان"
+
+#. • MSG_546
+msgid "Windows Vista requires an additional Internet Explorer setting change to use TLS 1.2.\n\nWould you like Rufus to apply it?"
+msgstr "يتطلب Windows Vista تغييرًا إضافيًا في إعدادات Internet Explorer لاستخدام TLS 1.2.\n\nهل تريد أن يطبّق Rufus هذا التغيير؟"
+
+#. • MSG_547
+msgid "Networking requires the May 2018 or later security update"
+msgstr "تتطلب الشبكات تحديث الأمان لشهر مايو 2018 أو إصدارًا أحدث"
 
 #. • MSG_900
 #.

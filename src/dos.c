@@ -41,6 +41,31 @@
 static BYTE* DiskImage = NULL;
 static DWORD DiskImageSize;
 
+static const uint8_t diskcopy_sha256[SHA256_HASHSIZE] = {
+	0x95, 0xfc, 0x07, 0x86, 0xf5, 0xbc, 0x0a, 0x6d,
+	0xb5, 0xc0, 0x60, 0x4b, 0x31, 0xac, 0x18, 0xfb,
+	0xed, 0x05, 0x02, 0xa2, 0xc6, 0x85, 0x8e, 0x5f,
+	0xb0, 0x2a, 0x64, 0x79, 0x83, 0xae, 0x03, 0xc7
+};
+
+static BOOL IsValidDiskcopyBuffer(const uint8_t* buffer, size_t size)
+{
+	uint8_t sha256[SHA256_HASHSIZE];
+
+	return (buffer != NULL) && (size == DISKCOPY_SIZE) &&
+		HashBuffer(HASH_SHA256, buffer, size, sha256) &&
+		(memcmp(sha256, diskcopy_sha256, sizeof(diskcopy_sha256)) == 0);
+}
+
+BOOL IsValidDiskcopyDll(const char* path)
+{
+	uint8_t sha256[SHA256_HASHSIZE];
+
+	return (path != NULL) && (_filesizeU(path) == DISKCOPY_SIZE) &&
+		HashFile(HASH_SHA256, path, sha256) &&
+		(memcmp(sha256, diskcopy_sha256, sizeof(diskcopy_sha256)) == 0);
+}
+
 /*
  * FAT time conversion, from ReactOS' time.c
  */
@@ -291,21 +316,27 @@ static BOOL ExtractMSDOS(const char* path)
 {
 	int i, j;
 	BOOL r = FALSE;
-	uint8_t* diskcopy_buffer = NULL;
+	DWORD size = DISKCOPY_SIZE;
+	HANDLE dll_handle = INVALID_HANDLE_VALUE;
+	uint8_t* diskcopy_buffer = malloc(DISKCOPY_SIZE);
 	char locale_path[MAX_PATH];
 	char diskcopy_dll_path[MAX_PATH];
 	char* extractlist[] = { "MSDOS   SYS", "COMMAND COM", "IO      SYS", "MODE    COM",
 		"KEYB    COM", "KEYBOARDSYS", "KEYBRD2 SYS", "KEYBRD3 SYS", "KEYBRD4 SYS",
 		"DISPLAY SYS", "EGA     CPI", "EGA2    CPI", "EGA3    CPI" };
 
-	if (path == NULL)
-		return FALSE;
+	if ((path == NULL) || (diskcopy_buffer == NULL))
+		goto out;
 
 	// There should be a diskcopy.dll in the user's AppData directory.
-	// Since we're working with a known copy of diskcopy.dll, just load it
-	// in memory and point to the known disk image resource buffer.
+	// Since we're working with a known copy of diskcopy.dll, just load it in memory
+	// (after locking and validating it) and point to the known disk image resource buffer.
 	static_sprintf(diskcopy_dll_path, "%s\\%s\\diskcopy.dll", app_data_dir, FILES_DIR);
-	if (read_file(diskcopy_dll_path, &diskcopy_buffer) != DISKCOPY_SIZE) {
+	dll_handle = CreateFileU(diskcopy_dll_path, GENERIC_READ, FILE_SHARE_READ, NULL,
+		OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, NULL);
+	if ((dll_handle == INVALID_HANDLE_VALUE) ||
+		!ReadFile(dll_handle, diskcopy_buffer, size, &size, NULL) ||
+		!IsValidDiskcopyBuffer(diskcopy_buffer, size)) {
 		uprintf("'diskcopy.dll' was either not found or is invalid");
 		goto out;
 	}
@@ -332,6 +363,7 @@ static BOOL ExtractMSDOS(const char* path)
 		r = SetDOSLocale(path, FALSE);
 
 out:
+	safe_closehandle(dll_handle);
 	safe_free(diskcopy_buffer);
 	return r;
 }

@@ -162,6 +162,60 @@ static BOOL NT4_GetCachedFat32Partition(uint64_t PartitionOffset, PDISK_GEOMETRY
 	partition->HiddenSectors = (DWORD)(PartitionOffset / sector_size);
 	return TRUE;
 }
+
+static int64_t NT4_WriteFat32Sectors(HANDLE hPhysical, uint64_t PartitionOffset,
+	DWORD SectorSize, DWORD StartSector, DWORD SectorCount, const void* Buffer)
+{
+	const BYTE* source = (const BYTE*)Buffer;
+	BYTE* bounce = NULL;
+	DWORD chunk_size, chunk, written, total = 0;
+	LARGE_INTEGER position;
+	uint64_t byte_count;
+
+	if ((hPhysical == INVALID_HANDLE_VALUE) || (Buffer == NULL) ||
+		(SectorSize < 512) || (SectorCount == 0)) {
+		SetLastError(ERROR_INVALID_PARAMETER);
+		return -1;
+	}
+	byte_count = (uint64_t)SectorSize * SectorCount;
+	if (byte_count > MAXDWORD) {
+		SetLastError(ERROR_INVALID_PARAMETER);
+		return -1;
+	}
+	chunk_size = (32 * KB / SectorSize) * SectorSize;
+	if (chunk_size == 0)
+		chunk_size = SectorSize;
+	bounce = (BYTE*)VirtualAlloc(NULL, chunk_size, MEM_RESERVE | MEM_COMMIT, PAGE_READWRITE);
+	if (bounce == NULL)
+		return -1;
+
+	while (total < (DWORD)byte_count) {
+		if (IS_ERROR(ErrorStatus) && (SCODE_CODE(ErrorStatus) == ERROR_CANCELLED)) {
+			SetLastError(ERROR_CANCELLED);
+			goto out;
+		}
+		chunk = min(chunk_size, (DWORD)byte_count - total);
+		memcpy(bounce, source + total, chunk);
+		position.QuadPart = PartitionOffset + (uint64_t)StartSector * SectorSize + total;
+		if (!SetFilePointerEx(hPhysical, position, NULL, FILE_BEGIN))
+			goto out;
+		written = 0;
+		if (!WriteFile(hPhysical, bounce, chunk, &written, NULL) || (written != chunk)) {
+			if ((written != chunk) && (GetLastError() == ERROR_SUCCESS))
+				SetLastError(ERROR_WRITE_FAULT);
+			goto out;
+		}
+		total += chunk;
+	}
+	VirtualFree(bounce, 0, MEM_RELEASE);
+	LastWriteError = 0;
+	return total;
+
+out:
+	LastWriteError = RUFUS_ERROR(GetLastError());
+	VirtualFree(bounce, 0, MEM_RELEASE);
+	return -1;
+}
 #endif
 
 /*
@@ -227,6 +281,7 @@ BOOL FormatLargeFAT32(DWORD DriveIndex, uint64_t PartitionOffset, DWORD ClusterS
 	FAT_FSINFO* pFAT32FsInfo = NULL;
 	DWORD* pFirstSectOfFat = NULL;
 	BYTE* pZeroSect = NULL;
+	HANDLE hPhysicalVolume = INVALID_HANDLE_VALUE;
 	char VolId[12] = "NO NAME    ";
 
 	// Debug temp vars
@@ -247,16 +302,23 @@ BOOL FormatLargeFAT32(DWORD DriveIndex, uint64_t PartitionOffset, DWORD ClusterS
 	}
 #endif
 	// Open the drive and lock it
-	hLogicalVolume = write_as_esp ?
-		AltGetLogicalHandle(DriveIndex, PartitionOffset, !nt4_unlocked_volume, TRUE, FALSE) :
-		GetLogicalHandle(DriveIndex, PartitionOffset, !nt4_unlocked_volume, TRUE, FALSE);
-	if (IS_ERROR(ErrorStatus))
-		goto out;
-	if ((hLogicalVolume == INVALID_HANDLE_VALUE) || (hLogicalVolume == NULL))
-		die("Invalid logical volume handle", ERROR_INVALID_HANDLE);
-	// Try to disappear the volume while we're formatting it
-	if (!nt4_unlocked_volume)
+#ifdef RUFUS_TARGET_NT4
+	if (nt4_unlocked_volume) {
+		hPhysicalVolume = GetPhysicalHandle(DriveIndex, FALSE, TRUE, TRUE);
+		if (hPhysicalVolume == INVALID_HANDLE_VALUE)
+			die("Invalid physical drive handle", ERROR_INVALID_HANDLE);
+	} else
+#endif
+	{
+		hLogicalVolume = write_as_esp ?
+			AltGetLogicalHandle(DriveIndex, PartitionOffset, TRUE, TRUE, FALSE) :
+			GetLogicalHandle(DriveIndex, PartitionOffset, TRUE, TRUE, FALSE);
+		if (IS_ERROR(ErrorStatus))
+			goto out;
+		if ((hLogicalVolume == INVALID_HANDLE_VALUE) || (hLogicalVolume == NULL))
+			die("Invalid logical volume handle", ERROR_INVALID_HANDLE);
 		UnmountVolume(hLogicalVolume);
+	}
 
 	// Work out drive params
 #ifdef RUFUS_TARGET_NT4
@@ -512,7 +574,7 @@ BOOL FormatLargeFAT32(DWORD DriveIndex, uint64_t PartitionOffset, DWORD ClusterS
 	// Not the most effective, but easy on RAM
 #ifdef RUFUS_TARGET_NT4
 	if (nt4_aligned_buffers) {
-		// 64 KiB buffer else the oldass driver blesses my eyes with a IRQL_NOT_LESS_OR_EQUAL
+		// Keep the source sector-aligned; the NT4 writer submits it in smaller transfers
 		pZeroSect = (BYTE*)_mm_malloc((size_t)BytesPerSect * BurstSize, BytesPerSect);
 		if (pZeroSect != NULL)
 			memset(pZeroSect, 0, (size_t)BytesPerSect * BurstSize);
@@ -525,18 +587,25 @@ BOOL FormatLargeFAT32(DWORD DriveIndex, uint64_t PartitionOffset, DWORD ClusterS
 		die("Failed to allocate memory", ERROR_NOT_ENOUGH_MEMORY);
 	}
 
-	for (i = 0; i < (SystemAreaSize + BurstSize - 1); i += BurstSize) {
+	for (i = 0; i < SystemAreaSize; i += BurstSize) {
+		DWORD sector_count = min(BurstSize, SystemAreaSize - i);
 		UpdateProgressWithInfo(OP_FORMAT, MSG_217, (uint64_t)i, (uint64_t)SystemAreaSize + BurstSize);
 		CHECK_FOR_USER_CANCEL;
 #ifdef RUFUS_TARGET_NT4
 		if (nt4_aligned_buffers && ((nt4_stage_tick == 0) ||
 			((DWORD)(GetTickCount() - nt4_stage_tick) >= 5000))) {
 			nt4_stage_tick = GetTickCount();
-			wsprintfA(nt4_stage, "202 FAT32 clear system area sector=%lu count=%lu", i, BurstSize);
+			wsprintfA(nt4_stage, "202 FAT32 clear system area sector=%lu count=%lu", i, sector_count);
 			NT4_SetDiskStage(nt4_stage);
 		}
+		if (nt4_aligned_buffers) {
+			if (NT4_WriteFat32Sectors(hPhysicalVolume, PartitionOffset, BytesPerSect,
+				i, sector_count, pZeroSect) != (int64_t)BytesPerSect * sector_count)
+				die("Error clearing reserved sectors", ERROR_WRITE_FAULT);
+		} else
 #endif
-		if (write_sectors(hLogicalVolume, BytesPerSect, i, BurstSize, pZeroSect) != (BytesPerSect * BurstSize)) {
+		if (write_sectors(hLogicalVolume, BytesPerSect, i, sector_count, pZeroSect) !=
+			((int64_t)BytesPerSect * sector_count)) {
 			die("Error clearing reserved sectors", ERROR_WRITE_FAULT);
 		}
 	}
@@ -549,8 +618,19 @@ BOOL FormatLargeFAT32(DWORD DriveIndex, uint64_t PartitionOffset, DWORD ClusterS
 	// Now we should write the boot sector and fsinfo twice, once at 0 and once at the backup boot sect position
 	for (i = 0; i < 2; i++) {
 		int SectorStart = (i == 0) ? 0 : BackupBootSect;
-		write_sectors(hLogicalVolume, BytesPerSect, SectorStart, 1, pFAT32BootSect);
-		write_sectors(hLogicalVolume, BytesPerSect, SectorStart + 1, 1, pFAT32FsInfo);
+#ifdef RUFUS_TARGET_NT4
+		if (nt4_aligned_buffers) {
+			if ((NT4_WriteFat32Sectors(hPhysicalVolume, PartitionOffset, BytesPerSect,
+				SectorStart, 1, pFAT32BootSect) != BytesPerSect) ||
+				(NT4_WriteFat32Sectors(hPhysicalVolume, PartitionOffset, BytesPerSect,
+				SectorStart + 1, 1, pFAT32FsInfo) != BytesPerSect))
+				die("Could not write FAT32 reserved sectors", ERROR_WRITE_FAULT);
+		} else
+#endif
+		{
+			write_sectors(hLogicalVolume, BytesPerSect, SectorStart, 1, pFAT32BootSect);
+			write_sectors(hLogicalVolume, BytesPerSect, SectorStart + 1, 1, pFAT32FsInfo);
+		}
 	}
 
 	// Write the first fat sector in the right places
@@ -561,7 +641,14 @@ BOOL FormatLargeFAT32(DWORD DriveIndex, uint64_t PartitionOffset, DWORD ClusterS
 	for (i = 0; i < NumFATs; i++) {
 		int SectorStart = ReservedSectCount + (i * FatSize);
 		uprintf("FAT #%d sector at address: %d", i, SectorStart);
-		write_sectors(hLogicalVolume, BytesPerSect, SectorStart, 1, pFirstSectOfFat);
+#ifdef RUFUS_TARGET_NT4
+		if (nt4_aligned_buffers) {
+			if (NT4_WriteFat32Sectors(hPhysicalVolume, PartitionOffset, BytesPerSect,
+				SectorStart, 1, pFirstSectOfFat) != BytesPerSect)
+				die("Could not initialize FAT32 table", ERROR_WRITE_FAULT);
+		} else
+#endif
+			write_sectors(hLogicalVolume, BytesPerSect, SectorStart, 1, pFirstSectOfFat);
 	}
 
 #ifdef RUFUS_TARGET_NT4
@@ -573,7 +660,7 @@ BOOL FormatLargeFAT32(DWORD DriveIndex, uint64_t PartitionOffset, DWORD ClusterS
 			memset(pZeroSect, 0, BytesPerSect);
 			memcpy(pZeroSect, VolId, 11);
 			pZeroSect[11] = 0x08;
-			if (write_sectors(hLogicalVolume, BytesPerSect,
+			if (NT4_WriteFat32Sectors(hPhysicalVolume, PartitionOffset, BytesPerSect,
 				ReservedSectCount + NumFATs * FatSize, 1, pZeroSect) != BytesPerSect)
 				die("Could not write FAT32 volume label", ERROR_WRITE_FAULT);
 		}
@@ -587,10 +674,17 @@ BOOL FormatLargeFAT32(DWORD DriveIndex, uint64_t PartitionOffset, DWORD ClusterS
 #endif
 		// Must do it here, as have issues when trying to write the PBR after a remount
 		PrintInfoDebug(0, MSG_229);
+#ifdef RUFUS_TARGET_NT4
+		if ((nt4_aligned_buffers && ((hPhysicalVolume == INVALID_HANDLE_VALUE) ||
+			!WritePBRAtOffset(hPhysicalVolume, PartitionOffset))) ||
+			(!nt4_aligned_buffers && !WritePBR(hLogicalVolume))) {
+#else
 		if (!WritePBR(hLogicalVolume)) {
+#endif
 			// Non fatal error, but the drive probably won't boot
 			uprintf("Could not write partition boot record - drive may not boot...");
 		}
+		safe_closehandle(hPhysicalVolume);
 	}
 
 	// Set the FAT32 volume label
@@ -618,6 +712,7 @@ BOOL FormatLargeFAT32(DWORD DriveIndex, uint64_t PartitionOffset, DWORD ClusterS
 out:
 	safe_free(VolumeName);
 	safe_closehandle(hLogicalVolume);
+	safe_closehandle(hPhysicalVolume);
 #ifdef RUFUS_TARGET_NT4
 	if (nt4_aligned_buffers) {
 		// Every pointer in this branch came from _mm_malloc()
