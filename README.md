@@ -7,8 +7,8 @@ The original project can be found [under this link.](https://github.com/pbatard/
 
 ## Features
   
-- Everything that [Rufus 4.7](https://github.com/pbatard/rufus/tree/v4.7) has to offer
-- ... but on Windows versions no one sane would ever consider
+- Everything that [Rufus](https://github.com/pbatard/rufus/tree/v4.7) already has to offer<br>
+  ... but on Windows versions no one sane would ever consider
 
 | Windows Version | Formatting / Partitioning | Windows To Go | Disk Cloning | Networking | Localization |
 | --- | --- | --- | --- | --- | --- |
