@@ -6,10 +6,11 @@
 The original project can be found [under this link.](https://github.com/pbatard/rufus)
 
 ## Features
-  
-- Everything that [Rufus](https://github.com/pbatard/rufus/tree/v4.7) already has to offer<br>
-  ... but on Windows versions no one sane would ever consider
 
+<details>
+<summary><strong>Compatibility chart</strong></summary>
+<br>
+  
 | Windows Version | Formatting / Partitioning | Windows To Go | Disk Cloning | Networking | Localization |
 | --- | --- | --- | --- | --- | --- |
 | Windows 7      | Fully supported | Fully supported | VHD Only    | Fully supported | Fully supported |
@@ -18,6 +19,10 @@ The original project can be found [under this link.](https://github.com/pbatard/
 | Windows 2000   | Fully supported | Fully supported | VHD Only    | Disabled        | No Arabic       |
 | Windows NT 4.0 | Fully supported | Supported (?)   | Unsupported | Disabled        | Limited         |
 
+</details>
+  
+- Everything that [Rufus](https://github.com/pbatard/rufus/tree/v4.7) already has to offer<br>
+  ... but on Windows versions no one sane would ever consider
 - Specific fixes and optimizations for all systems
 - Fido ISO downloading restored to Windows 7<br>
 -> [Powershell 7.2](https://github.com/PowerShell/PowerShell/releases/tag/v7.2.24) is required<br>
@@ -27,6 +32,9 @@ The original project can be found [under this link.](https://github.com/pbatard/
 - Native, optimized, fully functional UI even on older systems
 - Increased performance over last-supported versions (~15% on average)
 - Actively maintained, selectively updated from upstream
+
+More about Rufus-NT features: [Rufus-NT Changelog](https://raw.githubusercontent.com/non4med-dev/Rufus-NT/master/ChangeLog-NT.txt)<br>
+More about backported Rufus features: [Rufus Changelog](https://raw.githubusercontent.com/non4med-dev/Rufus-NT/master/ChangeLog.txt)
 
 ## Documentation
 
