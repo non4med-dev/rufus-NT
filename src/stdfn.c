@@ -217,7 +217,7 @@ uint32_t htab_hash(char* str, htab_table* htab)
 	return idx;
 }
 
-static const char* GetEdition(DWORD ProductType)
+const char* GetEditionName(DWORD ProductType)
 {
 	static char unknown_edition_str[64];
 
@@ -480,7 +480,7 @@ void GetWindowsVersion(windows_version_t* windows_version)
 		safe_sprintf(vptr, vlen, "%s SP%u %s", w, vi.wServicePackMajor, arch_name);
 	else
 		safe_sprintf(vptr, vlen, "%s%s%s %s",
-			w, (dwProductType != 0) ? " " : "", GetEdition(dwProductType), arch_name);
+			w, (dwProductType != 0) ? " " : "", GetEditionName(dwProductType), arch_name);
 
 	windows_version->Edition = (int)dwProductType;
 
@@ -500,6 +500,70 @@ void GetWindowsVersion(windows_version_t* windows_version)
 }
 
 /*
+ * Retrieve VS_FIXEDFILEINFO without relying on version.dll.
+ *
+ * This is primarily a compatibility fallback for NT4.  NT4's version.dll
+ * predates PE32+ and may fail to obtain version information from modern
+ * 64-bit executables such as Windows Setup.  VS_FIXEDFILEINFO itself is a
+ * fixed binary structure inside the executable's VERSIONINFO resource, so
+ * locating a valid instance is sufficient for the file-version fields Rufus
+ * needs here.
+ */
+
+// setup.exe parsing fallback for NT4
+static version_t* GetExecutableVersionRaw(const char* path)
+{
+	static version_t version;
+	uint8_t* file = NULL;
+	uint32_t size, i;
+	VS_FIXEDFILEINFO info;
+
+	memset(&version, 0, sizeof(version));
+
+	size = read_file(path, &file);
+	if ((size < sizeof(VS_FIXEDFILEINFO)) || (file == NULL))
+		goto out;
+
+	for (i = 0; i <= size - sizeof(VS_FIXEDFILEINFO); i++) {
+		/*
+		 * Avoid unaligned structure access.  The VERSIONINFO structure is
+		 * normally DWORD aligned, but a bytewise scan is cheap for setup.exe
+		 * and also makes the fallback independent of PE resource-directory
+		 * layout details.
+		 */
+		if ((file[i + 0] != 0xbd) || (file[i + 1] != 0x04) ||
+			(file[i + 2] != 0xef) || (file[i + 3] != 0xfe))
+			continue;
+
+		memcpy(&info, &file[i], sizeof(info));
+
+		if ((info.dwSignature != 0xfeef04bd) ||
+			((info.dwStrucVersion >> 16) != 1))
+			continue;
+
+		version.Major = (info.dwFileVersionMS >> 16) & 0xffff;
+		version.Minor = info.dwFileVersionMS & 0xffff;
+		version.Micro = (info.dwFileVersionLS >> 16) & 0xffff;
+		version.Nano = info.dwFileVersionLS & 0xffff;
+
+		/*
+		 * Reject obviously unrelated data in the extremely unlikely event
+		 * that the signature occurs outside VERSIONINFO.
+		 */
+		if ((version.Major == 0) || (version.Major > 99) ||
+			(version.Micro == 0))
+			continue;
+
+		free(file);
+		return &version;
+	}
+
+out:
+	free(file);
+	return NULL;
+}
+
+/*
  * Why oh why does Microsoft make it so convoluted to retrieve a measly executable's version number ?
  */
 version_t* GetExecutableVersion(const char* path)
@@ -507,32 +571,55 @@ version_t* GetExecutableVersion(const char* path)
 	static version_t version, *r = NULL;
 	uint8_t* buf = NULL;
 	UINT uLen;
-	DWORD dwSize, dwHandle;
+	DWORD dwSize = 0, dwHandle = 0;
 	VS_FIXEDFILEINFO* version_info;
 
 	memset(&version, 0, sizeof(version));
+	r = NULL;
 
-	dwSize = GetFileVersionInfoSizeU(path, &dwHandle);
-	if (dwSize == 0)
-		goto out;
+	/*
+	 * Keep the normal VERSION.DLL path first.  On NT4 use the ANSI entry
+	 * points, since the Unicode variants are not a safe dependency there.
+	 */
+	if (WindowsVersion.Version == WINDOWS_NT4)
+		dwSize = GetFileVersionInfoSizeA(path, &dwHandle);
+	else
+		dwSize = GetFileVersionInfoSizeU(path, &dwHandle);
 
-	buf = malloc(dwSize);
-	if (buf == NULL)
-		goto out;;
-	if (!GetFileVersionInfoU(path, dwHandle, dwSize, buf))
-		goto out;
+	if (dwSize != 0) {
+		buf = malloc(dwSize);
+		if (buf != NULL) {
+			if (WindowsVersion.Version == WINDOWS_NT4) {
+				if (!GetFileVersionInfoA(path, dwHandle, dwSize, buf))
+					goto raw_fallback;
+			} else {
+				if (!GetFileVersionInfoU(path, dwHandle, dwSize, buf))
+					goto raw_fallback;
+			}
 
-	if (!VerQueryValueA(buf, "\\", (LPVOID*)&version_info, &uLen) || uLen == 0)
-		goto out;
+			if (!VerQueryValueA(buf, "\\", (LPVOID*)&version_info, &uLen) ||
+				(uLen == 0) || (version_info->dwSignature != 0xfeef04bd))
+				goto raw_fallback;
 
-	if (version_info->dwSignature != 0xfeef04bd)
-		goto out;
+			version.Major = (version_info->dwFileVersionMS >> 16) & 0xffff;
+			version.Minor = version_info->dwFileVersionMS & 0xffff;
+			version.Micro = (version_info->dwFileVersionLS >> 16) & 0xffff;
+			version.Nano = version_info->dwFileVersionLS & 0xffff;
+			r = &version;
+			goto out;
+		}
+	}
 
-	version.Major = (version_info->dwFileVersionMS >> 16) & 0xffff;
-	version.Minor = (version_info->dwFileVersionMS >> 0) & 0xffff;
-	version.Micro = (version_info->dwFileVersionLS >> 16) & 0xffff;
-	version.Nano = (version_info->dwFileVersionLS >> 0) & 0xffff;
-	r = &version;
+raw_fallback:
+	free(buf);
+	buf = NULL;
+
+	/*
+	 * Especially important on NT4 with modern PE32+ setup.exe files:
+	 * obtain VS_FIXEDFILEINFO directly from the executable instead of
+	 * depending on the host's version.dll understanding that PE format.
+	 */
+	r = GetExecutableVersionRaw(path);
 
 out:
 	free(buf);

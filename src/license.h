@@ -17,7 +17,7 @@
  * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  */
 
-// Replace Rufus URL with my own
+ // Replace Rufus URL with my own
 const char* about_blurb_format =
 "{\\rtf1\\ansi\n"
 "\\b\\fs20%s\\b0\\line\n"
@@ -49,15 +49,15 @@ const char* additional_copyrights_format =
 "https://axialis.com/\\line\n"
 "%s\\line\n"
 "\\line\n"
-"Retro7zip — Darik Horn:\\line\n"
+"Retro7zip - Darik Horn:\\line\n"
 "https://github.com/dajhorn/retro7zip\\line\n"
 "%s\\line\n"
 "%s © Darik Horn 2025\\line\n"
-"7-Zip — Igor Pavlov:\\line\n"
-"%s © 1999-2025 Igor Pavlov\\line\n"
+"7-Zip - Igor Pavlov:\\line\n"
+"© 1999-2025 Igor Pavlov\\line\n"
 "GNU LGPL v2.1 or later\\line\n"
 "\\line\n"
-"wimlib — %s © Eric Biggers %s\\line\n"
+"wimlib - %s © Eric Biggers %s\\line\n"
 "https://github.com/ebiggers/wimlib\\line\n"
 "GNU GPL v3 or later\\line\n"
 "libwim: GNU LGPL v2.1 or later\\line\n"
@@ -87,9 +87,9 @@ const char* additional_copyrights_format =
 "GNU General Public License (GPL) v3 or later\\line\n"
 "\\line\n"
 "%s:\\line\n"
-"Syslinux 6.04 — ldlinux.c32 (GNU GPL v2 or later)\\line\n"
-"Grub4DOS 0.4.5c and 0.4.6a — grldr (GNU GPL v2 or later)\\line\n"
-"GNU GRUB 2.00 through 2.14 — core.img variants (GNU GPL v3 or later)\\line\n"
+"Syslinux 6.04 - ldlinux.c32 (GNU GPL v2 or later)\\line\n"
+"Grub4DOS 0.4.5c and 0.4.6a - grldr (GNU GPL v2 or later)\\line\n"
+"GNU GRUB 2.00 through 2.14 - core.img variants (GNU GPL v3 or later)\\line\n"
 "\\line\n"
 "ReactOS support & additional FAT and time-conversion handling by ReactOS:\\line\n"
 "https://www.reactos.org/\\line\n"

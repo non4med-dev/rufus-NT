@@ -56,6 +56,60 @@ size_t ubuffer_pos = 0;
 char ubuffer[UBUFFER_SIZE];	// Buffer for ubpushf() messages we don't log right away
 static uint64_t archive_size;
 
+#ifdef RUFUS_TARGET_NT4
+typedef struct {
+	const char* utf8;
+	const char* ascii;
+} nt4_log_substitution_t;
+
+// HERE OMG BIG MASSIVE CHANGE WITH COMMENTED EXPLAINED CODE NO WAY
+// Should look much cleaner now
+static void NT4_SanitizeLogText(const char* src, char* dst, size_t dst_size)
+{
+	static const nt4_log_substitution_t substitution[] = {
+		{ "\xE2\x80\xA2", " " },	// U+2022 BULLET
+		{ "\xE2\x97\x8F", " " },	// U+25CF BLACK CIRCLE
+		{ "\xE2\x9C\x93", "OK" },	// U+2713 CHECK MARK
+		{ "\xE2\x9C\x97", "FAIL" },	// U+2717 BALLOT X
+		{ "\xE2\x86\x92", "->" },	// U+2192 RIGHTWARDS ARROW
+		{ "\xE2\x9E\x94", "->" },	// U+2794 HEAVY WIDE-HEADED RIGHTWARDS ARROW
+		{ "\xE2\x80\x94", "-" },	// U+2014 EM DASH
+		{ "\xE2\x80\x93", "-" },	// U+2013 EN DASH
+		{ "\xE2\x9A\xA0", "!" },	// U+26A0 WARNING SIGN
+	};
+	size_t i, len, remaining;
+
+	if ((src == NULL) || (dst == NULL) || (dst_size == 0))
+		return;
+
+	remaining = dst_size - 1;
+	while ((*src != 0) && (remaining != 0)) {
+		BOOL replaced = FALSE;
+
+		for (i = 0; i < ARRAYSIZE(substitution); i++) {
+			len = strlen(substitution[i].utf8);
+			if (strncmp(src, substitution[i].utf8, len) == 0) {
+				size_t ascii_len = strlen(substitution[i].ascii);
+				size_t copy_len = min(ascii_len, remaining);
+
+				memcpy(dst, substitution[i].ascii, copy_len);
+				dst += copy_len;
+				remaining -= copy_len;
+				src += len;
+				replaced = TRUE;
+				break;
+			}
+		}
+
+		if (!replaced) {
+			*dst++ = *src++;
+			remaining--;
+		}
+	}
+	*dst = 0;
+}
+#endif
+
 #pragma pack(push, 1)
 typedef struct {
 	DWORD   Signature;	// "RSDS"
@@ -68,6 +122,10 @@ typedef struct {
 void uprintf(const char *format, ...)
 {
 	static char buf[4096];
+#ifdef RUFUS_TARGET_NT4
+	static char nt4_buf[8192];
+	const char* output;
+#endif
 	char* p = buf;
 	wchar_t* wbuf;
 	va_list args;
@@ -86,7 +144,16 @@ void uprintf(const char *format, ...)
 	*p++ = '\n';
 	*p   = '\0';
 
+#ifdef RUFUS_TARGET_NT4
+	output = buf;
+	if (WindowsVersion.Version <= WINDOWS_NT4) {
+		NT4_SanitizeLogText(buf, nt4_buf, sizeof(nt4_buf));
+		output = nt4_buf;
+	}
+	wbuf = utf8_to_wchar(output);
+#else
 	wbuf = utf8_to_wchar(buf);
+#endif
 	// Send output to Windows debug facility
 	// coverity[dont_call]
 	OutputDebugStringW(wbuf);
@@ -103,7 +170,22 @@ void uprintf(const char *format, ...)
 void uprintfs(const char* str)
 {
 	wchar_t* wstr;
+#ifdef RUFUS_TARGET_NT4
+	char* nt4_str = NULL;
+	const char* output = str;
+
+	if ((WindowsVersion.Version <= WINDOWS_NT4) && (str != NULL)) {
+		size_t nt4_size = 2 * strlen(str) + 1;
+		nt4_str = (char*)malloc(nt4_size);
+		if (nt4_str != NULL) {
+			NT4_SanitizeLogText(str, nt4_str, nt4_size);
+			output = nt4_str;
+		}
+	}
+	wstr = utf8_to_wchar(output);
+#else
 	wstr = utf8_to_wchar(str);
+#endif
 	// coverity[dont_call]
 	OutputDebugStringW(wstr);
 	if ((hLog != NULL) && (hLog != INVALID_HANDLE_VALUE)) {
@@ -112,6 +194,9 @@ void uprintfs(const char* str)
 		Edit_Scroll(hLog, Edit_GetLineCount(hLog), 0);
 	}
 	free(wstr);
+#ifdef RUFUS_TARGET_NT4
+	safe_free(nt4_str);
+#endif
 }
 
 uint32_t read_file(const char* path, uint8_t** buf)
@@ -556,7 +641,7 @@ HANDLE CreateFileWithTimeout(LPCSTR lpFileName, DWORD dwDesiredAccess, DWORD dwS
 BOOL WriteFileWithRetry(HANDLE hFile, LPCVOID lpBuffer, DWORD nNumberOfBytesToWrite,
 	LPDWORD lpNumberOfBytesWritten, DWORD nNumRetries)
 {
-	DWORD nTry, waited;
+	DWORD error, nTry, waited;
 	BOOL readFilePointer;
 	LARGE_INTEGER liFilePointer, liZero = { { 0,0 } };
 	DWORD NumberOfBytesWritten;
@@ -595,8 +680,14 @@ BOOL WriteFileWithRetry(HANDLE hFile, LPCVOID lpBuffer, DWORD nNumberOfBytesToWr
 			}
 			uprintf("Wrote %d bytes but requested %d", *lpNumberOfBytesWritten, nNumberOfBytesToWrite);
 		} else {
+			error = GetLastError();
 			uprintf("Write error %s", WindowsErrorString());
-			LastWriteError = RUFUS_ERROR(GetLastError());
+			LastWriteError = RUFUS_ERROR(error);
+			if (IS_DISK_FULL_ERROR(error)) {
+				ErrorStatus = LastWriteError;
+				SetLastError(error);
+				return FALSE;
+			}
 		}
 		// If we can't reposition for the next run, just abort
 		if (!readFilePointer)

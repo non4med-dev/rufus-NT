@@ -71,11 +71,42 @@ int    loc_line_nr;
 struct list_head locale_list = {NULL, NULL};
 char   *loc_filename = NULL, *embedded_loc_filename = "embedded.loc";
 static BOOL localization_initialized = FALSE;
+extern loc_cmd* selected_locale;
 
 /* Message table */
 char* default_msg_table[MSG_MAX-MSG_000] = {"%s", 0};
 char* current_msg_table[MSG_MAX-MSG_000] = {"%s", 0};
 char** msg_table = NULL;
+
+static void MakeNT4TurkishAscii(char* str)
+{
+	char *src = str, *dst = str;
+	static const struct {
+		uint8_t b0, b1;
+		char replacement;
+	} map[] = {
+		{ 0xc3, 0x87, 'C' }, { 0xc3, 0x96, 'O' }, { 0xc3, 0x9c, 'U' },
+		{ 0xc3, 0xa7, 'c' }, { 0xc3, 0xb6, 'o' }, { 0xc3, 0xbc, 'u' },
+		{ 0xc4, 0x9e, 'G' }, { 0xc4, 0xb0, 'I' }, { 0xc4, 0xb1, 'i' },
+		{ 0xc4, 0x9f, 'g' }, { 0xc5, 0x9e, 'S' }, { 0xc5, 0x9f, 's' }
+	};
+	size_t i;
+
+	if (str == NULL)
+		return;
+	while (*src != 0) {
+		for (i = 0; i < ARRAYSIZE(map); i++) {
+			if (((uint8_t)src[0] == map[i].b0) && ((uint8_t)src[1] == map[i].b1)) {
+				*dst++ = map[i].replacement;
+				src += 2;
+				break;
+			}
+		}
+		if (i == ARRAYSIZE(map))
+			*dst++ = *src++;
+	}
+	*dst = 0;
+}
 
 static void mtab_destroy(BOOL reinit)
 {
@@ -215,6 +246,9 @@ BOOL dispatch_loc_cmd(loc_cmd* lcmd)
 
 	if (lcmd == NULL)
 		return FALSE;
+	if ((WindowsVersion.Version == WINDOWS_NT4) && (selected_locale != NULL) &&
+		(safe_strcmp(selected_locale->txt[0], "tr-TR") == 0))
+		MakeNT4TurkishAscii(lcmd->txt[1]);
 
 	if (lcmd->command <= LC_TEXT) {
 		// Any command up to LC_TEXT takes a control ID in text[0]

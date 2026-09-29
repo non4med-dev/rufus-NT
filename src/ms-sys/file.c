@@ -28,6 +28,77 @@
 
 extern unsigned long ulBytesPerSector;
 
+#ifdef RUFUS_TARGET_NT4
+static int64_t GPT_SyslinuxNT4RawTransfer(HANDLE hDrive, uint64_t SectorSize,
+	uint64_t StartSector, uint64_t nSectors, void* pBuf, BOOL write)
+{
+	BYTE* bounce = NULL;
+	DWORD total, chunk, transferred, done = 0;
+	DWORD unit;
+	LARGE_INTEGER ptr;
+	uint64_t byte_count;
+
+	if ((hDrive == INVALID_HANDLE_VALUE) || (pBuf == NULL) ||
+		(SectorSize == 0) || (nSectors == 0)) {
+		SetLastError(ERROR_INVALID_PARAMETER);
+		return -1;
+	}
+
+	byte_count = SectorSize * nSectors;
+	if (byte_count > MAXDWORD) {
+		SetLastError(ERROR_INVALID_PARAMETER);
+		return -1;
+	}
+	total = (DWORD)byte_count;
+
+	unit = (32 * KB / (DWORD)SectorSize) * (DWORD)SectorSize;
+	if (unit == 0)
+		unit = (DWORD)SectorSize;
+	if (unit > total)
+		unit = total;
+
+	// Guess whos back, back again
+	bounce = (BYTE*)VirtualAlloc(NULL, unit,
+		MEM_RESERVE | MEM_COMMIT, PAGE_READWRITE);
+	if (bounce == NULL)
+		return -1;
+
+	while (done < total) {
+		chunk = min(unit, total - done);
+		transferred = 0;
+		ptr.QuadPart = (LONGLONG)(StartSector * SectorSize) + done;
+
+		if (!SetFilePointerEx(hDrive, ptr, NULL, FILE_BEGIN))
+			goto error;
+
+		if (write) {
+			memcpy(bounce, (const BYTE*)pBuf + done, chunk);
+			if (!WriteFile(hDrive, bounce, chunk, &transferred, NULL) ||
+				(transferred != chunk))
+				goto error;
+		} else {
+			if (!ReadFile(hDrive, bounce, chunk, &transferred, NULL) ||
+				(transferred != chunk))
+				goto error;
+			memcpy((BYTE*)pBuf + done, bounce, chunk);
+		}
+
+		done += chunk;
+	}
+
+	VirtualFree(bounce, 0, MEM_RELEASE);
+	if (write)
+		LastWriteError = 0;
+	return done;
+
+error:
+	if (write)
+		LastWriteError = RUFUS_ERROR(GetLastError());
+	VirtualFree(bounce, 0, MEM_RELEASE);
+	return -1;
+}
+#endif
+
 /* Returns the number of bytes written or -1 on error */
 int64_t write_sectors(HANDLE hDrive, uint64_t SectorSize,
                       uint64_t StartSector, uint64_t nSectors,
@@ -35,6 +106,12 @@ int64_t write_sectors(HANDLE hDrive, uint64_t SectorSize,
 {
    LARGE_INTEGER ptr;
    DWORD Size;
+
+#ifdef RUFUS_TARGET_NT4
+   if (WindowsVersion.Version <= WINDOWS_NT4)
+      return GPT_SyslinuxNT4RawTransfer(hDrive, SectorSize, StartSector,
+         nSectors, (void*)pBuf, TRUE);
+#endif
 
    if((nSectors*SectorSize) > 0xFFFFFFFFUL)
    {
@@ -82,6 +159,12 @@ int64_t read_sectors(HANDLE hDrive, uint64_t SectorSize,
 {
    LARGE_INTEGER ptr;
    DWORD Size;
+
+#ifdef RUFUS_TARGET_NT4
+   if (WindowsVersion.Version <= WINDOWS_NT4)
+      return GPT_SyslinuxNT4RawTransfer(hDrive, SectorSize, StartSector,
+         nSectors, pBuf, FALSE);
+#endif
 
    if((nSectors*SectorSize) > 0xFFFFFFFFUL)
    {

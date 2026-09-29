@@ -1306,6 +1306,44 @@ char* replace_char(const char* src, const char c, const char* rep)
 }
 
 /*
+ * Replace all characters from string 'str' that are present in the array of chars 'rem'
+ * to the 'rep' character.
+ */
+// commit [fec6051] "[wue] filter disallowed characters in local account names"
+void filter_chars(char* str, const char* rem, const char rep)
+{
+	char *p, *q;
+
+	if (str == NULL || rem == NULL)
+		return;
+	for (p = str; *p != '\0'; p++) {
+		for (q = (char*)rem; *q != '\0'; q++)
+			if (*p == *q)
+				*p = rep;
+	}
+}
+
+/*
+ * Trim all leadings and trailing whitespaces
+ */
+// commit [bca7974] "[wue] trim the local account name string"
+void trim(char* str)
+{
+	size_t l;
+	char* p;
+
+	if (str == NULL)
+		return;
+	l = strlen(str);
+	if (l < 1)
+		return;
+	while (isspace((unsigned char)str[l - 1]))
+		str[--l] = '\0';
+	for (p = str; *p != '\0' && isspace((unsigned char)*p); p++, l--);
+	memmove(str, p, l + 1);
+}
+
+/*
  * Remove all instances of substring 'sub' form string 'src.
  * The returned string is allocated and must be freed by the caller.
  */

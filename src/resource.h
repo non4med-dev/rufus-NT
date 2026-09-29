@@ -228,6 +228,7 @@
 #define IDC_LIST_ITEM14                 1111
 #define IDC_LIST_ITEM15                 1112
 #define IDC_LIST_ITEMMAX                1113
+#define IDC_SELECTION_EDITION           1114
 #define IDS_DEVICE_TXT                  2000
 #define IDS_PARTITION_TYPE_TXT          2001
 #define IDS_FILE_SYSTEM_TXT             2002
@@ -712,7 +713,7 @@
 #define _APS_NO_MFC                     1
 #define _APS_NEXT_RESOURCE_VALUE        513
 #define _APS_NEXT_COMMAND_VALUE         40001
-#define _APS_NEXT_CONTROL_VALUE         1114
+#define _APS_NEXT_CONTROL_VALUE         1115
 #define _APS_NEXT_SYMED_VALUE           4000
 #endif
 #endif

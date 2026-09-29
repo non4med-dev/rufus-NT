@@ -81,7 +81,7 @@ extern windows_version_t WindowsVersion;
 int partition_index[PI_MAX];
 uint64_t persistence_size = 0;
 
-// GPT on XP/2000 (port)
+// GPT on XP/2000
 // The most beautiful part of all >:D
 // This attempts to preserve GPT structure and metadata whilst letting NT5 write data through a temporary MBR
 static BOOL xp_gpt_pending = FALSE;
@@ -1649,6 +1649,7 @@ const struct {int (*fn)(FILE *fp); char* str;} known_mbr[] = {
 	{ is_win7_mbr, "Windows 7" },
 	{ is_rufus_mbr, "Rufus" },
 	{ is_syslinux_mbr, "Syslinux" },
+	{ is_isolinux_mbr, "Isolinux" },
 	{ is_reactos_mbr, "ReactOS" },
 	{ is_kolibrios_mbr, "KolibriOS" },
 	{ is_grub4dos_mbr, "Grub4DOS" },

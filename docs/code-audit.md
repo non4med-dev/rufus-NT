@@ -1,5 +1,5 @@
 # Update 5 Audit (to make up for the unclear commits)
-Rufus-NT is based on Rufus 4.7.2231 and evolved from my previous project Rufus-Legacy, which source code I uploaded under "Update 1".<br>
+Rufus-NT was originally based on Rufus 4.7.2231 and evolved from my previous project Rufus-Legacy, (source uploaded under "Update 1").<br>
 I decided to go with this exact version, as it's the last one to use a non-wimlib base and be compatible with old versions of VS2022.
 
 Rufus-NT uses compatibility layers for Windows NT 4.0, Windows 2000 and Windows XP. Most fallbacks are selected at runtime through `WindowsVersion.Version`. In other words, compiling with `RUFUS_TARGET_NT4` only makes the compatibility code available, and doesn't force newer systems through the same compatibility paths meant for NT 4.0. This allows one executable to work completely fine on all Windows versions.
@@ -29,7 +29,7 @@ The main 'philosophy' behind the project is one executable being able to run on 
 <summary><strong>2. Windows NT 4.0</strong></summary>
 <br>
 
-Here is where I lost my sanity. Modern Rufus expects SetupAPI disk interfaces, volume GUIDs, modern partition structures and an actually working _ekhem_ USB stack. NT4 provides none of these things. Fuck you NT4 and your IRQL_NOT_LESS_OR_EQUAL
+This OS made me develop stockholmer syndrome. Rufus expects SetupAPI disk interfaces, volume GUIDs, modern partition structures and an actually working (_cough_) USB stack. NT4 provides none of these things. None. 
 
 `nt4.c` and `nt4.h` implement/route the missing file, volume, shell, security, SetupAPI and Configuration Manager calls. `NT4_CreateFileA()` can reach a physical disk through a temporary DOS-device alias when `\\.\PhysicalDriveN` is unavailable. Volume mounting is handled by `AltMountVolume()` and `AltUnmountVolume()`, which use DOS-device mappings instead of volume GUID mount points.
 
@@ -50,6 +50,9 @@ Disk handling had to be changed in a few more places:
 - NTFS and UEFI:NTFS share the same `FormatNative()` path and formatter I/O shim
 - ext2/ext3 use the native physical-device backend and do not rely on Windows mounting the volume
 - The final NTFS `chkdsk` pass are skipped
+
+Syslinux was EXTREMELY problematic on NT4; `/src/ms-sys/file.c` and `/src/syslinux.c` were both edited to fix the 206 FAT32 formatter BSODs, as well as ldlinux.sys patching and lookup.<br>
+NTFS partitioning for Syslinux has also been disabled there.
 
 The NTFS shim is the ugliest looking part for a reason. `NT4_InstallFormatterIoShim()` patches the formatter modules' imported read/write functions and routes them through aligned, split I/O with proper pending-I/O waits. This is what keeps NT4's formatter and unstable USB drivers from receiving shit they cannot handle.
 
@@ -135,20 +138,18 @@ The Secure Boot (DBX) checks are half upstream and half custom code.
 <details>
 <summary><strong>7. Diagnostics, UI and localization</strong></summary>
 <br>
-The NT4 diagnostics exist because that damn USB drivers crash the system before Rufus can even say what's wrong.
+The NT4 diagnostics exist because that damn USB drivers crash the system before Rufus can even spit out what's wrong.
 
-`NT4_SetDiskFunction()` stores the current larger operation in `LastDiskFunction`, while `NT4_SetDiskStage()` stores the smaller numbered checkpoint in `LastDiskStage`. Both are written under `HKCU\Software\Rufus-NT` and flushed. They survive a crash and are cleared only after a successful operation, therefore reopening Rufus by accident after a crash doesn't erase them.
+`NT4_SetDiskFunction()` stores the current larger operation in `LastDiskFunction`, `NT4_SetDiskStage()` stores numbered checkpoint in `LastDiskStage`. They're extremely useful for pinpointing which stage actually failed. Both are written under `HKCU\Software\Rufus-NT` and flushed. They survive a crash and are cleared only after a successful operation, therefore reopening Rufus by accident after a crash doesn't erase them.
 
 A Diagnostics button was added to the Log window, and it writes three sections into a text report: 
 - Rufus-NT's registry tree
 - AppData filenames/sizes
 - and the normal log.
 
-This is crucial for NT4 crash reports, and could be useful on newer systems aswell for creating github issues.
+The UI required a LOT of work. Buttons were overshadowed by invisible masks, icons didn't load, half the UI would disappear and dialogs wouldn't load. Most of the work should be in `stdlg.c`, `rufus.c` and `ui.c`. Lots of custom dialogs have been invented and some preexisting ones like the DBX popup had to be reworked. Tahoma is used as the applicationwide font on W2k and XP, whilst my pretty baby NT4 received MS Sans Serif and LOTS of ANSII compatibility fixes.
 
-The UI required a LOT of work. Buttons were overshadowed by invisible masks, icons didn't load, half the UI would disappear and dialogs wouldn't load. Most of the work should be in `stdlg.c`, `rufus.c` and `ui.c`. Lots of custom dialogs have been invented to be native and Tahoma is used instead of Segoe UI on Windows XP and older, fixing the wide-window issue.
-
-The About Rufus window was completely reworked, retro7zip and wimlib were added to additional copyrights and are stated in the main menu itself, localization has been added to additional copyrights, the Rufus and Rufus-NT changelogs were added, there too. The window is dynamically sized based on the longest string in the selected language and the font used. Additional copyrights and changelogs appear in a sidebar. When its opened, the window centers itself, UNLESS it was moved by the user. 
+The `About Rufus` window was completely reworked, retro7zip wimlib, grub, grub4dos and syslinux were added to additional copyrights, localization has been added to `Additional Copyrights`, the Rufus and Rufus-NT changelogs were added there as well. The window is dynamically sized based on the longest string in the selected language and the font used. `Additional Copyrights` and `Changelogs appear` in a RICHEDIT SIDEBAR!!!! :D When its opened, the window centers itself, UNLESS it was moved by the user beforehand.
 
 Rufus-NT-specific localization strings moved to the 500 source-ID block because the 300 block is reserved for strings backported from newer Rufus versions (for future updates).
 
@@ -156,11 +157,25 @@ Windows NT 4.0 doesn't support ASCII formatting for "MS Shell Dlg", or any other
 Those languages are: Croatian, Czech, Latvian, Lithuanian, Polish, Romanian, Serbian, Slovak, Slovenian, and Vietnamese<br>
 The custom fonts can be found in `/res/loc/po/NT4` with a `-NT4` suffix (ex. pl-PL -> pl-NT4)<br>
 They work by turning special characters such as `ą` `ł` `š` `ă` `ệ` into regular ASCII letters `a` `l` `s` `a` `e`<br>
+There are some little ASCII translators in the code itself like `NT4_SanitizeLogText` which simply translate non-ASCII characters into, well, ASCII compatible ones
 Languages like Arabic, Greek, Hebrew, Persian had to be removed as they completely broke the UI.<br>
 The only languages natively supported in NT4 are English, Danish, Dutch, Finnish, French, German, Hungarian, Indonesian, Italian, Malay, Norwegian, Portuguese (both), Spanish, Swedish and Turkish<br>
 They are dynamically selected in `GetNT4Locale()` and are yet again behind a WindowsVersion.Version check<br>
 
 All other languages were removed there. On Windows XP and 2000 only Arabic was removed.
 
+
+</details>
+
+<details>
+<summary><strong>8. Windows User Experience</strong></summary>
+<br>
+The quality of life, windows user experience... Hello, beautiful
+
+It was backported straight from source. Pretty much no changes have been made.<br>
+Exact commits are labeled and can be found by simply searching
+`// commit `
+
+yey
 
 </details>

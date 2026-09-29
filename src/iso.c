@@ -46,6 +46,7 @@
 #include "winxp.h"
 #include "ui.h"
 #include "drive.h"
+#include "vhd.h"
 #include "libfat.h"
 #include "missing.h"
 #include "resource.h"
@@ -65,6 +66,9 @@ _Static_assert(256 * KB >= ISO_BLOCKSIZE, "Can't set PROGRESS_THRESHOLD");
 // Set the iso_open_ext() extension mask according to our global options
 #define ISO_EXTENSION_MASK        (ISO_EXTENSION_ALL & (enable_joliet ? ISO_EXTENSION_ALL : ~ISO_EXTENSION_JOLIET) & \
                                   (enable_rockridge ? ISO_EXTENSION_ALL : ~ISO_EXTENSION_ROCK_RIDGE))
+
+// Is an MBR partition type for a FAT12/FAT16/FAT32 partition?
+#define IS_FAT_TYPE(x)            ((x) == 0x01 || (x) == 0x04 || (x) == 0x06 || (x) == 0x0b || (x) == 0x0c || (x) == 0x0e)
 
 // Needed for UDF ISO access
 CdIo_t* cdio_open (const char* psz_source, driver_id_t driver_id) {return NULL;}
@@ -286,6 +290,11 @@ static BOOL check_iso_props(const char* psz_dirname, int64_t file_length, const 
 		if (!HAS_EFI_IMG(img_report) && (safe_strlen(psz_basename) >= 7) &&
 			(safe_strnicmp(psz_basename, "efi", 3) == 0) &&
 			(safe_stricmp(&psz_basename[strlen(psz_basename) - 4], ".img") == 0))
+			static_strcpy(img_report.efi_img_path, psz_fullpath);
+
+		// commit [c81f3cf] "[iso] add support for El-Torito UEFI image extraction"
+		// Special case for Lenovo UEFI firmware update ISOs, that use emulated El-Torito HDD images
+		if (!HAS_EFI_IMG(img_report) && stricmp(psz_fullpath, "/[BOOT]/0-Boot-HardDisk.img") == 0)
 			static_strcpy(img_report.efi_img_path, psz_fullpath);
 
 		// Check for the EFI boot entries
@@ -682,6 +691,8 @@ static int udf_extract_files(udf_t *p_udf, udf_dirent_t *p_udf_dirent, const cha
 			if (file_handle == INVALID_HANDLE_VALUE) {
 				err = GetLastError();
 				uprintf("  Unable to create file: %s", WindowsErrorString());
+				if (IS_DISK_FULL_ERROR(err))
+					ErrorStatus = RUFUS_ERROR(err);
 				if (((err == ERROR_ACCESS_DENIED) || (err == ERROR_INVALID_HANDLE)) &&
 					(safe_strcmp(&psz_sanpath[3], autorun_name) == 0))
 					uprintf(stupid_antivirus);
@@ -953,6 +964,8 @@ static int iso_extract_files(iso9660_t* p_iso, const char *psz_path)
 				if (file_handle == INVALID_HANDLE_VALUE) {
 					err = GetLastError();
 					uprintf("  Unable to create file: %s", WindowsErrorString());
+					if (IS_DISK_FULL_ERROR(err))
+						ErrorStatus = RUFUS_ERROR(err);
 					if (((err == ERROR_ACCESS_DENIED) || (err == ERROR_INVALID_HANDLE)) &&
 						(safe_strcmp(&psz_sanpath[3], autorun_name) == 0))
 						uprintf(stupid_antivirus);
@@ -1692,6 +1705,363 @@ out:
 	return ret;
 }
 
+static BOOL ReadISOFileRange(const char* iso, const char* iso_file, uint64_t offset, uint8_t* buf, size_t size)
+{
+	BOOL r = FALSE;
+	ssize_t read_size;
+	size_t copy_size;
+	uint64_t file_length;
+	uint8_t block[ISO_BLOCKSIZE];
+	char* file_path = NULL;
+	iso9660_t* p_iso = NULL;
+	udf_t* p_udf = NULL;
+	udf_dirent_t *p_udf_root = NULL, *p_udf_file = NULL;
+	iso9660_stat_t* p_statbuf = NULL;
+	lsn_t lsn;
+
+	if ((iso == NULL) || (iso_file == NULL) || (buf == NULL) || (size == 0))
+		return FALSE;
+	file_path = safe_strdup(iso_file);
+	if (file_path == NULL)
+		return FALSE;
+	to_unix_path(file_path);
+
+	p_udf = udf_open(iso);
+	if (p_udf == NULL)
+		goto try_iso;
+	p_udf_root = udf_get_root(p_udf, true, 0);
+	if (p_udf_root == NULL)
+		goto out;
+	p_udf_file = udf_fopen(p_udf_root, file_path);
+	if (p_udf_file == NULL)
+		goto out;
+	file_length = udf_get_file_length(p_udf_file);
+	if ((offset > file_length) || (size > file_length - offset) ||
+		!udf_setpos(p_udf_file, (off_t)(offset - offset % UDF_BLOCKSIZE)))
+		goto out;
+	if (offset % UDF_BLOCKSIZE) {
+		read_size = udf_read_block(p_udf_file, block, 1);
+		if (read_size <= (ssize_t)(offset % UDF_BLOCKSIZE))
+			goto out;
+		copy_size = MIN(size, (size_t)read_size - (size_t)(offset % UDF_BLOCKSIZE));
+		memcpy(buf, &block[offset % UDF_BLOCKSIZE], copy_size);
+		buf += copy_size;
+		size -= copy_size;
+	}
+	while (size >= UDF_BLOCKSIZE) {
+		read_size = udf_read_block(p_udf_file, buf, size / UDF_BLOCKSIZE);
+		if (read_size <= 0)
+			goto out;
+		buf += read_size;
+		size -= read_size;
+	}
+	if (size != 0) {
+		read_size = udf_read_block(p_udf_file, block, 1);
+		if (read_size < (ssize_t)size)
+			goto out;
+		memcpy(buf, block, size);
+	}
+	r = TRUE;
+	goto out;
+
+try_iso:
+	p_iso = iso9660_open_ext(iso, ISO_EXTENSION_MASK);
+	if (p_iso == NULL)
+		goto out;
+	p_statbuf = iso9660_ifs_stat_translate(p_iso, file_path);
+	if (p_statbuf == NULL)
+		goto out;
+	file_length = p_statbuf->total_size;
+	if ((offset > file_length) || (size > file_length - offset))
+		goto out;
+	lsn = p_statbuf->lsn + (lsn_t)(offset / ISO_BLOCKSIZE);
+	if (offset % ISO_BLOCKSIZE) {
+		if (iso9660_iso_seek_read(p_iso, block, lsn++, 1) != ISO_BLOCKSIZE)
+			goto out;
+		copy_size = MIN(size, ISO_BLOCKSIZE - (size_t)(offset % ISO_BLOCKSIZE));
+		memcpy(buf, &block[offset % ISO_BLOCKSIZE], copy_size);
+		buf += copy_size;
+		size -= copy_size;
+	}
+	if (size >= ISO_BLOCKSIZE) {
+		copy_size = size / ISO_BLOCKSIZE;
+		read_size = iso9660_iso_seek_read(p_iso, buf, lsn, copy_size);
+		if (read_size != (ssize_t)(copy_size * ISO_BLOCKSIZE))
+			goto out;
+		buf += read_size;
+		size -= read_size;
+		lsn += (lsn_t)copy_size;
+	}
+	if (size != 0) {
+		if (iso9660_iso_seek_read(p_iso, block, lsn, 1) != ISO_BLOCKSIZE)
+			goto out;
+		memcpy(buf, block, size);
+	}
+	r = TRUE;
+
+out:
+	iso9660_stat_free(p_statbuf);
+	udf_dirent_free(p_udf_root);
+	udf_dirent_free(p_udf_file);
+	iso9660_close(p_iso);
+	udf_close(p_udf);
+	safe_free(file_path);
+	return r;
+}
+
+#define WIM_RESHDR_FLAG_COMPRESSED       0x04
+#define WIM_RESHDR_FLAG_SOLID            0x10
+#define WIM_HDR_FLAG_COMPRESSION         0x00000002
+#define WIM_HDR_FLAG_COMPRESS_XPRESS     0x00020000
+#define WIM_HDR_FLAG_COMPRESS_LZX        0x00040000
+#define WIM_HDR_FLAG_COMPRESS_LZMS       0x00080000
+#define WIM_HDR_FLAG_COMPRESS_XPRESS_2   0x00200000
+
+#define WIMLIB_COMPRESSION_TYPE_XPRESS   1
+#define WIMLIB_COMPRESSION_TYPE_LZX      2
+#define WIMLIB_COMPRESSION_TYPE_LZMS     3
+
+static uint32_t ReadLe32(const uint8_t* p)
+{
+	return (uint32_t)p[0] |
+		((uint32_t)p[1] << 8) |
+		((uint32_t)p[2] << 16) |
+		((uint32_t)p[3] << 24);
+}
+
+static uint64_t ReadLe64(const uint8_t* p)
+{
+	return (uint64_t)ReadLe32(p) |
+		((uint64_t)ReadLe32(p + 4) << 32);
+}
+
+static uint32_t GetWimCompressionType(uint32_t flags)
+{
+	if ((flags & WIM_HDR_FLAG_COMPRESSION) == 0)
+		return 0;
+	if (flags & WIM_HDR_FLAG_COMPRESS_LZX)
+		return WIMLIB_COMPRESSION_TYPE_LZX;
+	if (flags & (WIM_HDR_FLAG_COMPRESS_XPRESS | WIM_HDR_FLAG_COMPRESS_XPRESS_2))
+		return WIMLIB_COMPRESSION_TYPE_XPRESS;
+	if (flags & WIM_HDR_FLAG_COMPRESS_LZMS)
+		return WIMLIB_COMPRESSION_TYPE_LZMS;
+	return 0;
+}
+
+static BOOL ReadCompressedWimXmlFromISO(const char* iso, const char* wim_path,
+	const uint8_t* header, uint64_t resource_offset, uint64_t resource_size,
+	uint64_t xml_size, uint8_t resource_flags, uint8_t* xml)
+{
+	BOOL r = FALSE;
+	uint8_t solid_header[16], *chunk_table = NULL, *compressed = NULL;
+	uint32_t wim_flags, compression_type, chunk_size, entry_size;
+	uint64_t num_chunks, num_entries, table_size, table_offset, data_offset;
+	uint64_t data_size, chunk_data_offset = 0, chunk_start, chunk_end;
+	uint64_t i, chunk_uncompressed_size, chunk_compressed_size, max_compressed_size;
+	void* decompressor = NULL;
+
+	wim_flags = ReadLe32(&header[0x10]);
+	compression_type = GetWimCompressionType(wim_flags);
+	chunk_size = ReadLe32(&header[0x14]);
+
+	if (resource_flags & WIM_RESHDR_FLAG_SOLID) {
+		if ((resource_size < sizeof(solid_header)) ||
+			!ReadISOFileRange(iso, wim_path, resource_offset,
+				solid_header, sizeof(solid_header)))
+			goto out;
+
+		if (ReadLe64(&solid_header[0]) != xml_size)
+			goto out;
+
+		chunk_size = ReadLe32(&solid_header[8]);
+		compression_type = ReadLe32(&solid_header[12]);
+		table_offset = resource_offset + sizeof(solid_header);
+	} else {
+		table_offset = resource_offset;
+	}
+
+	if ((compression_type < WIMLIB_COMPRESSION_TYPE_XPRESS) ||
+		(compression_type > WIMLIB_COMPRESSION_TYPE_LZMS) ||
+		(chunk_size == 0) || ((chunk_size & (chunk_size - 1)) != 0))
+		goto out;
+
+	num_chunks = (xml_size + chunk_size - 1) / chunk_size;
+	if ((num_chunks == 0) || (num_chunks > MAXDWORD))
+		goto out;
+
+	if (resource_flags & WIM_RESHDR_FLAG_SOLID) {
+		entry_size = 4;
+		num_entries = num_chunks;
+	} else {
+		entry_size = (xml_size <= MAXDWORD) ? 4 : 8;
+		num_entries = num_chunks - 1;
+	}
+
+	if ((num_entries != 0) &&
+		(num_entries > ((uint64_t)(size_t)-1 / entry_size)))
+		goto out;
+
+	table_size = num_entries * entry_size;
+
+	if (resource_flags & WIM_RESHDR_FLAG_SOLID) {
+		if (resource_size < sizeof(solid_header) + table_size)
+			goto out;
+		data_offset = table_offset + table_size;
+		data_size = resource_size - sizeof(solid_header) - table_size;
+	} else {
+		if (resource_size < table_size)
+			goto out;
+		data_offset = resource_offset + table_size;
+		data_size = resource_size - table_size;
+	}
+
+	if (table_size != 0) {
+		chunk_table = (uint8_t*)malloc((size_t)table_size);
+		if ((chunk_table == NULL) ||
+			!ReadISOFileRange(iso, wim_path, table_offset,
+				chunk_table, (size_t)table_size))
+			goto out;
+	}
+
+	max_compressed_size = MIN((uint64_t)chunk_size, data_size);
+	if ((max_compressed_size == 0) ||
+		(max_compressed_size > (uint64_t)(size_t)-1))
+		goto out;
+
+	compressed = (uint8_t*)malloc((size_t)max_compressed_size);
+	if (compressed == NULL)
+		goto out;
+
+	decompressor = WimCreateDecompressor(compression_type, chunk_size);
+	if (decompressor == NULL)
+		goto out;
+
+	for (i = 0; i < num_chunks; i++) {
+		chunk_uncompressed_size = MIN((uint64_t)chunk_size,
+			xml_size - i * (uint64_t)chunk_size);
+
+		if (resource_flags & WIM_RESHDR_FLAG_SOLID) {
+			chunk_compressed_size = ReadLe32(
+				&chunk_table[i * entry_size]);
+			chunk_start = chunk_data_offset;
+			chunk_end = chunk_start + chunk_compressed_size;
+		} else {
+			chunk_start = (i == 0) ? 0 :
+				((entry_size == 4) ?
+					ReadLe32(&chunk_table[(i - 1) * entry_size]) :
+					ReadLe64(&chunk_table[(i - 1) * entry_size]));
+			chunk_end = (i == num_chunks - 1) ? data_size :
+				((entry_size == 4) ?
+					ReadLe32(&chunk_table[i * entry_size]) :
+					ReadLe64(&chunk_table[i * entry_size]));
+			if (chunk_end < chunk_start)
+				goto out;
+			chunk_compressed_size = chunk_end - chunk_start;
+		}
+
+		if ((chunk_compressed_size == 0) ||
+			(chunk_compressed_size > chunk_uncompressed_size) ||
+			(chunk_end > data_size) ||
+			(chunk_compressed_size > max_compressed_size))
+			goto out;
+
+		if (chunk_compressed_size == chunk_uncompressed_size) {
+			if (!ReadISOFileRange(iso, wim_path,
+				data_offset + chunk_start,
+				&xml[i * (uint64_t)chunk_size],
+				(size_t)chunk_uncompressed_size))
+				goto out;
+		} else {
+			if (!ReadISOFileRange(iso, wim_path,
+				data_offset + chunk_start,
+				compressed, (size_t)chunk_compressed_size))
+				goto out;
+
+			if (!WimDecompressBuffer(decompressor,
+				compressed, (size_t)chunk_compressed_size,
+				&xml[i * (uint64_t)chunk_size],
+				(size_t)chunk_uncompressed_size))
+				goto out;
+		}
+
+		if (resource_flags & WIM_RESHDR_FLAG_SOLID)
+			chunk_data_offset = chunk_end;
+	}
+
+	if ((resource_flags & WIM_RESHDR_FLAG_SOLID) &&
+		(chunk_data_offset != data_size))
+		goto out;
+
+	r = TRUE;
+
+out:
+	WimFreeDecompressor(decompressor);
+	safe_free(compressed);
+	safe_free(chunk_table);
+	return r;
+}
+
+BOOL ExtractWimMetadataFromISO(const char* iso, const char* wim_path, const char* dest_file)
+{
+	BOOL r = FALSE;
+	DWORD written;
+	HANDLE hFile = INVALID_HANDLE_VALUE;
+	uint8_t header[208], *xml = NULL;
+	uint8_t resource_flags;
+	uint32_t header_size;
+	uint64_t offset, stored_size, xml_size;
+
+	if (!ReadISOFileRange(iso, wim_path, 0, header, sizeof(header)) ||
+		(memcmp(header, "MSWIM\0\0\0", 8) != 0))
+		goto out;
+
+	header_size = ReadLe32(&header[0x08]);
+	if (header_size != sizeof(header))
+		goto out;
+
+	stored_size = (uint64_t)header[0x48] |
+		((uint64_t)header[0x49] << 8) |
+		((uint64_t)header[0x4a] << 16) |
+		((uint64_t)header[0x4b] << 24) |
+		((uint64_t)header[0x4c] << 32) |
+		((uint64_t)header[0x4d] << 40) |
+		((uint64_t)header[0x4e] << 48);
+	resource_flags = header[0x4f];
+	offset = ReadLe64(&header[0x50]);
+	xml_size = ReadLe64(&header[0x58]);
+
+	if ((xml_size < 2) || (xml_size > 16 * MB) ||
+		(xml_size > MAXDWORD) || (stored_size == 0))
+		goto out;
+
+	xml = (uint8_t*)malloc((size_t)xml_size);
+	if (xml == NULL)
+		goto out;
+
+	if (resource_flags & (WIM_RESHDR_FLAG_COMPRESSED | WIM_RESHDR_FLAG_SOLID)) {
+		if (!ReadCompressedWimXmlFromISO(iso, wim_path, header,
+			offset, stored_size, xml_size, resource_flags, xml))
+			goto out;
+	} else {
+		if ((stored_size != xml_size) ||
+			!ReadISOFileRange(iso, wim_path, offset, xml, (size_t)xml_size))
+			goto out;
+	}
+
+	hFile = CreateFileU(dest_file, GENERIC_WRITE, FILE_SHARE_READ, NULL, CREATE_ALWAYS,
+		FILE_ATTRIBUTE_TEMPORARY, NULL);
+	if (hFile == INVALID_HANDLE_VALUE)
+		goto out;
+
+	r = WriteFileWithRetry(hFile, xml, (DWORD)xml_size, &written, WRITE_RETRIES) &&
+		(written == (DWORD)xml_size);
+
+out:
+	safe_closehandle(hFile);
+	safe_free(xml);
+	return r;
+}
+
 uint32_t GetInstallWimVersion(const char* iso)
 {
 	char *wim_path = NULL, buf[UDF_BLOCKSIZE] = { 0 };
@@ -1833,6 +2203,20 @@ BOOL HasEfiImgBootLoaders(void)
 		uprintf("Error reading ISO-9660 file %s at LSN %lu", img_report.efi_img_path, (long unsigned int)p_private->lsn);
 		goto out;
 	}
+	// Try to skip to first FAT partition, if working with an MBR partitioned image
+	if (p_private->buf[0x1fe] == 0x55 && p_private->buf[0x1ff] == 0xaa &&
+		p_private->buf[0x1be] == 0x80 && IS_FAT_TYPE(p_private->buf[0x1c2])) {
+		uint32_t lba = *((uint32_t*)&p_private->buf[0x1c6]);
+		if (lba % 4 != 0) {
+			uprintf("Error: First MBR partition doesn't map to ISO-9660 sector");
+			goto out;
+		}
+		p_private->lsn += lba / 4;
+		if (iso9660_iso_seek_read(p_private->p_iso, p_private->buf, p_private->lsn, ISO_NB_BLOCKS) != ISO_NB_BLOCKS * ISO_BLOCKSIZE) {
+			uprintf("Error reading ISO-9660 file %s at LSN %lu", img_report.efi_img_path, (long unsigned int)p_private->lsn);
+			goto out;
+		}
+	}
 	lf_fs = libfat_open(iso9660_readfat, (intptr_t)p_private);
 	if (lf_fs == NULL) {
 		uprintf("FAT access error");
@@ -1916,6 +2300,20 @@ BOOL DumpFatDir(const char* path, int32_t cluster)
 		if (iso9660_iso_seek_read(p_private->p_iso, p_private->buf, p_private->lsn, ISO_NB_BLOCKS) != ISO_NB_BLOCKS * ISO_BLOCKSIZE) {
 			uprintf("Error reading ISO-9660 file %s at LSN %lu", img_report.efi_img_path, (long unsigned int)p_private->lsn);
 			goto out;
+		}
+		// Try to skip to first FAT partition, if working with an MBR partitioned image
+		if (p_private->buf[0x1fe] == 0x55 && p_private->buf[0x1ff] == 0xaa &&
+			p_private->buf[0x1be] == 0x80 && IS_FAT_TYPE(p_private->buf[0x1c2])) {
+			uint32_t lba = *((uint32_t*)&p_private->buf[0x1c6]);
+			if (lba % 4 != 0) {
+				uprintf("Error: First MBR partition doesn't map to ISO-9660 sector");
+				goto out;
+			}
+			p_private->lsn += lba / 4;
+			if (iso9660_iso_seek_read(p_private->p_iso, p_private->buf, p_private->lsn, ISO_NB_BLOCKS) != ISO_NB_BLOCKS * ISO_BLOCKSIZE) {
+				uprintf("Error reading ISO-9660 file %s at LSN %lu", img_report.efi_img_path, (long unsigned int)p_private->lsn);
+				goto out;
+			}
 		}
 		lf_fs = libfat_open(iso9660_readfat, (intptr_t)p_private);
 		if (lf_fs == NULL) {

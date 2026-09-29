@@ -2,6 +2,21 @@
 
 o Version 4.15 (2026.06.30)
     Add RISC-V 64 support to UEFI:NTFS
+    Improve the guards for using the "silent" Windows installation option
+    Fix "silent" Windows installation failing at 75% in most cases
+    Fix first WUE option always being checked by default
+    Fix an infinite loop when using Windows ISOs that contain multiple WIMs
+    Other WUE improvements/fixes for OneDrive removal and username validation (with thanks to @christian8641)
+
+o Version 4.14 (2026.04.30)
+    Windows User Experience improvements:
+      - Add a "Quality of Life" option, to disable Teams, Outlook, Copilot and other Microsoft forced nuisances
+      - Add a Silent installation option, that automatically, and WITHOUT PROMPT, installs Windows on the first detected disk
+      - Add an option to copy 'SkuSiPolicy.p7b' to the ESP on installation (please refer to KB5042562 for more info)
+      - Add tooltips for all the dialog options
+    Add limited support for El-Torito UEFI image extraction (Mostly for Dell BIOS update ISOs)
+    Improve reporting of GRUB and Isolinux MBRs
+    Fix errors with local accounts that start or end with whitespaces
 
 o Version 4.12 (2026.01.30)
     Fix a TOCTOU vulnerability in Fido script execution (CVE-2026-2398, reported by @independent-arg)

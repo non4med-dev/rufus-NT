@@ -17,12 +17,12 @@
  * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  */
 
-// MinGW includes virdisk.h in windows.h, but we we don't want that
-// because we must apply a delay-loading workaround, and that workaround
-// has to apply between the winnt.h include and the virdisk.h include.
-// So we define _INC_VIRTDISK, to prevent the virdisk.h include in
-// windows.h, and then take care of the workaround (and virtdisk.h
-// include) in vhd.h.
+ // MinGW includes virdisk.h in windows.h, but we we don't want that
+ // because we must apply a delay-loading workaround, and that workaround
+ // has to apply between the winnt.h include and the virdisk.h include.
+ // So we define _INC_VIRTDISK, to prevent the virdisk.h include in
+ // windows.h, and then take care of the workaround (and virtdisk.h
+ // include) in vhd.h.
 #define _INC_VIRTDISK
 #include <windows.h>
 #undef _INC_VIRTDISK
@@ -59,6 +59,10 @@ PF_TYPE_DECL(WINAPI, DWORD, WIMRegisterMessageCallback, (HANDLE, FARPROC, PVOID)
 PF_TYPE_DECL(WINAPI, DWORD, WIMUnregisterMessageCallback, (HANDLE, FARPROC));
 PF_TYPE_DECL(RPC_ENTRY, RPC_STATUS, UuidCreate, (UUID __RPC_FAR*));
 
+typedef int(__cdecl* wimlib_create_decompressor_t)(int, size_t, void**);
+typedef int(__cdecl* wimlib_decompress_t)(const void*, size_t, void*, size_t, void*);
+typedef void(__cdecl* wimlib_free_decompressor_t)(void*);
+
 typedef struct {
 	int index;
 	BOOL commit;
@@ -83,7 +87,10 @@ static char legacy_wimapi_dir[MAX_PATH] = "", legacy_wimapi7_path[MAX_PATH] = ""
 static char legacy_bcdboot_path[MAX_PATH] = "";
 static char legacy_wimlib_dir[MAX_PATH] = "", legacy_wimlib_path[MAX_PATH] = "";
 static char legacy_libwim_path[MAX_PATH] = "";
-static HMODULE legacy_wimapi7_module = NULL;
+static HMODULE legacy_wimapi7_module = NULL, legacy_libwim_module = NULL;
+static wimlib_create_decompressor_t pfwimlib_create_decompressor = NULL;
+static wimlib_decompress_t pfwimlib_decompress = NULL;
+static wimlib_free_decompressor_t pfwimlib_free_decompressor = NULL;
 static int legacy_wimapi_state = 0, sevenzip_state = 0, legacy_wimlib_state = 0;
 static const char vhd_footer_cookie[] = VHD_FOOTER_COOKIE;
 static int progress_op = OP_FILE_COPY, progress_msg = MSG_267;
@@ -183,18 +190,6 @@ static BOOL EnsureLegacyWinToGoRuntime(BOOL need_bcdboot)
 			"%s\\wimgapi.dll",
 			legacy_wimapi_dir);
 
-		static_sprintf(legacy_wimlib_dir,
-			"%s\\wimlib",
-			legacy_wimapi_dir);
-
-		static_sprintf(legacy_wimlib_path,
-			"%s\\wimlib-imagex.exe",
-			legacy_wimlib_dir);
-
-		static_sprintf(legacy_libwim_path,
-			"%s\\libwim-15.dll",
-			legacy_wimlib_dir);
-
 		static_sprintf(legacy_bcdboot_path,
 			"%s\\bcdboot.exe",
 			legacy_wimapi_dir);
@@ -279,23 +274,42 @@ error:
 #endif
 }
 
-static BOOL EnsureLegacyWimlibRuntime(void)
+static BOOL EnsureLegacyWimlibRuntime(BOOL need_imagex)
 {
-	if (legacy_wimlib_state > 0)
+	if ((legacy_wimlib_state > 0) &&
+		(!need_imagex || (_accessU(legacy_wimlib_path, 0) == 0)))
 		return TRUE;
 
-	if ((legacy_wimlib_state < 0) ||
-		!EnsureLegacyWinToGoRuntime(FALSE))
+	if (legacy_wimlib_state < 0)
 		return FALSE;
 
-	if (!CreateDirectoryU(legacy_wimlib_dir, NULL) &&
-		(GetLastError() != ERROR_ALREADY_EXISTS))
+	if (legacy_wimlib_dir[0] == 0) {
+		if (GetTempFileNameU(temp_dir, "RWL", 0, legacy_wimlib_dir) == 0)
+			goto error;
+
+		DeleteFileU(legacy_wimlib_dir);
+
+		if (!CreateDirectoryU(legacy_wimlib_dir, NULL))
+			goto error;
+
+		static_sprintf(legacy_wimlib_path,
+			"%s\\wimlib-imagex.exe",
+			legacy_wimlib_dir);
+
+		static_sprintf(legacy_libwim_path,
+			"%s\\libwim-15.dll",
+			legacy_wimlib_dir);
+	}
+
+	if ((_accessU(legacy_libwim_path, 0) != 0) &&
+		!WriteWinToGoResource(
+			IDR_LIBWIM15,
+			"wimlib runtime",
+			legacy_libwim_path))
 		goto error;
 
-	if (!WriteWinToGoResource(
-		IDR_LIBWIM15,
-		"wimlib runtime",
-		legacy_libwim_path) ||
+	if (need_imagex &&
+		(_accessU(legacy_wimlib_path, 0) != 0) &&
 		!WriteWinToGoResource(
 			IDR_WIMLIB_IMAGE_X,
 			"wimlib-imagex",
@@ -315,6 +329,98 @@ error:
 	return FALSE;
 }
 
+// Load only the decompressor needed for metadata parsing
+static BOOL InitWimlibDecompressorApi(void)
+{
+	if ((legacy_libwim_module != NULL) &&
+		(pfwimlib_create_decompressor != NULL) &&
+		(pfwimlib_decompress != NULL) &&
+		(pfwimlib_free_decompressor != NULL))
+		return TRUE;
+
+	if (!EnsureLegacyWimlibRuntime(FALSE))
+		return FALSE;
+
+	/*
+	 * NT4's loader is less tolerant of the newer LoadLibraryEx path/flags.
+	 * libwim-15.dll only depends on system DLLs, so it does not need an
+	 * altered dependency search path on NT4.
+	 */
+	if (WindowsVersion.Version == WINDOWS_NT4)
+		legacy_libwim_module = LoadLibraryA(legacy_libwim_path);
+	else
+		legacy_libwim_module = LoadLibraryExU(
+			legacy_libwim_path, NULL, LOAD_WITH_ALTERED_SEARCH_PATH);
+
+	if (legacy_libwim_module == NULL) {
+		uprintf("Could not load the bundled libwim decompressor: %s",
+			WindowsErrorString());
+		goto error;
+	}
+
+	pfwimlib_create_decompressor = (wimlib_create_decompressor_t)GetProcAddress(
+		legacy_libwim_module, "wimlib_create_decompressor");
+	pfwimlib_decompress = (wimlib_decompress_t)GetProcAddress(
+		legacy_libwim_module, "wimlib_decompress");
+	pfwimlib_free_decompressor = (wimlib_free_decompressor_t)GetProcAddress(
+		legacy_libwim_module, "wimlib_free_decompressor");
+
+	if ((pfwimlib_create_decompressor == NULL) ||
+		(pfwimlib_decompress == NULL) ||
+		(pfwimlib_free_decompressor == NULL))
+		goto error;
+
+	return TRUE;
+
+error:
+	if (legacy_libwim_module != NULL)
+		FreeLibrary(legacy_libwim_module);
+
+	legacy_libwim_module = NULL;
+	pfwimlib_create_decompressor = NULL;
+	pfwimlib_decompress = NULL;
+	pfwimlib_free_decompressor = NULL;
+	return FALSE;
+}
+
+void* WimCreateDecompressor(uint32_t compression_type, size_t max_block_size)
+{
+	void* decompressor = NULL;
+
+	if (!InitWimlibDecompressorApi())
+		return NULL;
+
+	{
+		int wimlib_error = pfwimlib_create_decompressor(
+			(int)compression_type, max_block_size, &decompressor);
+		if (wimlib_error != 0) {
+			uprintf("Could not create WIM decompressor (type %u, block %lu): error %d",
+				compression_type, (unsigned long)max_block_size, wimlib_error);
+			return NULL;
+		}
+	}
+
+	return decompressor;
+}
+
+BOOL WimDecompressBuffer(void* decompressor, const void* compressed_data,
+	size_t compressed_size, void* uncompressed_data, size_t uncompressed_size)
+{
+	if ((decompressor == NULL) || (pfwimlib_decompress == NULL))
+		return FALSE;
+
+	return (pfwimlib_decompress(
+		compressed_data, compressed_size,
+		uncompressed_data, uncompressed_size,
+		decompressor) == 0);
+}
+
+void WimFreeDecompressor(void* decompressor)
+{
+	if ((decompressor != NULL) && (pfwimlib_free_decompressor != NULL))
+		pfwimlib_free_decompressor(decompressor);
+}
+
 static void ResetWimApiPointers(void)
 {
 	pfWIMCreateFile = NULL;
@@ -332,10 +438,26 @@ static void ResetWimApiPointers(void)
 
 void WimApiCleanup(void)
 {
+	if (legacy_libwim_module != NULL)
+		FreeLibrary(legacy_libwim_module);
 	if (legacy_wimapi7_module != NULL)
 		FreeLibrary(legacy_wimapi7_module);
 
+	legacy_libwim_module = NULL;
 	legacy_wimapi7_module = NULL;
+	pfwimlib_create_decompressor = NULL;
+	pfwimlib_decompress = NULL;
+	pfwimlib_free_decompressor = NULL;
+
+	if ((legacy_wimlib_dir[0] != 0) &&
+		PathFileExistsU(legacy_wimlib_dir) &&
+		(SHDeleteDirectoryExU(
+			NULL, legacy_wimlib_dir,
+			FOF_NO_UI) != 0))
+
+		uprintf(
+			"Could not remove wimlib runtime directory '%s'",
+			legacy_wimlib_dir);
 
 	if ((legacy_wimapi_dir[0] != 0) &&
 		PathFileExistsU(legacy_wimapi_dir) &&
@@ -433,7 +555,7 @@ static uint8_t AddWimApiCapabilities(uint8_t methods)
 
 static BOOL GetWimlibPath(void)
 {
-	return EnsureLegacyWimlibRuntime() &&
+	return EnsureLegacyWimlibRuntime(TRUE) &&
 		(_accessU(legacy_wimlib_path, 0) == 0) &&
 		(_accessU(legacy_libwim_path, 0) == 0);
 }
@@ -620,8 +742,8 @@ static comp_assoc file_assoc[] = {
 // Look for a boot marker in the MBR area of the image
 static int8_t IsCompressedBootableImage(const char* path)
 {
-	char *ext = NULL, *physical_disk = NULL;
-	unsigned char *buf = NULL;
+	char* ext = NULL, * physical_disk = NULL;
+	unsigned char* buf = NULL;
 	int i;
 	FILE* fd = NULL;
 	BOOL r = 0;
@@ -642,7 +764,8 @@ static int8_t IsCompressedBootableImage(const char* path)
 				bled_init(0, uprintf, NULL, NULL, NULL, NULL, &ErrorStatus);
 				dc = bled_uncompress_to_buffer(path, (char*)buf, MBR_SIZE, file_assoc[i].type);
 				bled_exit();
-			} else if (img_report.compression_type == BLED_COMPRESSION_MAX) {
+			}
+			else if (img_report.compression_type == BLED_COMPRESSION_MAX) {
 				// Dism, through FfuProvider.dll, can mount a .ffu as a physicaldrive, which we
 				// could then use to poke the MBR as we do for VHD... Except Microsoft did design
 				// dism to FAIL AND EXIT, after mounting the ffu as a virtual drive, if it doesn't
@@ -666,12 +789,15 @@ static int8_t IsCompressedBootableImage(const char* path)
 							buf[0x1FE] = 0x55;
 							buf[0x1FF] = 0xAA;
 						}
-					} else
+					}
+					else
 						uprintf("Could not open %s: %d", path, errno);
-				} else {
+				}
+				else {
 					uprintf("  An FFU image was selected, but this system does not have FFU support!");
 				}
-			} else {
+			}
+			else {
 				physical_disk = VhdMountImageAndGetSize(path, &img_report.projected_size);
 				if (physical_disk != NULL) {
 					img_report.is_vhd = TRUE;
@@ -765,7 +891,8 @@ DWORD WINAPI WimProgressCallback(DWORD dwMsgId, WPARAM wParam, LPARAM lParam, PV
 #endif
 		if (count_files) {
 			wim_nb_files++;
-		} else {
+		}
+		else {
 			// At the end of an actual apply, the WIM API re-lists a bunch of directories it already processed,
 			// so, even as we try to compensate, we might end up with more entries than counted - ignore those.
 			if (wim_proc_files < wim_nb_files)
@@ -789,7 +916,8 @@ DWORD WINAPI WimProgressCallback(DWORD dwMsgId, WPARAM wParam, LPARAM lParam, PV
 		pFileData = (PWIN32_FIND_DATA)lParam;
 		if (pFileData->dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY) {
 			uprintf("Creating: %S", (PWSTR)wParam);
-		} else {
+		}
+		else {
 			size = (((uint64_t)pFileData->nFileSizeHigh) << 32) + pFileData->nFileSizeLow;
 			uprintf("Extracting: %S (%s)", (PWSTR)wParam, SizeToHumanReadable(size, FALSE, FALSE));
 		}
@@ -1078,7 +1206,7 @@ char* WimGetExistingMountPoint(const char* image, int index)
 
 	RegCloseKey(hKey);
 
-	return (path[0] == 0) ? NULL: path;
+	return (path[0] == 0) ? NULL : path;
 }
 
 // Extract a file from a WIM image using wimgapi.dll
@@ -1138,7 +1266,8 @@ BOOL WimExtractFile_API(const char* image, int index, const char* src, const cha
 			suprintf("  Could not extract file: %s", WindowsErrorString());
 			goto out;
 		}
-	} else {
+	}
+	else {
 		hImage = pfWIMLoadImage(hWim, (DWORD)index);
 		if (hImage == NULL) {
 			uprintf("  Could not set index: %s", WindowsErrorString());
@@ -1792,7 +1921,7 @@ char* VhdMountImageAndGetSize(const char* path, uint64_t* disk_size)
 	wchar_t wtmp[128];
 	ULONG size = ARRAYSIZE(wtmp);
 	wconvert(path);
-	char *ret = NULL, *ext = NULL;
+	char* ret = NULL, * ext = NULL;
 
 	if (wpath == NULL)
 		return NULL;
@@ -1869,7 +1998,7 @@ static DWORD WINAPI VhdSaveImageThread(void* param)
 {
 	IMG_SAVE* img_save = (IMG_SAVE*)param;
 	HANDLE hSrc = INVALID_HANDLE_VALUE, hDst = INVALID_HANDLE_VALUE, handle = INVALID_HANDLE_VALUE;
-	WCHAR *wSrc = NULL, *wDst = NULL;
+	WCHAR* wSrc = NULL, * wDst = NULL;
 	BYTE* buffer = NULL;
 	DWORD bytesRead, bytesWritten, flags, r = ERROR_SUCCESS;
 	DWORD buffer_size = 1 * MB;
@@ -1944,7 +2073,8 @@ static DWORD WINAPI VhdSaveImageThread(void* param)
 		UpdateProgressWithInfo(OP_FORMAT, MSG_261, SelectedDrive.DiskSize, SelectedDrive.DiskSize);
 		uprintf("Saved '%s'", img_save->ImagePath);
 		r = ERROR_SUCCESS;
-	} else {
+	}
+	else {
 		hSrc = CreateFileU(img_save->DevicePath, GENERIC_READ,
 			FILE_SHARE_READ | FILE_SHARE_WRITE, NULL, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, NULL);
 		if (hSrc == INVALID_HANDLE_VALUE) {
@@ -2039,7 +2169,7 @@ static DWORD WINAPI FfuSaveImageThread(void* param)
 {
 	DWORD r;
 	IMG_SAVE* img_save = (IMG_SAVE*)param;
-	char cmd[MAX_PATH + 128], letters[27], *label;
+	char cmd[MAX_PATH + 128], letters[27], * label;
 
 	GetDriveLabel(SelectedDrive.DeviceNumber, letters, &label, TRUE);
 	static_sprintf(cmd, "dism /Capture-Ffu /CaptureDrive:%s /ImageFile:\"%s\" "
@@ -2108,7 +2238,8 @@ void VhdSaveImage(void)
 	if (i == 0) {
 		uprintf("Warning: Could not determine image type from extension - saving to uncompressed VHD");
 		i = image_type_vhd;
-	} else {
+	}
+	else {
 		save_image_type = (char*)&_img_ext_x[i - 1][2];
 		WriteSettingStr(SETTING_PREFERRED_SAVE_IMAGE_TYPE, save_image_type);
 	}
@@ -2154,7 +2285,8 @@ void VhdSaveImage(void)
 			uprintf("\r\nSave to VHD operation started");
 			PrintInfo(0, -1);
 			SendMessage(hMainDialog, UM_TIMER_START, 0, 0);
-		} else {
+		}
+		else {
 			uprintf("Unable to start VHD save thread");
 			ErrorStatus = RUFUS_ERROR(APPERR(ERROR_CANT_START_THREAD));
 			PostMessage(hMainDialog, UM_FORMAT_COMPLETED, (WPARAM)FALSE, 0);

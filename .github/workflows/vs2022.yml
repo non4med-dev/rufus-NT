@@ -27,7 +27,7 @@ on:
       - '**.xml'
 
 env:
-  SOLUTION_FILE_PATH: ./rufus.sln
+  SOLUTION_FILE_PATH: ./rufusnt.sln
   BUILD_CONFIGURATION: Release
 
 jobs:

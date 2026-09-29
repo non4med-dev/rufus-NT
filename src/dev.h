@@ -92,7 +92,7 @@ DECLSPEC_IMPORT CONFIGRET WINAPI CM_Get_DevNode_Status(PULONG pulStatus, PULONG 
 #define USB_GET_NODE_CONNECTION_INFORMATION_EX    274
 #define USB_GET_NODE_CONNECTION_INFORMATION_EX_V2 279
 
-// GPT added this preventation for old SDKs naming device types incorrectly (port-AI)
+// AI added this preventation for old SDKs naming device types incorrectly (port-AI)
 #define IOCTL_USB_HUB_CYCLE_PORT \
   CTL_CODE(FILE_DEVICE_USB, USB_HUB_CYCLE_PORT, METHOD_BUFFERED, FILE_ANY_ACCESS)
 #define IOCTL_USB_GET_NODE_CONNECTION_INFORMATION_EX \

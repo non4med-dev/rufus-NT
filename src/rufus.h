@@ -62,7 +62,7 @@
 #define STR_NO_LABEL                "NO_LABEL"
 
 // Update level
-#define UPDATE_LEVEL                "Update 5"
+#define UPDATE_LEVEL                "Update 6"
 
 // Yes, there exist characters between these seemingly empty quotes!
 #define LEFT_TO_RIGHT_MARK          "‎"
@@ -103,6 +103,7 @@
 #define STATUS_MSG_TIMEOUT          3500		// How long should cheat mode messages appear for on the status bar
 #define WRITE_RETRIES               4
 #define WRITE_TIMEOUT               5000		// How long we should wait between write retries (in ms)
+#define IS_DISK_FULL_ERROR(e)       (((e) == ERROR_DISK_FULL) || ((e) == ERROR_HANDLE_DISK_FULL))
 #define SEARCH_PROCESS_TIMEOUT      5000		// How long we should wait to get the conflicting process data (in ms)
 #define NET_SESSION_TIMEOUT         3500		// How long we should wait to connect, send or receive internet data (in ms)
 #define FS_DEFAULT                  FS_FAT32
@@ -146,6 +147,7 @@
 #define DISKCOPY_IMAGE_SIZE         0x168000
 #define SYMBOL_SERVER_USER_AGENT    "Microsoft-Symbol-Server/10.0.22621.755"
 #define DEFAULT_ESP_MOUNT_POINT     "S:\\"
+#define USERNAME_INVALID_CHARS      "/\\[]:;|=.,+*?<>%@&\""
 #define IS_POWER_OF_2(x)            ((x != 0) && (((x) & ((x) - 1)) == 0))
 #define IGNORE_RETVAL(expr)         do { (void)(expr); } while(0)
 #ifndef ARRAYSIZE
@@ -681,15 +683,19 @@ typedef struct {
 #define UNATTEND_DISABLE_BITLOCKER          0x00080
 #define UNATTEND_FORCE_S_MODE               0x00100
 #define UNATTEND_USE_MS2023_BOOTLOADERS     0x00200
-#define UNATTEND_FULL_MASK                  0x003FF
-#define UNATTEND_DEFAULT_MASK               0x000FF
+#define UNATTEND_APPLY_SKUSIPOLICY          0x00400
+#define UNATTEND_SILENT_INSTALL             0x00800
+#define UNATTEND_QOL_ENHANCEMENTS           0x01000
+#define UNATTEND_FULL_MASK                  0x01FFF
+#define UNATTEND_DEFAULT_MASK               0x016FF		// Mask of values that are persisted
 #define UNATTEND_WINDOWS_TO_GO              0x10000		// Special flag for Windows To Go
 
-#define UNATTEND_WINPE_SETUP_MASK           (UNATTEND_SECUREBOOT_TPM_MINRAM)
-#define UNATTEND_SPECIALIZE_DEPLOYMENT_MASK (UNATTEND_NO_ONLINE_ACCOUNT)
-#define UNATTEND_OOBE_SHELL_SETUP_MASK      (UNATTEND_NO_DATA_COLLECTION | UNATTEND_SET_USER | UNATTEND_DUPLICATE_LOCALE)
+#define UNATTEND_WINPE_SETUP_MASK           (UNATTEND_SECUREBOOT_TPM_MINRAM | UNATTEND_SILENT_INSTALL)
+#define UNATTEND_SPECIALIZE_DEPLOYMENT_MASK (UNATTEND_NO_ONLINE_ACCOUNT | UNATTEND_QOL_ENHANCEMENTS)
+#define UNATTEND_OOBE_SHELL_SETUP_MASK      (UNATTEND_NO_DATA_COLLECTION | UNATTEND_SET_USER | UNATTEND_DUPLICATE_LOCALE | UNATTEND_SILENT_INSTALL)
 #define UNATTEND_OOBE_INTERNATIONAL_MASK    (UNATTEND_DUPLICATE_LOCALE)
-#define UNATTEND_OOBE_MASK                  (UNATTEND_OOBE_SHELL_SETUP_MASK | UNATTEND_OOBE_INTERNATIONAL_MASK | UNATTEND_DISABLE_BITLOCKER | UNATTEND_USE_MS2023_BOOTLOADERS)
+#define UNATTEND_OOBE_MASK                  (UNATTEND_OOBE_SHELL_SETUP_MASK | UNATTEND_OOBE_INTERNATIONAL_MASK | UNATTEND_DISABLE_BITLOCKER | \
+                                             UNATTEND_USE_MS2023_BOOTLOADERS | UNATTEND_APPLY_SKUSIPOLICY | UNATTEND_QOL_ENHANCEMENTS)
 #define UNATTEND_OFFLINE_SERVICING_MASK     (UNATTEND_OFFLINE_INTERNAL_DRIVES | UNATTEND_FORCE_S_MODE)
 #define UNATTEND_DEFAULT_SELECTION_MASK     (UNATTEND_SECUREBOOT_TPM_MINRAM | UNATTEND_NO_ONLINE_ACCOUNT | UNATTEND_OFFLINE_INTERNAL_DRIVES)
 
@@ -728,6 +734,21 @@ extern void StrArrayClear(StrArray* arr);
 extern void StrArrayDestroy(StrArray* arr);
 #define IsStrArrayEmpty(arr) (arr.Index == 0)
 
+// Options for the custom selection dialog
+#define SELECTION_NEEDS_ALL_TO_PROCEED 1
+#define SELECTION_USE_WARNING_ICON     2
+typedef struct {
+	int style;
+	int mask;
+	int flags;
+	int username_index;
+	int edition_index;
+	int regional_index;
+	int privacy_index;
+	StrArray choices;
+	StrArray tooltips;
+} selection_dialog_options_t;
+
 /*
  * Globals
  */
@@ -763,6 +784,8 @@ extern StrArray modified_files;
  * Shared prototypes
  */
 extern void GetWindowsVersion(windows_version_t* WindowsVersion);
+extern const char* GetEditionName(DWORD ProductType);
+extern int GetEditions(StrArray* version_name, StrArray* version_index);
 extern version_t* GetExecutableVersion(const char* path);
 extern const char* WindowsErrorString(void);
 extern void DumpBufferHex(void *buf, size_t size);
@@ -793,10 +816,13 @@ extern BOOL CreateTaskbarList(void);
 extern BOOL SetTaskbarProgressState(TASKBAR_PROGRESS_FLAGS tbpFlags);
 extern BOOL SetTaskbarProgressValue(ULONGLONG ullCompleted, ULONGLONG ullTotal);
 extern INT_PTR CreateAboutBox(void);
-extern BOOL CreateTooltip(HWND hControl, const char* message, int duration);
+extern BOOL CreateTooltipEx(HWND hDlg, HWND hControl, const char* message, int duration);
+#define CreateTooltip(hControl, message, duration) CreateTooltipEx(hMainDialog, hControl, message, duration)
+extern void PopTooltip(HWND hControl);
 extern void DestroyTooltip(HWND hWnd);
 extern void DestroyAllTooltips(void);
 extern BOOL Notification(int type, const char* dont_display_setting, const notification_info* more_info, char* title, char* format, ...);
+extern int SelectionDialogEx(char* title, char* message, selection_dialog_options_t* options);
 extern int CustomSelectionDialog(int style, char* title, char* message, char** choices, int size, int mask, int username_index);
 #define SelectionDialog(title, message, choices, size) CustomSelectionDialog(BS_AUTORADIOBUTTON, title, message, choices, size, 1, -1)
 extern void ListDialog(char* title, char* message, char** items, int size);
@@ -807,10 +833,11 @@ extern BOOL ExtractISO(const char* src_iso, const char* dest_dir, BOOL scan);
 extern BOOL ExtractZip(const char* src_zip, const char* dest_dir);
 extern int64_t ExtractISOFile(const char* iso, const char* iso_file, const char* dest_file, DWORD attributes);
 extern uint32_t ReadISOFileToBuffer(const char* iso, const char* iso_file, uint8_t** buf);
+extern BOOL ExtractWimMetadataFromISO(const char* iso, const char* wim_path, const char* dest_file);
 extern BOOL CopySKUSiPolicy(const char* drive_name);
 extern BOOL HasEfiImgBootLoaders(void);
 extern BOOL DumpFatDir(const char* path, int32_t cluster);
-extern BOOL InstallSyslinux(DWORD drive_index, char drive_letter, int fs);
+extern BOOL InstallSyslinux(DWORD drive_index, char drive_letter, uint64_t partition_offset, int fs);
 extern uint16_t GetSyslinuxVersion(char* buf, size_t buf_size, char** ext);
 extern BOOL SetAutorun(const char* path);
 extern char* FileDialog(BOOL save, char* path, const ext_t* ext, UINT* selected_ext);
@@ -851,6 +878,8 @@ extern char* get_token_data_buffer(const char* token, unsigned int n, const char
 extern char* insert_section_data(const char* filename, const char* section, const char* data, BOOL dos2unix);
 extern char* replace_in_token_data(const char* filename, const char* token, const char* src, const char* rep, BOOL dos2unix);
 extern char* replace_char(const char* src, const char c, const char* rep);
+extern void filter_chars(char* str, const char* rem, const char rep);
+extern void trim(char* str);
 extern char* remove_substr(const char* src, const char* sub);
 extern void parse_update(char* buf, size_t len);
 extern void* get_data_from_asn1(const uint8_t* buf, size_t buf_len, const char* oid_str, uint8_t asn1_type, size_t* data_len);

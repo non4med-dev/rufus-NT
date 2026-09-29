@@ -538,7 +538,7 @@ extern const char* md5sum_name[2];
 extern uint32_t dur_mins, dur_secs;
 extern uint32_t wim_nb_files, wim_proc_files, wim_extra_files;
 extern BOOL force_large_fat32, enable_ntfs_compression, lock_drive, zero_drive, fast_zeroing, enable_file_indexing;
-extern BOOL write_as_image, use_vds, write_as_esp, is_vds_available, has_ffu_support, use_rufus_mbr;
+extern BOOL write_as_image, use_vds, write_as_esp, is_vds_available, has_ffu_support, use_rufus_mbr, append_silent;
 extern char* archive_path;
 uint8_t *grub2_buf = NULL, *sec_buf = NULL;
 long grub2_len;
@@ -2343,6 +2343,20 @@ DWORD WINAPI FormatThread(void* param)
 #endif
 	windows_to_go = (image_options & IMOP_WINTOGO) && (boot_type == BT_IMAGE) && HAS_WINTOGO(img_report) &&
 		(ComboBox_GetCurItemData(hImageOption) == IMOP_WIN_TO_GO);
+
+#ifdef RUFUS_TARGET_NT4
+	// No NTFS for Syslinux on NT4. Just no.
+	if ((WindowsVersion.Version <= WINDOWS_NT4) && (fs_type == FS_NTFS) &&
+		((boot_type == BT_SYSLINUX_V4) || (boot_type == BT_SYSLINUX_V6) ||
+		 ((boot_type == BT_IMAGE) && (target_type != TT_UEFI) &&
+		  (HAS_SYSLINUX(img_report) || HAS_REACTOS(img_report)) &&
+		  (!HAS_WINDOWS(img_report) || !allow_dual_uefi_bios)))) {
+		uprintf("NTFS is not supported for Syslinux installation on NT4");
+		ErrorStatus = RUFUS_ERROR(ERROR_NOT_SUPPORTED);
+		goto out;
+	}
+#endif
+
 	large_drive = (SelectedDrive.DiskSize > (1*TB));
 	if (large_drive)
 		uprintf("Notice: Large drive detected (may produce short writes)");
@@ -2743,6 +2757,10 @@ DWORD WINAPI FormatThread(void* param)
 	}
 
 	GetWindowTextU(hLabel, label, sizeof(label));
+	// commit [b7bd966] "[wue] append " (SILENT)" to the label name when using the silent option"
+	// Append a " (SILENT)" suffix to the label for fully unattended silent installation media.
+	if (append_silent && strstr(label, " (SILENT)") == NULL)
+		static_strcat(label, " (SILENT)");
 	if (fs_type < FS_EXT2)
 		ToValidLabel(label, (fs_type == FS_FAT16) || (fs_type == FS_FAT32) || (fs_type == FS_EXFAT));
 	ClusterSize = (DWORD)ComboBox_GetCurItemData(hClusterSize);
@@ -2849,7 +2867,8 @@ DWORD WINAPI FormatThread(void* param)
 		} else if ( (boot_type == BT_SYSLINUX_V4) || (boot_type == BT_SYSLINUX_V6) ||
 			((boot_type == BT_IMAGE) && (HAS_SYSLINUX(img_report) || HAS_REACTOS(img_report)) &&
 				(!HAS_WINDOWS(img_report) || !allow_dual_uefi_bios)) ) {
-			if (!InstallSyslinux(DriveIndex, drive_name[0], fs_type)) {
+			if (!InstallSyslinux(DriveIndex, drive_name[0],
+				SelectedDrive.Partition[partition_index[PI_MAIN]].Offset, fs_type)) {
 				ErrorStatus = RUFUS_ERROR(ERROR_INSTALL_FAILURE);
 				goto out;
 			}

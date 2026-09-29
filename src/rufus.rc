@@ -179,6 +179,7 @@ BEGIN
     CONTROL         "Choice 15",IDC_SELECTION_CHOICE15,"Button",BS_AUTORADIOBUTTON | NOT WS_VISIBLE | WS_TABSTOP,35,200,269,10,WS_EX_TRANSPARENT
     CONTROL         "Choice 16",IDC_SELECTION_CHOICEMAX,"Button",BS_AUTORADIOBUTTON | NOT WS_VISIBLE | WS_TABSTOP,35,213,269,10,WS_EX_TRANSPARENT
     EDITTEXT        IDC_SELECTION_USERNAME,197,57,0,9,ES_AUTOHSCROLL | NOT WS_VISIBLE | WS_TABSTOP | WS_BORDER
+    COMBOBOX        IDC_SELECTION_EDITION,197,57,0,9,CBS_DROPDOWNLIST | WS_VSCROLL | NOT WS_VISIBLE | WS_TABSTOP
 END
 
 IDD_LIST DIALOGEX 0, 0, 312, 59
@@ -444,7 +445,7 @@ END
 //
 
 VS_VERSION_INFO VERSIONINFO
- FILEVERSION 2,0,0,0
+ FILEVERSION 2,0,0,1
  PRODUCTVERSION 4,7,0,0
  FILEFLAGSMASK 0x3fL
 #ifdef _DEBUG
@@ -464,14 +465,14 @@ BEGIN
             VALUE "CompanyName", "non4med"
             VALUE "FileDescription", "Rufus-NT"
             // Major . Almost-major . Minor . Minor
-            VALUE "FileVersion", "2.0.0.0"
+            VALUE "FileVersion", "2.0.0.1"
             VALUE "InternalName", "Rufus-NT"
             // Had to remove © as it doesn't exist in old fonts
             VALUE "LegalCopyright", "2011-2026 Pete Batard (GPL v3)"
             VALUE "LegalTrademarks", "https://www.gnu.org/licenses/gpl-3.0.html"
-            VALUE "Changelog", "Update 5: Security, stability and LOTS of fixes"
+            VALUE "Changelog", "Update 6: Quality Of Life"
             VALUE "ProductName", "Rufus-NT"
-            VALUE "ProductVersion", "Update 5"
+            VALUE "ProductVersion", "Update 6"
         END
     END
     BLOCK "VarFileInfo"

@@ -1,4 +1,14 @@
-o Update 5 (2026.09.24)
+o Update 6 (2027.09.29)
+  - Check out "Rufus Changelog", a few new pretty entries
+    appeared there ;)
+  - Fixed some little UI issues inconsistencies
+    (most notably "Advanced Options" and DBX/GPT pop-ups)
+  - Fixed Syslinux on Windows NT 4.0
+  - Fixed the taskbar progress animation not clearing correctly
+  - Improved cancel behaviour when there's not enough disk space
+  - Re-wrote some strings to be more ASCII compatible
+
+o Update 5 (2026.09.27)
   - Fixed MS-DOS diskcopy.dll dialog crashing Rufus
   - Fixed MS-DOS, FreeDOS, Syslinux, ReactOS, Grub, Grub4DOS options,
     as well as UEFI:NTFS formatting on Windows NT4.0

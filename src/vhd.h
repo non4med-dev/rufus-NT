@@ -17,6 +17,7 @@
  * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  */
 
+#include <stddef.h>
 #include <stdint.h>
 #include <windows.h>
 // Temporary workaround for MinGW32 delay-loading
@@ -191,6 +192,10 @@ extern BOOL WimExtractFile(const char* wim_image, int index, const char* src, co
 extern BOOL WimExtractFile_API(const char* image, int index, const char* src, const char* dst, BOOL bSilent);
 extern BOOL WimExtractFile_7z(const char* image, int index, const char* src, const char* dst, BOOL bSilent);
 extern BOOL WimExtractMetadata(const char* image, const char* dst, BOOL bSilent);
+extern void* WimCreateDecompressor(uint32_t compression_type, size_t max_block_size);
+extern BOOL WimDecompressBuffer(void* decompressor, const void* compressed_data,
+	size_t compressed_size, void* uncompressed_data, size_t uncompressed_size);
+extern void WimFreeDecompressor(void* decompressor);
 extern BOOL WimJoinSplitImage(const char* directory, const char* output_name,
 	const char* part_stem, uint16_t part_count);
 extern BOOL WimApplyImage(const char* image, int index, const char* dst);

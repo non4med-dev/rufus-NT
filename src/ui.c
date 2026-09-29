@@ -47,7 +47,7 @@ UINT_PTR UM_LANGUAGE_MENU_MAX = UM_LANGUAGE_MENU;
 HIMAGELIST hUpImageList, hDownImageList;
 extern BOOL use_vds;
 extern int imop_win_sel;
-extern char *unattend_xml_path, *archive_path;
+extern char* unattend_xml_path, * archive_path;
 int update_progress_type = UPT_PERCENT;
 int advanced_device_section_height, advanced_format_section_height;
 // (empty) check box width, (empty) drop down width, button height (for and without dropdown match)
@@ -69,7 +69,7 @@ static IAccPropServices* pfaps = NULL;
  *    is 10, -4 will allocate 4/10*80 = 32 bars (32%) for OP progress
  */
 static int nb_slots[OP_MAX];
-static float slot_end[OP_MAX+1];	// shifted +1 so that we can subtract 1 to OP indexes
+static float slot_end[OP_MAX + 1];	// shifted +1 so that we can subtract 1 to OP indexes
 static float previous_end;
 
 // Keep NT5 toolbars from covering the main dialog buttons (port)
@@ -221,7 +221,7 @@ void GetHalfDropwdownWidth(HWND hDlg)
 	hw = max(hw, GetTextSize(GetDlgItem(hDlg, IDC_PARTITION_TYPE), (char*)sfd_name).cx);
 
 	// This is basically the same as SetClusterSizeLabels() except we're adding (Default) to each entry
-	for (i = 512, j = 1, msg_id = MSG_026; j<MAX_CLUSTER_SIZES; i <<= 1, j++) {
+	for (i = 512, j = 1, msg_id = MSG_026; j < MAX_CLUSTER_SIZES; i <<= 1, j++) {
 		if (i > 8192) {
 			i /= 1024;
 			msg_id++;
@@ -293,7 +293,7 @@ void GetFullWidth(HWND hDlg)
 	fw = max(fw, GetTextSize(hImageOption, lmprintf(MSG_118)).cx);
 
 	// Now deal with full length checkbox lines
-	for (i = 0; i<ARRAYSIZE(full_width_checkboxes); i++)
+	for (i = 0; i < ARRAYSIZE(full_width_checkboxes); i++)
 		fw = max(fw, GetTextWidth(hDlg, full_width_checkboxes[i]));
 
 	// All of the above is for text only, so we need to add dd space
@@ -326,7 +326,7 @@ void PositionMainControls(HWND hDlg)
 	HWND hCtrl, hPrevCtrl;
 	SIZE sz;
 	DWORD padding;
-	int i, x, legacy_advanced_gap = 3, button_fudge = 2;
+	int i, x, advanced_toggle_gap = 3, legacy_advanced_gap = 3, button_fudge = 2;
 
 	// Start by resizing the whole dialog
 	GetWindowRect(hDlg, &rc);
@@ -362,19 +362,17 @@ void PositionMainControls(HWND hDlg)
 	MapWindowPoints(NULL, hDlg, (POINT*)&rc, 2);
 	rh -= rc.top;
 
-	// On NT4/2000 and XP, classic/themed common-control metrics leave the
-	// advanced-options toolbar text very close to the first checkbox. Add a
-	// small legacy-only gap, and account for it in the collapsible section
-	// heights below so collapsed layout remains unchanged.
-	if (WindowsVersion.Version <= WINDOWS_XP) {
-		for (i = 0; i < ARRAYSIZE(advanced_device_move_ids); i++)
-			MoveCtrlY(hDlg, advanced_device_move_ids[i], legacy_advanced_gap);
+	// Add a small baseline gap below the advanced-options toolbars so the
+	// first checkbox is never visually clipped by the expanded toolbar area.
+	// Older classic/themed controls benefit from one extra pixel on top.
+	advanced_toggle_gap += (WindowsVersion.Version <= WINDOWS_XP) ? legacy_advanced_gap : 0;
+	for (i = 0; i < ARRAYSIZE(advanced_device_move_ids); i++)
+		MoveCtrlY(hDlg, advanced_device_move_ids[i], advanced_toggle_gap);
 
-		for (i = 0; i < ARRAYSIZE(advanced_format_toggle_ids); i++)
-			MoveCtrlY(hDlg, advanced_format_toggle_ids[i], legacy_advanced_gap);
-		for (i = 0; i < ARRAYSIZE(advanced_format_move_ids); i++)
-			MoveCtrlY(hDlg, advanced_format_move_ids[i], legacy_advanced_gap);
-	}
+	for (i = 0; i < ARRAYSIZE(advanced_format_toggle_ids); i++)
+		MoveCtrlY(hDlg, advanced_format_toggle_ids[i], advanced_toggle_gap);
+	for (i = 0; i < ARRAYSIZE(advanced_format_move_ids); i++)
+		MoveCtrlY(hDlg, advanced_format_move_ids[i], advanced_toggle_gap);
 
 	// Get the height of the advanced options
 	hCtrl = GetDlgItem(hDlg, IDC_LIST_USB_HDD);
@@ -394,10 +392,8 @@ void PositionMainControls(HWND hDlg)
 	GetWindowRect(hCtrl, &rc);
 	MapWindowPoints(NULL, hDlg, (POINT*)&rc, 2);
 	advanced_format_section_height = rc.bottom - advanced_format_section_height;
-	if (WindowsVersion.Version <= WINDOWS_XP) {
-		advanced_device_section_height += legacy_advanced_gap;
-		advanced_format_section_height += legacy_advanced_gap;
-	}
+	advanced_device_section_height += advanced_toggle_gap;
+	advanced_format_section_height += advanced_toggle_gap;
 
 	// Get the vertical position of the sections text
 	hCtrl = GetDlgItem(hDlg, IDS_DRIVE_PROPERTIES_TXT);
@@ -517,7 +513,7 @@ void PositionMainControls(HWND hDlg)
 		// First 2 controls may overflow into separator
 		hPrevCtrl = GetNextWindow(hCtrl, GW_HWNDPREV);
 		SetWindowPos(hCtrl, hPrevCtrl, (i < 4) ? rc.left : mw + hw + sw, rc.top,
-			(i <2) ? hw + sw : hw, rc.bottom - rc.top, 0);
+			(i < 2) ? hw + sw : hw, rc.bottom - rc.top, 0);
 	}
 
 	// Resize the boot selection dropdown
@@ -528,6 +524,36 @@ void PositionMainControls(HWND hDlg)
 	SetWindowPos(hCtrl, hPrevCtrl, rc.left, rc.top, bsw, rc.bottom - rc.top, 0);
 
 	RaiseNt5MainButtons(hDlg);
+
+#ifdef RUFUS_TARGET_NT4
+	if (WindowsVersion.Version == WINDOWS_NT4) {
+		RECT nt4_rc;
+		int nt4_bottom_gap = max((int)(12.0f * fScale), 12);
+
+		// Accomodate for the offsets under advanced options
+
+		GetWindowRect(hDlg, &nt4_rc);
+		SetWindowPos(hDlg, NULL, 0, 0,
+			nt4_rc.right - nt4_rc.left,
+			(nt4_rc.bottom - nt4_rc.top) + nt4_bottom_gap,
+			SWP_NOMOVE | SWP_NOZORDER);
+		GetWindowRect(hLogDialog, &nt4_rc);
+		SetWindowPos(hLogDialog, NULL, 0, 0,
+			nt4_rc.right - nt4_rc.left,
+			(nt4_rc.bottom - nt4_rc.top) + nt4_bottom_gap,
+			SWP_NOMOVE | SWP_NOZORDER);
+		MoveCtrlY(hLogDialog, IDC_LOG_CLEAR, nt4_bottom_gap);
+		MoveCtrlY(hLogDialog, IDC_LOG_SAVE, nt4_bottom_gap);
+		MoveCtrlY(hLogDialog, IDC_LOG_DIAGNOSTICS, nt4_bottom_gap);
+		MoveCtrlY(hLogDialog, IDCANCEL, nt4_bottom_gap);
+		GetWindowRect(hLog, &nt4_rc);
+		MapWindowPoints(NULL, hLogDialog, (POINT*)&nt4_rc, 2);
+		SetWindowPos(hLog, NULL, nt4_rc.left, nt4_rc.top,
+			nt4_rc.right - nt4_rc.left,
+			(nt4_rc.bottom - nt4_rc.top) + nt4_bottom_gap,
+			SWP_NOZORDER);
+	}
+#endif
 }
 
 static void ResizeDialogs(int shift)
@@ -667,11 +693,11 @@ void ToggleAdvancedDeviceOptions(BOOL enable)
 	SetWindowPos(hAdvancedDeviceToolbar, hTargetSystem, rc.left, rc.top, sz.cx, rc.bottom - rc.top, 0);
 
 	// Move the controls up or down
-	for (i = 0; i<ARRAYSIZE(advanced_device_move_ids); i++)
+	for (i = 0; i < ARRAYSIZE(advanced_device_move_ids); i++)
 		MoveCtrlY(hMainDialog, advanced_device_move_ids[i], shift);
 
 	// Hide or show the various advanced options
-	for (i = 0; i<ARRAYSIZE(advanced_device_toggle_ids); i++) {
+	for (i = 0; i < ARRAYSIZE(advanced_device_toggle_ids); i++) {
 		if ((WindowsVersion.Version <= WINDOWS_NT4) &&
 			(advanced_device_toggle_ids[i] == IDC_SAVE_TOOLBAR))
 			ShowWindow(hSaveToolbar, SW_HIDE);
@@ -721,11 +747,11 @@ void ToggleAdvancedFormatOptions(BOOL enable)
 	SetWindowPos(hAdvancedFormatToolbar, hClusterSize, rc.left, rc.top, sz.cx, rc.bottom - rc.top, 0);
 
 	// Move the controls up or down
-	for (i = 0; i<ARRAYSIZE(advanced_format_move_ids); i++)
+	for (i = 0; i < ARRAYSIZE(advanced_format_move_ids); i++)
 		MoveCtrlY(hMainDialog, advanced_format_move_ids[i], shift);
 
 	// Hide or show the various advanced options
-	for (i = 0; i<ARRAYSIZE(advanced_format_toggle_ids); i++)
+	for (i = 0; i < ARRAYSIZE(advanced_format_toggle_ids); i++)
 		ShowWindow(GetDlgItem(hMainDialog, advanced_format_toggle_ids[i]), enable ? SW_SHOW : SW_HIDE);
 
 	// Resize the main dialog and log window
@@ -774,7 +800,8 @@ void SetPersistencePos(uint64_t pos)
 	if ((boot_type == BT_IMAGE) && (pos != 0)) {
 		TogglePersistenceControls(TRUE);
 		static_sprintf(tmp, "%ld", (LONG)pos);
-	} else {
+	}
+	else {
 		TogglePersistenceControls(FALSE);
 		static_sprintf(tmp, "0 (%s)", lmprintf(MSG_124));
 	}
@@ -875,8 +902,8 @@ void ToggleImageOptions(void)
 		}
 	}
 
-	if ( ((entry_image_options != 0) && (has_wintogo || has_persistence)) ||
-		 ((entry_image_options == 0) && !(has_wintogo || has_persistence)) )
+	if (((entry_image_options != 0) && (has_wintogo || has_persistence)) ||
+		((entry_image_options == 0) && !(has_wintogo || has_persistence)))
 		shift = 0;
 
 	if (shift != 0) {
@@ -1069,7 +1096,8 @@ static INT_PTR CALLBACK ProgressCallback(HWND hCtrl, UINT message, WPARAM wParam
 			color = PROGRESS_BAR_NORMAL_COLOR;
 			SetTimer(hCtrl, TID_MARQUEE_TIMER, MARQUEE_TIMER_REFRESH, NULL);
 			InvalidateRect(hProgress, NULL, TRUE);
-		} else if ((wParam == FALSE) && (marquee_mode)) {
+		}
+		else if ((wParam == FALSE) && (marquee_mode)) {
 			marquee_mode = FALSE;
 			KillTimer(hCtrl, TID_MARQUEE_TIMER);
 			pos = min;
@@ -1098,7 +1126,8 @@ static INT_PTR CALLBACK ProgressCallback(HWND hCtrl, UINT message, WPARAM wParam
 			hBorderPen = CreatePen(PS_SOLID, 1, PROGRESS_BAR_BOX_COLOR);
 			hOldPen = (HPEN)SelectObject(hDC, (hBorderPen != NULL) ?
 				hBorderPen : GetStockObject(BLACK_PEN));
-		} else {
+		}
+		else {
 			hOldPen = (HPEN)SelectObject(hDC, GetStockObject(DC_PEN));
 		}
 		hOldBrush = (HBRUSH)SelectObject(hDC, GetStockObject(NULL_BRUSH));
@@ -1142,7 +1171,8 @@ static INT_PTR CALLBACK ProgressCallback(HWND hCtrl, UINT message, WPARAM wParam
 			SetBkColor(hDC, color);
 			ExtTextOut(hDC, (full_right - size.cx) / 2, (rc.bottom - size.cy) / 2,
 				text_flags, &rc, winfo, (int)wcslen(winfo), NULL);
-		} else {
+		}
+		else {
 			// First segment
 			rc.right = (pos > min) ? MulDiv(pos - min, rc.right, max - min) : rc.left;
 			SetTextColor(hDC, PROGRESS_BAR_INVERTED_TEXT_COLOR);
@@ -1221,7 +1251,8 @@ void CreateAdditionalControls(HWND hDlg)
 			if (hIconDown == NULL)
 				hIconDown = (HICON)LoadImage(hDll, MAKEINTRESOURCE(16750), IMAGE_ICON, s16, s16, LR_DEFAULTCOLOR | LR_SHARED);
 		}
-	} else {
+	}
+	else {
 		HMODULE hInst = GetModuleHandle(NULL);
 		// These systems corrupt alpha-only up/down icon resources
 		hIconUp = (WindowsVersion.Version <= WINDOWS_2000) ?
@@ -1346,7 +1377,8 @@ void CreateAdditionalControls(HWND hDlg)
 			tbToolbarButtons[i].fsStyle = BTNS_BUTTON;
 			tbToolbarButtons[i].fsState = TBSTATE_ENABLED;
 			tbToolbarButtons[i].iBitmap = bitmaps_list[i / 2];
-		} else {
+		}
+		else {
 			tbToolbarButtons[i].fsStyle = BTNS_AUTOSIZE;
 			tbToolbarButtons[i].fsState = TBSTATE_INDETERMINATE;
 			tbToolbarButtons[i].iBitmap = I_IMAGENONE;
@@ -1385,7 +1417,8 @@ void InitProgress(BOOL bOnlyFormat)
 
 	if (bOnlyFormat) {
 		nb_slots[OP_FORMAT] = -1;
-	} else {
+	}
+	else {
 		nb_slots[OP_ANALYZE_MBR] = 1;
 		if (IsChecked(IDC_BAD_BLOCKS)) {
 			nb_slots[OP_BADBLOCKS] = -1;
@@ -1412,7 +1445,8 @@ void InitProgress(BOOL bOnlyFormat)
 		}
 		if (selection_default == BT_IMAGE && !(img_report.is_iso || img_report.is_windows_img)) {
 			nb_slots[OP_FORMAT] = -1;
-		} else {
+		}
+		else {
 			nb_slots[OP_ZERO_MBR] = 1;
 			nb_slots[OP_PARTITION] = 1;
 			nb_slots[OP_FIX_MBR] = 1;
@@ -1445,9 +1479,11 @@ void InitProgress(BOOL bOnlyFormat)
 	for (i = 0; i < OP_MAX; i++) {
 		if (nb_slots[i] == 0) {
 			slot_end[i + 1] = last_end;
-		} else if (nb_slots[i] > 0) {
+		}
+		else if (nb_slots[i] > 0) {
 			slot_end[i + 1] = last_end + (1.0f * nb_slots[i]);
-		} else if (nb_slots[i] < 0) {
+		}
+		else if (nb_slots[i] < 0) {
 			slot_end[i + 1] = last_end + (((100.0f - slots_discrete) * nb_slots[i]) / slots_analog);
 		}
 		last_end = slot_end[i + 1];
@@ -1489,7 +1525,8 @@ void UpdateProgress(int op, float percent)
 		// Negative means advance one slot (1.0%) - requires a positive slot allocation
 		previous_end += (slot_end[op + 1] - slot_end[op]) / (1.0f * nb_slots[op]);
 		pos = (int)(previous_end / 100.0f * MAX_PROGRESS);
-	} else {
+	}
+	else {
 		pos = (int)((previous_end + ((slot_end[op + 1] - previous_end) * (percent / 100.0f))) / 100.0f * MAX_PROGRESS);
 	}
 	if (pos > MAX_PROGRESS) {
@@ -1645,7 +1682,8 @@ void _UpdateProgressWithInfo(int op, int msg, uint64_t processed, uint64_t total
 			}
 			SendMessage(hProgressDialog, UM_PROGRESS_INIT, 0, 0);
 		}
-	} else if ((hProgressBar != NULL) || (op > 0)) {
+	}
+	else if ((hProgressBar != NULL) || (op > 0)) {
 		uint64_t dl_total_time = current_time - start_time;
 		uint64_t howmuch = processed - bp.count;
 		bp.count = processed;
@@ -1663,7 +1701,8 @@ void _UpdateProgressWithInfo(int op, int msg, uint64_t processed, uint64_t total
 			uint64_t dlquant = bp.hist.total_bytes + bp.recent_bytes;
 			uint64_t dltime = bp.hist.total_time + (dl_total_time - bp.recent_start);
 			speed = (dltime == 0) ? 0 : (dlquant * 1000) / dltime;
-		} else {
+		}
+		else {
 			speed = 0;
 		}
 		bar_update(&bp, howmuch, dl_total_time);
@@ -1687,7 +1726,8 @@ void _UpdateProgressWithInfo(int op, int msg, uint64_t processed, uint64_t total
 				if ((bp.total_length != processed) && (bp.last_eta_value != 0) &&
 					(dl_total_time - bp.last_eta_time < ETA_REFRESH_INTERVAL)) {
 					eta = bp.last_eta_value;
-				} else {
+				}
+				else {
 					// Calculate ETA using the average download speed to predict
 					// the future speed. If you want to use a speed averaged
 					// over a more recent period, replace dl_total_time with
@@ -1703,7 +1743,8 @@ void _UpdateProgressWithInfo(int op, int msg, uint64_t processed, uint64_t total
 					bp.last_eta_time = dl_total_time;
 				}
 				static_sprintf(msg_data, "%d:%02d:%02d", eta / 3600, (uint16_t)((eta % 3600) / 60), (uint16_t)(eta % 60));
-			} else {
+			}
+			else {
 			skip_eta:
 				static_sprintf(msg_data, "-:--:--");
 			}
@@ -1717,7 +1758,8 @@ void _UpdateProgressWithInfo(int op, int msg, uint64_t processed, uint64_t total
 				SendMessage(hProgressBar, PBM_SETPOS, (WPARAM)(MAX_PROGRESS * percent / 100.0f), 0);
 				if (op == OP_NOOP_WITH_TASKBAR)
 					SetTaskbarProgressValue((ULONGLONG)(MAX_PROGRESS * percent / 100.0f), MAX_PROGRESS);
-			} else {
+			}
+			else {
 				UpdateProgress(op, (float)percent);
 			}
 			if ((force) || ((msg >= 0) && ((current_time > bp.last_screen_update + SCREEN_REFRESH_INTERVAL) ||
@@ -1738,15 +1780,17 @@ void ShowLanguageMenu(RECT rcExclude)
 	RECT rc;
 	LONG nb_items = 1, adjust = 0;
 	loc_cmd* lcmd = NULL;
+	loc_cmd* display_lcmd;
 	char lang[256];
-	char *search = "()";
-	char *l, *r, *str;
+	char* search = "()";
+	char* l, * r, * str;
 
 	UM_LANGUAGE_MENU_MAX = UM_LANGUAGE_MENU;
 	menu = CreatePopupMenu();
 	list_for_each_entry(lcmd, &locale_list, loc_cmd, list) {
 		if (!IsLocaleAvailableOnLegacyWindows(lcmd))
 			continue;
+		display_lcmd = GetEffectiveLocaleForLegacyWindows(lcmd);
 		// The appearance of LTR languages must be fixed for RTL menus
 		if ((right_to_left_mode) && (!(lcmd->ctrl_id & LOC_RIGHT_TO_LEFT))) {
 			str = safe_strdup(lcmd->txt[1]);
@@ -1754,10 +1798,15 @@ void ShowLanguageMenu(RECT rcExclude)
 			r = strtok(NULL, search);
 			static_sprintf(lang, LEFT_TO_RIGHT_EMBEDDING "(%s) " POP_DIRECTIONAL_FORMATTING "%s", r, l);
 			safe_free(str);
-		} else {
+		}
+		else {
 			static_strcpy(lang, lcmd->txt[1]);
 		}
-		InsertMenuU(menu, -1, MF_BYPOSITION | ((selected_locale == lcmd) ? MF_CHECKED : 0), UM_LANGUAGE_MENU_MAX++, lang);
+		if (WindowsVersion.Version == WINDOWS_NT4)
+			InsertMenuA(menu, -1, MF_BYPOSITION | MF_OWNERDRAW |
+				((selected_locale == lcmd) ? MF_CHECKED : 0), UM_LANGUAGE_MENU_MAX++, (LPCSTR)(ULONG_PTR)display_lcmd);
+		else
+			InsertMenuU(menu, -1, MF_BYPOSITION | ((selected_locale == lcmd) ? MF_CHECKED : 0), UM_LANGUAGE_MENU_MAX++, lang);
 		nb_items++;
 	}
 
@@ -1776,6 +1825,107 @@ void ShowLanguageMenu(RECT rcExclude)
 		right_to_left_mode ? rcExclude.right : rcExclude.left,
 		rcExclude.bottom + adjust, hMainDialog, &tpm);
 	DestroyMenu(menu);
+}
+
+static HFONT hLanguageMenuFont = NULL;
+
+static HFONT GetLanguageMenuFont(void)
+{
+	const char* font_name;
+	HDC hDC;
+
+	if (hLanguageMenuFont != NULL)
+		return hLanguageMenuFont;
+	font_name = IsFontAvailable("Arial Unicode MS") ? "Arial Unicode MS" :
+		(IsFontAvailable("Tahoma") ? "Tahoma" : "MS Shell Dlg");
+	hDC = GetDC(hMainDialog);
+	if (hDC == NULL)
+		return NULL;
+	hLanguageMenuFont = CreateFontA(-MulDiv(8, GetDeviceCaps(hDC, LOGPIXELSY), 72),
+		0, 0, 0, FW_NORMAL, FALSE, FALSE, FALSE, DEFAULT_CHARSET,
+		0, 0, PROOF_QUALITY, 0, font_name);
+	safe_release_dc(hMainDialog, hDC);
+	return hLanguageMenuFont;
+}
+
+BOOL MeasureLanguageMenuItem(MEASUREITEMSTRUCT* item)
+{
+	HDC hDC;
+	HFONT hFont, hOldFont = NULL;
+	SIZE size = { 0 };
+	wchar_t* text;
+	loc_cmd* lcmd;
+
+	if ((WindowsVersion.Version != WINDOWS_NT4) || (item == NULL) ||
+		(item->CtlType != ODT_MENU) || (item->itemID < UM_LANGUAGE_MENU) ||
+		(item->itemID >= UM_LANGUAGE_MENU_MAX) || (item->itemData == 0))
+		return FALSE;
+	lcmd = (loc_cmd*)(ULONG_PTR)item->itemData;
+	text = utf8_to_wchar((safe_strcmp(lcmd->txt[0], "tr-TR") == 0) ?
+		"Turkish (Turkce)" : lcmd->txt[1]);
+	hDC = GetDC(hMainDialog);
+	hFont = GetLanguageMenuFont();
+	if ((hDC != NULL) && (hFont != NULL))
+		hOldFont = SelectObject(hDC, hFont);
+	if ((hDC != NULL) && (text != NULL))
+		GetTextExtentPoint32W(hDC, text, (int)wcslen(text), &size);
+	if (hOldFont != NULL)
+		SelectObject(hDC, hOldFont);
+	if (hDC != NULL)
+		safe_release_dc(hMainDialog, hDC);
+	safe_free(text);
+	item->itemWidth = size.cx + GetSystemMetrics(SM_CXMENUCHECK) + 12;
+	item->itemHeight = max(size.cy + 4, GetSystemMetrics(SM_CYMENU));
+	return TRUE;
+}
+
+BOOL DrawLanguageMenuItem(DRAWITEMSTRUCT* item)
+{
+	int check_width, old_mode;
+	COLORREF old_text, old_background;
+	HFONT hFont, hOldFont = NULL;
+	RECT check_rect, text_rect;
+	wchar_t* text;
+	loc_cmd* lcmd;
+
+	if ((WindowsVersion.Version != WINDOWS_NT4) || (item == NULL) ||
+		(item->CtlType != ODT_MENU) || (item->itemID < UM_LANGUAGE_MENU) ||
+		(item->itemID >= UM_LANGUAGE_MENU_MAX) || (item->itemData == 0))
+		return FALSE;
+	lcmd = (loc_cmd*)(ULONG_PTR)item->itemData;
+	text = utf8_to_wchar((safe_strcmp(lcmd->txt[0], "tr-TR") == 0) ?
+		"Turkish (Turkce)" : lcmd->txt[1]);
+	hFont = GetLanguageMenuFont();
+	if (hFont != NULL)
+		hOldFont = SelectObject(item->hDC, hFont);
+	FillRect(item->hDC, &item->rcItem, GetSysColorBrush(
+		(item->itemState & ODS_SELECTED) ? COLOR_HIGHLIGHT : COLOR_MENU));
+	old_text = SetTextColor(item->hDC, GetSysColor(
+		(item->itemState & ODS_SELECTED) ? COLOR_HIGHLIGHTTEXT : COLOR_MENUTEXT));
+	old_background = SetBkColor(item->hDC, GetSysColor(
+		(item->itemState & ODS_SELECTED) ? COLOR_HIGHLIGHT : COLOR_MENU));
+	old_mode = SetBkMode(item->hDC, TRANSPARENT);
+	check_width = GetSystemMetrics(SM_CXMENUCHECK);
+	check_rect = item->rcItem;
+	check_rect.right = check_rect.left + check_width;
+	if (item->itemState & ODS_CHECKED)
+		DrawFrameControl(item->hDC, &check_rect, DFC_MENU, DFCS_MENUCHECK);
+	text_rect = item->rcItem;
+	text_rect.left += check_width + 6;
+	if (text != NULL)
+		DrawTextW(item->hDC, text, -1, &text_rect, DT_LEFT | DT_VCENTER | DT_SINGLELINE | DT_NOPREFIX);
+	SetBkMode(item->hDC, old_mode);
+	SetTextColor(item->hDC, old_text);
+	SetBkColor(item->hDC, old_background);
+	if (hOldFont != NULL)
+		SelectObject(item->hDC, hOldFont);
+	safe_free(text);
+	return TRUE;
+}
+
+void DestroyLanguageMenuFont(void)
+{
+	safe_delete_object(hLanguageMenuFont);
 }
 
 void SetPassesTooltip(void)

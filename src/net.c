@@ -818,7 +818,8 @@ uint64_t DownloadToFileOrBufferEx(const char* url, const char* file, const char*
 	unsigned char buf[DOWNLOAD_BUFFER_SIZE];
 	char hostname[64], urlpath[1024], strsize[32] = { 0 };
 	BOOL r = FALSE, use_github_api, has_content_length = FALSE;
-	DWORD dwSize, dwWritten, dwDownloaded;
+	DWORD dwSize, dwWritten, dwDownloaded, request_error;
+	int send_attempt;
 	BYTE* resized_buffer;
 	HANDLE hFile = INVALID_HANDLE_VALUE;
 	HINTERNET hSession = NULL, hConnection = NULL, hRequest = NULL;
@@ -860,43 +861,62 @@ uint64_t DownloadToFileOrBufferEx(const char* url, const char* file, const char*
 	}
 	hostname[sizeof(hostname) - 1] = 0;
 
-	hSession = GetInternetSession(user_agent, TRUE);
-	if (hSession == NULL) {
-		uprintf("Could not open Internet session: %s", WindowsErrorString());
-		if (WindowsVersion.Version == WINDOWS_VISTA)
-			uprintf("%s", lmprintf(MSG_547));
-		if (WindowsVersion.Version >= WINDOWS_7) {
-			uprintf("Make sure TLS 1.2 is enabled in Internet Options.");
-		}
-		goto out;
-	}
-
-	hConnection = InternetConnectA(hSession, UrlParts.lpszHostName, UrlParts.nPort, NULL, NULL, INTERNET_SERVICE_HTTP, 0, (DWORD_PTR)NULL);
-	if (hConnection == NULL) {
-		uprintf("Could not connect to server %s:%d: %s", UrlParts.lpszHostName, UrlParts.nPort, WindowsErrorString());
-		goto out;
-	}
-
-	hRequest = HttpOpenRequestA(hConnection, "GET", UrlParts.lpszUrlPath, NULL, NULL, accept_types,
-		INTERNET_FLAG_IGNORE_REDIRECT_TO_HTTP | INTERNET_FLAG_IGNORE_REDIRECT_TO_HTTPS |
-		INTERNET_FLAG_NO_COOKIES | INTERNET_FLAG_NO_UI | INTERNET_FLAG_NO_CACHE_WRITE | INTERNET_FLAG_HYPERLINK |
-		((UrlParts.nScheme == INTERNET_SCHEME_HTTPS) ? INTERNET_FLAG_SECURE : 0), (DWORD_PTR)NULL);
-	if (hRequest == NULL) {
-		uprintf("Could not open URL %s: %s", url, WindowsErrorString());
-		goto out;
-	}
-
 	// If we are querying the GitHub API, we need to enable raw content and
 	// set 'Accept-Encoding' to 'none' to get the data length.
 	use_github_api = (strstr(url, "api.github.com") != NULL);
-	if (use_github_api && !HttpAddRequestHeadersA(hRequest, "Accept: application/vnd.github.v3.raw",
-		(DWORD)-1, HTTP_ADDREQ_FLAG_ADD)) {
-		uprintf("Unable to enable raw content from GitHub API: %s", WindowsErrorString());
-		goto out;
-	}
-	if (!HttpSendRequestA(hRequest, request_headers[use_github_api ? 0 : 1], -1L, NULL, 0)) {
-		uprintf("Unable to send request: %s", WindowsErrorString());
-		goto out;
+	for (send_attempt = 0; send_attempt < 2; send_attempt++) {
+		hSession = GetInternetSession(user_agent, TRUE);
+		if (hSession == NULL) {
+			uprintf("Could not open Internet session: %s", WindowsErrorString());
+			if (WindowsVersion.Version == WINDOWS_VISTA)
+				uprintf("%s", lmprintf(MSG_547));
+			if (WindowsVersion.Version >= WINDOWS_7)
+				uprintf("Make sure TLS 1.2 is enabled in Internet Options.");
+			goto out;
+		}
+
+		hConnection = InternetConnectA(hSession, UrlParts.lpszHostName, UrlParts.nPort,
+			NULL, NULL, INTERNET_SERVICE_HTTP, 0, (DWORD_PTR)NULL);
+		if (hConnection == NULL) {
+			uprintf("Could not connect to server %s:%d: %s", UrlParts.lpszHostName,
+				UrlParts.nPort, WindowsErrorString());
+			goto out;
+		}
+
+		hRequest = HttpOpenRequestA(hConnection, "GET", UrlParts.lpszUrlPath, NULL, NULL, accept_types,
+			INTERNET_FLAG_IGNORE_REDIRECT_TO_HTTP | INTERNET_FLAG_IGNORE_REDIRECT_TO_HTTPS |
+			INTERNET_FLAG_NO_COOKIES | INTERNET_FLAG_NO_UI | INTERNET_FLAG_NO_CACHE_WRITE |
+			INTERNET_FLAG_HYPERLINK | INTERNET_FLAG_RELOAD |
+			((UrlParts.nScheme == INTERNET_SCHEME_HTTPS) ? INTERNET_FLAG_SECURE : 0), (DWORD_PTR)NULL);
+		if (hRequest == NULL) {
+			uprintf("Could not open URL %s: %s", url, WindowsErrorString());
+			goto out;
+		}
+
+		if (use_github_api && !HttpAddRequestHeadersA(hRequest,
+			"Accept: application/vnd.github.v3.raw", (DWORD)-1, HTTP_ADDREQ_FLAG_ADD)) {
+			uprintf("Unable to enable raw content from GitHub API: %s", WindowsErrorString());
+			goto out;
+		}
+		if (HttpSendRequestA(hRequest, request_headers[use_github_api ? 0 : 1], -1L, NULL, 0))
+			break;
+
+		request_error = GetLastError();
+		if ((WindowsVersion.Version != WINDOWS_7) ||
+			(request_error != ERROR_INTERNET_SECURITY_CHANNEL_ERROR) || (send_attempt != 0)) {
+			SetLastError(request_error);
+			uprintf("Unable to send request: %s", WindowsErrorString());
+			goto out;
+		}
+
+		uprintf("Secure channel failed; retrying with a new WinINet session...");
+		InternetCloseHandle(hRequest);
+		InternetCloseHandle(hConnection);
+		InternetCloseHandle(hSession);
+		hRequest = NULL;
+		hConnection = NULL;
+		hSession = NULL;
+		IGNORE_RETVAL(InternetSetOptionA(NULL, INTERNET_OPTION_SETTINGS_CHANGED, NULL, 0));
 	}
 
 	// Get the file size
