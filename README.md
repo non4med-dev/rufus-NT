@@ -5,47 +5,54 @@
 
 The original project can be found [under this link.](https://github.com/pbatard/rufus)
 
+## Introduction
+
+Rufus-NT is a fork of Rufus designed to run natively on every NT-based Windows system with USB support.<br>
+The main targets are Windows NT 4.0 - Windows 7, and each have their own set of fixes.<br>
+
 ## Features
   
-- Everything that [Rufus](https://github.com/pbatard/rufus/tree/v4.7) already has to offer<br>
-  ... but on Windows versions no one sane would ever consider
-
-| Windows Version | Formatting / Partitioning | Windows To Go | Disk Cloning | Networking | Localization |
-| --- | --- | --- | --- | --- | --- |
-| Windows 7      | Fully supported | Fully supported | VHD Only    | Fully supported | Fully supported |
-| Windows Vista  | Fully supported | Fully supported | VHD Only    | Disabled        | Fully supported |
-| Windows XP     | Fully supported | Fully supported | VHD Only    | Disabled        | No Arabic       |
-| Windows 2000   | Fully supported | Fully supported | VHD Only    | Disabled        | No Arabic       |
-| Windows NT 4.0 | Fully supported | Supported (?)   | Unsupported | Disabled        | Limited         |
-
-- Specific fixes and optimizations for all systems
-- Fido ISO downloading restored to Windows 7<br>
--> [Powershell 7.2](https://github.com/PowerShell/PowerShell/releases/tag/v7.2.24) is required<br>
+- **Everything** that Rufus already has to offer<br>
+- One executable for all systems due to the way its written
+- ISO downloading (Fido) fixed for Windows 7
 - Fixes for VPNs, outdated drivers, unupdated systems
-- GRUB and Syslinux embedded for offline use
-- GPT partitioning for Windows NT4, XP and 2000
-- Native, optimized, fully functional UI even on older systems
-- Increased performance over last-supported versions (~15% on average)
-- Actively maintained, selectively updated from upstream
-
-## Documentation
-
-Rufus-NT can be built as either `rufusnt.exe` or `rufusnt-noembed.exe` with the difference being not including /res/embed.<br>
-That saves about 900kb after compression.<br>
-
-Rufus-NT includes `wimgapi.dll` (6.1.7601.24546) and `bcdboot.exe` (6.2.8102) patched with the api-shim `ntapi.dll`.<br>
-
-If you'd like to recreate the patches, understand how they work and what they do, look [here](https://github.com/non4med-dev/rufus-nt/docs/bcdboot-wimgapi-ntapi.md)<br>
-Prerequisites are either python3 or a PE editor.<br>
-
-Most changes up to Update 5 weren't properly documented, explained nor audited.<br>
-I've tried my best at explaining everything in [this audit here](https://github.com/non4med-dev/rufus-nt/docs/code-audit-update5.md)
+- GRUB and Syslinux embedded for offline systems
+- Experimental GPT partitioning (for pre-Vista systems)
+- Lots of custom dialogs, translations, UI optimizations
+- Improved error messages to understand whats going on
+- Drag-and-drop installation of diskcopy.dll (MS-DOS)
+- Increased performance over last-supported versions<br>
+  (mostly due to buffer optimizations and wimlib)
+- Written with security and transparency in mind as well
+- Actively maintained with upstream commits,<br>
+  selectively ones that actually benefit older systems
 
 ## Compilation
 
 Use Visual Studio 2022 and then invoke the `.sln` <br>
 
+rufusnt.sln builds the regular build<br>
+rufusnt_noembed.sln builds without /res/embed<br>
+
 UPX 3.91 with `--lzma --best` compression is recommended 
+
+<details>
+<summary><strong>Documentation</strong></summary>
+<br>
+
+Building without /res/embed saves ~900kb space after UPX and is only recommended for Windows 7+
+
+Rufus-NT includes `wimgapi.dll` (6.1.7601.24546) and `bcdboot.exe` (6.2.8102) patched with an API shim `ntapi.dll` to maintain a fallback to wimlib and to provide Windows To Go creation functionality on pre-XP systems<br>
+
+Prerequisites for patching are either python3 (for automated) or a PE editor (for manual).<br>
+
+You can read more about them specifically [here](https://github.com/non4med-dev/rufus-NT/blob/master/docs/bcdboot-wimgapi-ntapi.md)<br>
+
+If you'd like to understand the changes done in Rufus-NT in more detail, take a look at [this audit here](https://github.com/non4med-dev/rufus-NT/blob/master/docs/core-audit.md)
+
+Certain parts of this project (i.e. API-shims, patcher.py, localization) were AI assisted. It isn't slop though, don't worry. Anyone is free to read the code and suggest fixes, changes or different ways of handling things.
+
+</details>
 
 #### Visual Studio
 
