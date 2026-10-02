@@ -1558,11 +1558,14 @@ int64_t ExtractISOFile(const char* iso, const char* iso_file, const char* dest_f
 	}
 	goto out;
 
-
 try_iso:
-	// Make sure to enable extensions, else we may not match the name of the file we are looking
-	// for since Rock Ridge may be needed to translate something like 'I386_PC' into 'i386-pc'...
-	p_iso = iso9660_open_ext(iso, ISO_EXTENSION_MASK);
+	// "Make sure to enable extensions, else we may not match the name of the file we are looking
+	// for since Rock Ridge may be needed to translate something like 'I386_PC' into 'i386-pc'..."
+
+	// If I could comment out the comment above this comment I definitely would
+	// Opening without extensions is how Rufus 2.18 used to handle it. Thats the entire fix.
+	// Same fix on line 1668
+	p_iso = iso9660_open(iso);
 	if (p_iso == NULL) {
 		uprintf("Unable to open image '%s'", iso);
 		goto out;
@@ -1581,9 +1584,6 @@ try_iso:
 			r = 0;
 			goto out;
 		}
-		nb = (size_t)MIN(ISO_BUFFER_SIZE / ISO_BLOCKSIZE,
-			(file_length + ISO_BLOCKSIZE - 1) / ISO_BLOCKSIZE);
-		memset(buf, 0, ISO_BUFFER_SIZE);
 		memset(buf, 0, ISO_BLOCKSIZE);
 		lsn = p_statbuf->lsn + (lsn_t)i;
 		if (iso9660_iso_seek_read(p_iso, buf, lsn, 1) != ISO_BLOCKSIZE) {
@@ -1664,7 +1664,8 @@ uint32_t ReadISOFileToBuffer(const char* iso, const char* iso_file, uint8_t** bu
 try_iso:
 	// Make sure to enable extensions, else we may not match the name of the file we are looking
 	// for since Rock Ridge may be needed to translate something like 'I386_PC' into 'i386-pc'...
-	p_iso = iso9660_open_ext(iso, ISO_EXTENSION_MASK);
+	// p_iso = iso9660_open_ext(iso, ISO_EXTENSION_MASK);
+	p_iso = iso9660_open(iso);
 	if (p_iso == NULL) {
 		uprintf("Unable to open image '%s'", iso);
 		goto out;

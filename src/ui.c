@@ -1,4 +1,4 @@
-/*
+﻿/*
  * Rufus: The Reliable USB Formatting Utility
  * UI-related function calls
  * Copyright © 2018-2024 Pete Batard <pete@akeo.ie>
@@ -327,6 +327,7 @@ void PositionMainControls(HWND hDlg)
 	SIZE sz;
 	DWORD padding;
 	int i, x, advanced_toggle_gap = 3, legacy_advanced_gap = 3, button_fudge = 2;
+	int i16 = GetSystemMetrics(SM_CXSMICON);
 
 	// Start by resizing the whole dialog
 	GetWindowRect(hDlg, &rc);
@@ -414,7 +415,18 @@ void PositionMainControls(HWND hDlg)
 
 	// Seriously, who designed this bullshit API call where you pass a SIZE
 	// struct but can only retrieve one of cx or cy at a time?!?
+	/*
 	SendMessage(hMultiToolbar, TB_GETIDEALSIZE, (WPARAM)FALSE, (LPARAM)&sz);
+	GetWindowRect(GetDlgItem(hDlg, IDC_ABOUT), &rc);
+	MapWindowPoints(NULL, hDlg, (POINT*)&rc, 2);
+	SetWindowPos(hMultiToolbar, hProgress, rc.left, rc.top, sz.cx, ddbh, 0);
+	*/
+	// Multitoolbar fix 1/2
+	SetWindowPos(hMultiToolbar, NULL, 0, 0, 1, ddbh, SWP_NOMOVE | SWP_NOZORDER | SWP_NOACTIVATE);
+	SendMessage(hMultiToolbar, TB_AUTOSIZE, 0, 0);
+	SendMessage(hMultiToolbar, TB_GETIDEALSIZE, (WPARAM)FALSE, (LPARAM)&sz);
+	if (sz.cx < 4 * i16)
+		sz.cx = 4 * i16 + 3 * max((int)(4.0f * fScale), 4);
 	GetWindowRect(GetDlgItem(hDlg, IDC_ABOUT), &rc);
 	MapWindowPoints(NULL, hDlg, (POINT*)&rc, 2);
 	SetWindowPos(hMultiToolbar, hProgress, rc.left, rc.top, sz.cx, ddbh, 0);
@@ -525,35 +537,33 @@ void PositionMainControls(HWND hDlg)
 
 	RaiseNt5MainButtons(hDlg);
 
-#ifdef RUFUS_TARGET_NT4
-	if (WindowsVersion.Version == WINDOWS_NT4) {
-		RECT nt4_rc;
-		int nt4_bottom_gap = max((int)(12.0f * fScale), 12);
+	// Move the main window by 12 pixels on XP and lower to
+	// accomodate for the extra offsets added under advanced dropdowns
 
-		// Accomodate for the offsets under advanced options
-
-		GetWindowRect(hDlg, &nt4_rc);
+	if (WindowsVersion.Version <= WINDOWS_2003) {
+		RECT rc;
+		int bottom_gap = max((int)(12.0f * fScale), 12);
+		GetWindowRect(hDlg, &rc);
 		SetWindowPos(hDlg, NULL, 0, 0,
-			nt4_rc.right - nt4_rc.left,
-			(nt4_rc.bottom - nt4_rc.top) + nt4_bottom_gap,
+			rc.right - rc.left,
+			(rc.bottom - rc.top) + bottom_gap,
 			SWP_NOMOVE | SWP_NOZORDER);
-		GetWindowRect(hLogDialog, &nt4_rc);
+		GetWindowRect(hLogDialog, &rc);
 		SetWindowPos(hLogDialog, NULL, 0, 0,
-			nt4_rc.right - nt4_rc.left,
-			(nt4_rc.bottom - nt4_rc.top) + nt4_bottom_gap,
+			rc.right - rc.left,
+			(rc.bottom - rc.top) + bottom_gap,
 			SWP_NOMOVE | SWP_NOZORDER);
-		MoveCtrlY(hLogDialog, IDC_LOG_CLEAR, nt4_bottom_gap);
-		MoveCtrlY(hLogDialog, IDC_LOG_SAVE, nt4_bottom_gap);
-		MoveCtrlY(hLogDialog, IDC_LOG_DIAGNOSTICS, nt4_bottom_gap);
-		MoveCtrlY(hLogDialog, IDCANCEL, nt4_bottom_gap);
-		GetWindowRect(hLog, &nt4_rc);
-		MapWindowPoints(NULL, hLogDialog, (POINT*)&nt4_rc, 2);
-		SetWindowPos(hLog, NULL, nt4_rc.left, nt4_rc.top,
-			nt4_rc.right - nt4_rc.left,
-			(nt4_rc.bottom - nt4_rc.top) + nt4_bottom_gap,
+		MoveCtrlY(hLogDialog, IDC_LOG_CLEAR, bottom_gap);
+		MoveCtrlY(hLogDialog, IDC_LOG_SAVE, bottom_gap);
+		MoveCtrlY(hLogDialog, IDC_LOG_DIAGNOSTICS, bottom_gap);
+		MoveCtrlY(hLogDialog, IDCANCEL, bottom_gap);
+		GetWindowRect(hLog, &rc);
+		MapWindowPoints(NULL, hLogDialog, (POINT*)&rc, 2);
+		SetWindowPos(hLog, NULL, rc.left, rc.top,
+			rc.right - rc.left,
+			(rc.bottom - rc.top) + bottom_gap,
 			SWP_NOZORDER);
 	}
-#endif
 }
 
 static void ResizeDialogs(int shift)
@@ -1378,6 +1388,7 @@ void CreateAdditionalControls(HWND hDlg)
 			tbToolbarButtons[i].fsState = TBSTATE_ENABLED;
 			tbToolbarButtons[i].iBitmap = bitmaps_list[i / 2];
 		}
+
 		else {
 			tbToolbarButtons[i].fsStyle = BTNS_AUTOSIZE;
 			tbToolbarButtons[i].fsState = TBSTATE_INDETERMINATE;
@@ -1388,6 +1399,7 @@ void CreateAdditionalControls(HWND hDlg)
 	SendMessage(hMultiToolbar, TB_ADDBUTTONS, (WPARAM)i, (LPARAM)&tbToolbarButtons);
 
 	// Use the NT5 icon width instead of the unscaled system metric (port)
+	/*
 	SendMessage(hMultiToolbar, TB_SETBUTTONSIZE, 0, MAKELPARAM(i16, ddbh));
 	SendMessage(hMultiToolbar, TB_AUTOSIZE, 0, 0);
 
@@ -1400,6 +1412,19 @@ void CreateAdditionalControls(HWND hDlg)
 	MapWindowPoints(NULL, hDlg, (POINT*)&rc, 2);
 	SetWindowPos(hMultiToolbar, hProgress, rc.left, rc.top, sz.cx, ddbh, 0);
 	SetAccessibleName(hMultiToolbar, lmprintf(MSG_315));
+	*/
+
+	// Multitoolbar fix 2/2
+	SendMessage(hMultiToolbar, TB_SETBUTTONSIZE, 0, MAKELPARAM(i16, ddbh));
+	SetWindowPos(hMultiToolbar, NULL, 0, 0, 1, ddbh, SWP_NOMOVE | SWP_NOZORDER | SWP_NOACTIVATE);
+	SendMessage(hMultiToolbar, TB_AUTOSIZE, 0, 0);
+	SendMessage(hMultiToolbar, TB_GETIDEALSIZE, (WPARAM)FALSE, (LPARAM)&sz);
+	// DPI scaling presumably
+	if (sz.cx < 4 * i16)
+		sz.cx = 4 * i16 + 3 * max((int)(4.0f * fScale), 4);
+	GetWindowRect(GetDlgItem(hDlg, IDC_ABOUT), &rc);
+	MapWindowPoints(NULL, hDlg, (POINT*)&rc, 2);
+	SetWindowPos(hMultiToolbar, hProgress, rc.left, rc.top, sz.cx, ddbh, 0);
 
 	// Subclass the progress bar so that we can write on it
 	progress_original_proc = (WNDPROC)SetWindowLongPtr(hProgress, GWLP_WNDPROC, (LONG_PTR)ProgressCallback);

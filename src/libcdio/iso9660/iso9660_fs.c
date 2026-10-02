@@ -945,19 +945,27 @@ _iso9660_dir_to_statbuf (iso9660_dir_t *p_iso9660_dir,
   p_stat->type    = (p_iso9660_dir->file_flags & ISO_DIRECTORY)
     ? _STAT_DIR : _STAT_FILE;
 
-  /* Test for gaps between extents. Important: Use previous .total_size */
+  // Test for gaps between extents. Important: Use previous .total_size 
   extent_lsn = from_733 (p_iso9660_dir->extent);
+  //
   if (p_stat->total_size > 0) {
-    /* This is a follow-up extent. Check for a gap. */
+    // This is a follow-up extent. Check for a gap.
     if (p_stat->lsn + p_stat->total_size / ISO_BLOCKSIZE != extent_lsn
 	|| p_stat->total_size % ISO_BLOCKSIZE) {
-      /* Gap detected. Throw error. */
+      // Gap detected. Throw error.
       cdio_warn("Non-contiguous data extents with '%s'", p_stat->filename);
       goto fail;
     }
   } else if (first_extent) {
     p_stat->lsn = extent_lsn;
-  }
+  } 
+  //
+
+  /*
+  if (first_extent) {
+      p_stat->lsn = extent_lsn;
+  } */
+
   /* Only now update .total_size */
   p_stat->total_size += from_733(p_iso9660_dir->size);
 
