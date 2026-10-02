@@ -2890,7 +2890,8 @@ BOOL CreatePartition(HANDLE hDrive, int partition_style, int file_system, BOOL m
 
 	// Build the DriveLayoutEx table
 	for (i = 0; i < pi; i++) {
-		uprintf("● Creating %S%s (offset: %lld, size: %s)", SelectedDrive.Partition[i].Name,
+		// No bullet point, it looks so out of place
+		uprintf("Creating %S%s (offset: %lld, size: %s)", SelectedDrive.Partition[i].Name,
 			(wcsstr(SelectedDrive.Partition[i].Name, L"Partition") == NULL) ? " Partition" : "",
 			SelectedDrive.Partition[i].Offset,
 			SizeToHumanReadable(SelectedDrive.Partition[i].Size, TRUE, FALSE));

@@ -727,22 +727,33 @@ BOOL IsLocaleAvailableOnLegacyWindows(loc_cmd* lcmd)
 		"hu-HU", "id-ID", "it-IT", "ms-MY", "nb-NO", "pt-BR",
 		"pt-PT", "es-ES", "sv-SE", "tr-TR"
 	};
+	static const char* w2k_hidden[] = {
+		"zh-CN", "zh-TW", "ja-JP", "ko-KR"
+	};
 	size_t i;
 
 	if ((lcmd == NULL) || (lcmd->txt[0] == NULL))
 		return FALSE;
 
-	// Internal NT4 ASCII variants are never shown as separate languages.
+	// ASCII muahaha
 	if (IsNT4AsciiLocale(lcmd))
 		return FALSE;
 
 	if (WindowsVersion.Version > WINDOWS_XP)
 		return TRUE;
 
-	// Arabic is not usable with the Windows 2000/XP UI font setup.
+	// Arabic is Vista+
 	if ((WindowsVersion.Version >= WINDOWS_2000) &&
 		(safe_strcmp(lcmd->txt[0], "ar-SA") == 0))
 		return FALSE;
+
+	// Chinese, Japanese, Korean are XP+
+	if (WindowsVersion.Version == WINDOWS_2000) {
+		for (i = 0; i < ARRAYSIZE(w2k_hidden); i++) {
+			if (safe_strcmp(lcmd->txt[0], w2k_hidden[i]) == 0)
+				return FALSE;
+		}
+	}
 
 	if (WindowsVersion.Version != WINDOWS_NT4)
 		return TRUE;

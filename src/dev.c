@@ -136,8 +136,20 @@ static BOOL GetUSBProperties(char* parent_path, char* device_id, usb_device_prop
 	memset(&conn_info, 0, size);
 	conn_info.ConnectionIndex = (ULONG)props->port;
 	// coverity[tainted_data_argument]
+	/*
 	if (!DeviceIoControl(handle, IOCTL_USB_GET_NODE_CONNECTION_INFORMATION_EX, &conn_info, size, &conn_info, size, &size, NULL)) {
 		uprintf("Could not get node connection information for '%s': %s", device_id, WindowsErrorString());
+		goto out;
+	}
+	*/
+
+	if (!DeviceIoControl(handle, IOCTL_USB_GET_NODE_CONNECTION_INFORMATION_EX, &conn_info, size, &conn_info, size, &size, NULL)) {
+		DWORD err = GetLastError();
+		if ((WindowsVersion.Version > WINDOWS_VISTA) &&
+			(err != ERROR_NOT_SUPPORTED) && (err != ERROR_INVALID_FUNCTION) &&
+			(err != ERROR_GEN_FAILURE))
+			uprintf("Could not get node connection information for '%s': %s",
+				device_id, WindowsErrorString());
 		goto out;
 	}
 
@@ -834,20 +846,18 @@ BOOL GetDevices(DWORD devnum)
 				// we might have an extra vendor driver in between (e.g. "ASUS USB 3.0 Boost Storage Driver"
 				// for UASP devices in ASUS "Turbo Mode" or "Apple Mobile Device USB Driver" for iPods)
 				// so try to see if we can match the grandparent.
-				if ( ((uintptr_t)htab_devid.table[j].data == 0)
+				if (((uintptr_t)htab_devid.table[j].data == 0)
 					&& (CM_Get_Parent(&grandparent_inst, parent_inst, 0) == CR_SUCCESS)
-					&& (CM_Get_Device_IDA(grandparent_inst, str, MAX_PATH, 0) == CR_SUCCESS) ) {
+					&& (CM_Get_Device_IDA(grandparent_inst, str, MAX_PATH, 0) == CR_SUCCESS)) {
 					device_id = str;
-					method_str = "[GP]";
 					ToUpper(device_id);
 					j = htab_hash(device_id, &htab_devid);
 					uuprintf("  Matched with (GP) ID[%03d]: %s", j, device_id);
 				}
 				if ((uintptr_t)htab_devid.table[j].data > 0) {
 					uuprintf("  Matched with Hub[%d]: '%s'", (uintptr_t)htab_devid.table[j].data,
-							dev_if_path.String[(uintptr_t)htab_devid.table[j].data]);
+						dev_if_path.String[(uintptr_t)htab_devid.table[j].data]);
 					if (GetUSBProperties(dev_if_path.String[(uintptr_t)htab_devid.table[j].data], device_id, &props)) {
-						method_str = "";
 						hub_path = dev_if_path.String[(uintptr_t)htab_devid.table[j].data];
 					}
 #ifdef FORCED_DEVICE
@@ -857,9 +867,10 @@ BOOL GetDevices(DWORD devnum)
 #endif
 				}
 				break;
+				}
 			}
-		}
 		// Fallback to disk devnode ancestry when legacy USB drivers cannot supply descriptor IDs
+		/*
 		if ((WindowsVersion.Version <= WINDOWS_7) && props.is_USB &&
 			(((props.vid == 0) && (props.pid == 0)) ||
 			 ((WindowsVersion.Version >= WINDOWS_VISTA) && (hub_path == NULL)))) {
@@ -869,14 +880,18 @@ BOOL GetDevices(DWORD devnum)
 				method_str = "";
 			else
 #endif
-			{
-				uint32_t legacy_vid = 0, legacy_pid = 0;
-				if (GetXpUsbVidPid(dev_info_data.DevInst, &legacy_vid, &legacy_pid)) {
-					props.vid = legacy_vid;
-					props.pid = legacy_pid;
-					method_str = "";
-				}
+*/
+		// Version check is unnecessary. If it fails, it falls back quietly.
+		if (props.is_USB && (props.vid == 0) && (props.pid == 0)) {
+			uint32_t legacy_vid = 0, legacy_pid = 0;
+			if (GetXpUsbVidPid(dev_info_data.DevInst, &legacy_vid, &legacy_pid)) {
+				props.vid = legacy_vid;
+				props.pid = legacy_pid;
 			}
+#ifdef RUFUS_TARGET_NT4
+			else if (WindowsVersion.Version <= WINDOWS_NT4)
+				ParseUsbVidPid(device_instance_id, &props.vid, &props.pid);
+#endif
 		}
 		// Windows has the bad habit of appending "SCSI Disk Device" to the description
 		// of UAS devices, which of course screws up detection of device that actually
@@ -899,7 +914,8 @@ BOOL GetDevices(DWORD devnum)
 				continue;
 			}
 			uprintf("Found non-USB removable device '%s'", buffer);
-		} else {
+		}
+		else {
 			if ((props.vid == 0) && (props.pid == 0)) {
 				if (!props.is_USB) {
 					// If we have a non removable SCSI drive and couldn't get a VID:PID,
@@ -908,7 +924,8 @@ BOOL GetDevices(DWORD devnum)
 					continue;
 				}
 				static_strcpy(str, "????:????");	// Couldn't figure VID:PID
-			} else {
+			}
+			else {
 				static_sprintf(str, "%04X:%04X", props.vid, props.pid);
 				// I *REALLY* don't want to erase the devices below by accident.
 				if (its_a_me_mario) {
@@ -935,20 +952,20 @@ BOOL GetDevices(DWORD devnum)
 			if ((WindowsVersion.Version <= WINDOWS_NT4) && props.is_USB && !props.is_UASP &&
 				((safe_strlen(buffer) < 11) || (safe_stricmp(&buffer[safe_strlen(buffer) - 11], " USB Device") != 0)))
 				name_suffix = " USB Device";
-			// Don't print (VID:PID) on NT4 as it can't supply it reliably
-#ifdef RUFUS_TARGET_NT4
-			if ((WindowsVersion.Version <= WINDOWS_NT4) &&
-				(props.vid == 0) && (props.pid == 0))
-				uprintf("Found %s%s%s device '%s%s'%s%s", props.is_UASP ? "UAS (" : "",
-					usb_speed_name[props.speed], props.is_UASP ? ")" : "", buffer, name_suffix,
-					(method_str[0] != 0) ? " " : "", method_str);
-			else
-#endif
-			uprintf("Found %s%s%s device '%s%s' (%s) %s", props.is_UASP ? "UAS (" : "",
-				usb_speed_name[props.speed], props.is_UASP ? ")" : "", buffer, name_suffix, str, method_str);
-			if (props.lower_speed)
-				uprintf("NOTE: This device is a USB 3.%c device operating at lower speed...", '0' + props.lower_speed - 1);
 		}
+		// Don't print (VID:PID) on NT4 as it can't supply it reliably
+		// Some modern systems use outdated USB drivers which can't supply 
+		// VID:PID on their own either and instead fall back to GetXpUsbVidPid as well
+		// But they definitely didn't do it silently. Now they do.
+#ifdef RUFUS_TARGET_NT4
+		if ((WindowsVersion.Version <= WINDOWS_NT4) &&
+			(props.vid == 0) && (props.pid == 0))
+			uprintf("Found %s%s%s device '%s%s'", props.is_UASP ? "UAS (" : "",
+				usb_speed_name[props.speed], props.is_UASP ? ")" : "", buffer, name_suffix);
+		else
+#endif
+			uprintf("Found %s%s%s device '%s%s' (%s)", props.is_UASP ? "UAS (" : "",
+				usb_speed_name[props.speed], props.is_UASP ? ")" : "", buffer, name_suffix, str);
 		devint_data.cbSize = sizeof(devint_data);
 		devint_detail_data = NULL;
 		for (j = 0; ; j++) {

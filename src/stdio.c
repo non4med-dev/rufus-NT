@@ -145,8 +145,9 @@ void uprintf(const char *format, ...)
 	*p   = '\0';
 
 #ifdef RUFUS_TARGET_NT4
+	// Lets extend that to XP as well, just for aesthetics
 	output = buf;
-	if (WindowsVersion.Version <= WINDOWS_NT4) {
+	if (WindowsVersion.Version <= WINDOWS_2003) {
 		NT4_SanitizeLogText(buf, nt4_buf, sizeof(nt4_buf));
 		output = nt4_buf;
 	}
@@ -174,7 +175,8 @@ void uprintfs(const char* str)
 	char* nt4_str = NULL;
 	const char* output = str;
 
-	if ((WindowsVersion.Version <= WINDOWS_NT4) && (str != NULL)) {
+	if ((WindowsVersion.Version <= WINDOWS_2003) && (str != NULL)) {
+		// Lets extend that to XP as well, just for aesthetics
 		size_t nt4_size = 2 * strlen(str) + 1;
 		nt4_str = (char*)malloc(nt4_size);
 		if (nt4_str != NULL) {
