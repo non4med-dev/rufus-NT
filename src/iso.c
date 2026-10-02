@@ -53,6 +53,32 @@
 #include "msapi_utf8.h"
 #include "localization.h"
 #include "bled/bled.h"
+#include "wue.h"
+
+// I found modern ISOs to write much slower on pre-Vista systems
+// As a last resort, lets use 2.18's writer on those systems
+// ... only when no WUE options are selected, though
+
+#define LEGACY_ISO_BUFFER_SIZE    (64 * KB)
+
+static __inline BOOL UseLegacyIsoExtract(void)
+{
+	// Only when no WUE options enabled and on older than Vista
+	return ((unattend_xml_flags & UNATTEND_FULL_MASK) == 0) &&
+		(WindowsVersion.Version <= WINDOWS_VISTA);
+}
+static __inline size_t IsoExtractBufferSize(void)
+{
+	return UseLegacyIsoExtract() ? LEGACY_ISO_BUFFER_SIZE : ISO_BUFFER_SIZE;
+}
+static HANDLE CreateIsoExtractFile(const char* path, int64_t file_length)
+{
+	if (UseLegacyIsoExtract())
+		return CreateFileU(path, GENERIC_READ | GENERIC_WRITE,
+			FILE_SHARE_READ, NULL, CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, NULL);
+	return CreatePreallocatedFile(path, GENERIC_READ | GENERIC_WRITE,
+		FILE_SHARE_READ, NULL, CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, file_length);
+}
 
 // How often should we update the progress bar, as updating the
 // progress bar too frequently will bring extraction to a crawl
@@ -621,9 +647,15 @@ static int udf_extract_files(udf_t *p_udf, udf_dirent_t *p_udf_dirent, const cha
 	char tmp[128], *psz_fullpath = NULL, *psz_sanpath = NULL;
 	const char* psz_basename;
 	udf_dirent_t *p_udf_dirent2;
+	/*
 	_Static_assert(ISO_BUFFER_SIZE % UDF_BLOCKSIZE == 0,
 		"ISO_BUFFER_SIZE is not a multiple of UDF_BLOCKSIZE");
 	uint8_t* buf = malloc(ISO_BUFFER_SIZE);
+	*/
+	// Select buffer at runtime
+	size_t extract_buf_size = IsoExtractBufferSize();
+	uint8_t* buf = malloc(extract_buf_size);
+
 	int64_t read, file_length;
 
 	if ((p_udf_dirent == NULL) || (psz_path == NULL) || (buf == NULL)) {
@@ -686,8 +718,11 @@ static int udf_extract_files(udf_t *p_udf, udf_dirent_t *p_udf_dirent, const cha
 			psz_sanpath = sanitize_filename(psz_fullpath, &is_identical);
 			if (!is_identical)
 				uprintf("  File name sanitized to '%s'", psz_sanpath);
-			file_handle = CreatePreallocatedFile(psz_sanpath, GENERIC_READ | GENERIC_WRITE,
-				FILE_SHARE_READ, NULL, CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, file_length);
+			/* file_handle = CreatePreallocatedFile(psz_sanpath, GENERIC_READ | GENERIC_WRITE,
+				FILE_SHARE_READ, NULL, CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, file_length); */
+			// Skip preallocation
+			file_handle = CreateIsoExtractFile(psz_sanpath, file_length);
+
 			if (file_handle == INVALID_HANDLE_VALUE) {
 				err = GetLastError();
 				uprintf("  Unable to create file: %s", WindowsErrorString());
@@ -704,7 +739,9 @@ static int udf_extract_files(udf_t *p_udf, udf_dirent_t *p_udf_dirent, const cha
 				while (file_length > 0) {
 					if (ErrorStatus)
 						goto out;
-					nb = (size_t)MIN(ISO_BUFFER_SIZE / UDF_BLOCKSIZE,
+					/* nb = (size_t)MIN(ISO_BUFFER_SIZE / UDF_BLOCKSIZE,
+						(file_length + UDF_BLOCKSIZE - 1) / UDF_BLOCKSIZE); */
+					nb = (size_t)MIN(extract_buf_size / UDF_BLOCKSIZE,
 						(file_length + UDF_BLOCKSIZE - 1) / UDF_BLOCKSIZE);
 					read = udf_read_block(p_udf_dirent, buf, nb);
 					if (read < 0) {
@@ -773,9 +810,13 @@ static int iso_extract_files(iso9660_t* p_iso, const char *psz_path)
 	char psz_fullpath[MAX_PATH], *psz_basename = NULL, *psz_sanpath = NULL;
 	char tmp[128], target_path[256];
 	const char *psz_iso_name = &psz_fullpath[strlen(psz_extract_dir)];
+	/*
 	_Static_assert(ISO_BUFFER_SIZE % ISO_BLOCKSIZE == 0,
 		"ISO_BUFFER_SIZE is not a multiple of ISO_BLOCKSIZE");
 	uint8_t* buf = malloc(ISO_BUFFER_SIZE);
+	*/
+	size_t extract_buf_size = IsoExtractBufferSize();
+	uint8_t* buf = malloc(extract_buf_size);
 	CdioListNode_t* p_entnode;
 	iso9660_stat_t *p_statbuf;
 	CdioISO9660FileList_t* p_entlist = NULL;
@@ -959,8 +1000,9 @@ static int iso_extract_files(iso9660_t* p_iso, const char *psz_path)
 				}
 			}
 			if (create_file) {
-				file_handle = CreatePreallocatedFile(psz_sanpath, GENERIC_READ | GENERIC_WRITE,
-					FILE_SHARE_READ, NULL, CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, file_length);
+				/* file_handle = CreatePreallocatedFile(psz_sanpath, GENERIC_READ | GENERIC_WRITE,
+					FILE_SHARE_READ, NULL, CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, file_length); */
+				file_handle = CreateIsoExtractFile(psz_sanpath, file_length);
 				if (file_handle == INVALID_HANDLE_VALUE) {
 					err = GetLastError();
 					uprintf("  Unable to create file: %s", WindowsErrorString());
@@ -986,14 +1028,16 @@ static int iso_extract_files(iso9660_t* p_iso, const char *psz_path)
 						if (ErrorStatus)
 							goto out;
 						lsn = p_statbuf->lsn + (lsn_t)i;
-						nb = (size_t)MIN(ISO_BUFFER_SIZE / ISO_BLOCKSIZE,
+						// nb = (size_t)MIN(ISO_BUFFER_SIZE / ISO_BLOCKSIZE,
+						nb = (size_t)MIN(extract_buf_size / ISO_BLOCKSIZE,
 							(file_length + ISO_BLOCKSIZE - 1) / ISO_BLOCKSIZE);
 						if (iso9660_iso_seek_read(p_iso, buf, lsn, (long)nb) != (nb * ISO_BLOCKSIZE)) {
 							uprintf("  Error reading ISO9660 file %s at LSN %lu",
 								psz_iso_name, (long unsigned int)lsn);
 							goto out;
 						}
-						buf_size = (DWORD)MIN(file_length, ISO_BUFFER_SIZE);
+						// buf_size = (DWORD)MIN(file_length, ISO_BUFFER_SIZE);
+						buf_size = (DWORD)MIN(file_length, extract_buf_size);
 						if (fd_md5sum != NULL)
 							hash_write[HASH_MD5](&ctx, buf, buf_size);
 						ISO_BLOCKING(r = WriteFileWithRetry(file_handle, buf, buf_size, &wr_size, WRITE_RETRIES));

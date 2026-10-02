@@ -445,7 +445,7 @@ END
 //
 
 VS_VERSION_INFO VERSIONINFO
- FILEVERSION 2,0,0,1
+ FILEVERSION 2,0,0,2
  PRODUCTVERSION 4,7,0,0
  FILEFLAGSMASK 0x3fL
 #ifdef _DEBUG
@@ -465,7 +465,7 @@ BEGIN
             VALUE "CompanyName", "non4med"
             VALUE "FileDescription", "Rufus-NT"
             // Major . Almost-major . Minor . Minor
-            VALUE "FileVersion", "2.0.0.1"
+            VALUE "FileVersion", "2.0.0.2"
             VALUE "InternalName", "Rufus-NT"
             // Had to remove © as it doesn't exist in old fonts
             VALUE "LegalCopyright", "2011-2026 Pete Batard (GPL v3)"
