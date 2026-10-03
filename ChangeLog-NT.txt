@@ -1,3 +1,14 @@
+o Update 6 Fix (2027.10.03)
+  - Fixed ISO-9660 file information parsing
+  - Fixed the main window length on Windows 2000 and XP
+  - Implemented a simpler ISO writer for pre-Vista systems,
+    for when no Windows User Experience options are selected
+    (Around the same performance as Rufus 2.18 in testing)
+  - Improved (?) multitoolbar spacing on wider monitors
+  - Improved VID:PID parsing behaviour for old USB drivers
+    and unupdated systems
+  - Enabled ASCII log sanitizing for W2k and XP as well
+
 o Update 6 (2027.09.29)
   - Check out "Rufus Changelog", a few new pretty entries
     appeared there ;)

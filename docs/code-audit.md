@@ -123,6 +123,8 @@ The regular build also embeds GRUB 2 `core.img` files, Grub4DOS `grldr` and Sysl
 
 Large ext2/ext3 formats can be REALLY slow on some modern and large USB drives. Vista and newer therefore show a warning for drives that are 16GB or larger. I have made attempts to speed it up and optimize it but it really seems to be entirely USB-dependant. My USB 2.0 8GB cruzer blade took 1m to format as ext2. My USB 3.2 64GB intenso ultra line took 25 minutes.
 
+Rock Ridge and Juliet extensions were turned off for parsing file information in ISO9660 isos containing a boot maker. This seems to be either a Rufus issue, or an issue with every single system I tested it on. It now works, though.
+
 FAT32, NTFS, UEFI:NTFS and bootsector writes all route through the compatible handle selected for the host. MS-DOS, FreeDOS, Syslinux, GRUB and ReactOS therefore use the same NT4 physical I/O path instead of patching every option one by one.
 
 The Secure Boot (DBX) checks are half upstream and half custom code.
@@ -162,8 +164,12 @@ Languages like Arabic, Greek, Hebrew, Persian had to be removed as they complete
 The only languages natively supported in NT4 are English, Danish, Dutch, Finnish, French, German, Hungarian, Indonesian, Italian, Malay, Norwegian, Portuguese (both), Spanish, Swedish and Turkish<br>
 They are dynamically selected in `GetNT4Locale()` and are yet again behind a WindowsVersion.Version check<br>
 
-All other languages were removed there. On Windows XP and 2000 only Arabic was removed.
+On Windows NT4, any language that couldn't be saved was removed.<br>
+On Windows XP, only Arabic was removed.<br>
+On Windows 2000, Chinese, Japanese and Korean were also removed.<br>
+Windows Vista+ support all languages just fine.<br>
 
+Windows XP and older had an issue, where the checkboxes under "advanced" dropdowns were getting overshadowed and looked hidious. The spacing between the dropdown and the checkboxes was increased to 6 pixels each. The main window length had to be extended by 12 pixels to accomodate for that. I forgot to enable that main window patch for anything other than NT4.
 
 </details>
 
@@ -172,8 +178,8 @@ All other languages were removed there. On Windows XP and 2000 only Arabic was r
 <br>
 The quality of life, windows user experience... Hello, beautiful
 
-It was backported straight from source. Pretty much no changes have been made.<br>
-Exact commits are labeled and can be found by simply searching
+It was backported straight from source. Pretty much no modifications were made.<br>
+Exact commits are labeled, and can be found by simply searching
 `// commit `
 
 yey
