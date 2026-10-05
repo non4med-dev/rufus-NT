@@ -63,9 +63,10 @@
 
 static __inline BOOL UseLegacyIsoExtract(void)
 {
-	// Only when no WUE options enabled and on older than Vista
-	return ((unattend_xml_flags & UNATTEND_FULL_MASK) == 0) &&
-		(WindowsVersion.Version <= WINDOWS_VISTA);
+	// Always for anything under Vista
+	// With WUE enabled, it saves about 20% time
+	// With WUE disabled, about 30-40%
+	return (WindowsVersion.Version <= WINDOWS_VISTA);
 }
 static __inline size_t IsoExtractBufferSize(void)
 {
@@ -156,6 +157,8 @@ static const int64_t old_c32_threshold[NB_OLD_C32] = OLD_C32_THRESHOLD;
 static uint8_t joliet_level = 0;
 static uint32_t md5sum_size = 0;
 static uint64_t total_blocks, extra_blocks, nb_blocks, last_nb_blocks;
+// It gets set to TRUE only in PrepareLegacyWinToGoImage
+BOOL extract_show_progress = FALSE;
 static BOOL scan_only = FALSE;
 static FILE* fd_md5sum = NULL;
 static StrArray config_path, isolinux_path;
@@ -640,7 +643,7 @@ static int udf_extract_files(udf_t *p_udf, udf_dirent_t *p_udf_dirent, const cha
 	HANDLE file_handle = NULL;
 	DWORD buf_size, wr_size, err;
 	EXTRACT_PROPS props;
-	HASH_CONTEXT ctx;
+	HASH_CONTEXT ctx = { 0 };
 	BOOL r, is_identical;
 	int length;
 	size_t i, j, nb;
@@ -804,7 +807,7 @@ static int iso_extract_files(iso9660_t* p_iso, const char *psz_path)
 	HANDLE file_handle = NULL;
 	DWORD buf_size, wr_size, err;
 	EXTRACT_PROPS props;
-	HASH_CONTEXT ctx;
+	HASH_CONTEXT ctx = { 0 };
 	BOOL is_symlink, is_identical, create_file, free_p_statbuf = FALSE;
 	int length, r = 1;
 	char psz_fullpath[MAX_PATH], *psz_basename = NULL, *psz_sanpath = NULL;
@@ -1528,10 +1531,9 @@ out:
 
 int64_t ExtractISOFile(const char* iso, const char* iso_file, const char* dest_file, DWORD attributes)
 {
-	size_t i;
-	size_t nb;
+	size_t i, nb;
 	ssize_t read_size;
-	int64_t file_length, r = 0;
+	int64_t file_length, total_length, r = 0;
 	uint8_t* buf = NULL;
 	DWORD buf_size, wr_size;
 	iso9660_t* p_iso = NULL;
@@ -1541,27 +1543,16 @@ int64_t ExtractISOFile(const char* iso, const char* iso_file, const char* dest_f
 	lsn_t lsn;
 	HANDLE file_handle = INVALID_HANDLE_VALUE;
 
-	/*
-	file_handle = CreateFileU(dest_file, GENERIC_READ | GENERIC_WRITE,
-		FILE_SHARE_READ, NULL, CREATE_ALWAYS, attributes, NULL);
-	if (file_handle == INVALID_HANDLE_VALUE) {
-		uprintf("  Could not create file %s: %s", dest_file, WindowsErrorString());
-		goto out;
-	}
-	*/
-
-	// Use the regular ISO buffer for Windows To Go (port)
 	buf = (uint8_t*)malloc(ISO_BUFFER_SIZE);
 	if (buf == NULL)
 		goto out;
 	file_handle = CreateFileU(dest_file, GENERIC_READ | GENERIC_WRITE,
 		FILE_SHARE_READ, NULL, CREATE_ALWAYS, attributes, NULL);
 	if (file_handle == INVALID_HANDLE_VALUE) {
-		uprintf("  Could not create file %s: %s", dest_file, WindowsErrorString());
+		uprintf("Could not create file %s: %s", dest_file, WindowsErrorString());
 		goto out;
 	}
 
-	// First try to open as UDF - fallback to ISO if it failed
 	p_udf = udf_open(iso);
 	if (p_udf == NULL)
 		goto try_iso;
@@ -1578,16 +1569,15 @@ int64_t ExtractISOFile(const char* iso, const char* iso_file, const char* dest_f
 	}
 
 	file_length = udf_get_file_length(p_udf_file);
+	total_length = file_length;
 	while (file_length > 0) {
-		// Windows To Go; Stop WIM extraction and delete partial files
 		if (IS_ERROR(ErrorStatus) && SCODE_CODE(ErrorStatus) == ERROR_CANCELLED) {
 			r = 0;
 			goto out;
 		}
 		nb = (size_t)MIN(ISO_BUFFER_SIZE / UDF_BLOCKSIZE,
 			(file_length + UDF_BLOCKSIZE - 1) / UDF_BLOCKSIZE);
-		memset(buf, 0, UDF_BLOCKSIZE);
-		read_size = udf_read_block(p_udf_file, buf, 1);
+		read_size = udf_read_block(p_udf_file, buf, nb);
 		if (read_size < 0) {
 			uprintf("Error reading UDF file %s", iso_file);
 			goto out;
@@ -1599,22 +1589,24 @@ int64_t ExtractISOFile(const char* iso, const char* iso_file, const char* dest_f
 		}
 		file_length -= buf_size;
 		r += buf_size;
+		if (extract_show_progress &&
+			((r % (256 * KB) < buf_size) || (file_length == 0))) {
+			int pos = (total_length > 0) ? (int)((r * MAX_PROGRESS) / total_length) : 0;
+			char pct[16];
+			static_sprintf(pct, "%0.1f%%", (100.0f * r) / (1.0f * total_length));
+			PrintInfo(0, MSG_231, pct);
+			SendMessage(hProgress, PBM_SETPOS, (WPARAM)pos, 0);
+			SetTaskbarProgressValue(pos, MAX_PROGRESS);
+		}
 	}
 	goto out;
 
 try_iso:
-	// "Make sure to enable extensions, else we may not match the name of the file we are looking
-	// for since Rock Ridge may be needed to translate something like 'I386_PC' into 'i386-pc'..."
-
-	// If I could comment out the comment above this comment I definitely would
-	// Opening without extensions is how Rufus 2.18 used to handle it. Thats the entire fix.
-	// Same fix on line 1668
 	p_iso = iso9660_open(iso);
 	if (p_iso == NULL) {
 		uprintf("Unable to open image '%s'", iso);
 		goto out;
 	}
-
 	p_statbuf = iso9660_ifs_stat_translate(p_iso, iso_file);
 	if (p_statbuf == NULL) {
 		uprintf("Could not get ISO-9660 file information for file %s", iso_file);
@@ -1622,8 +1614,8 @@ try_iso:
 	}
 
 	file_length = p_statbuf->total_size;
+	total_length = file_length;
 	for (i = 0; file_length > 0; i++) {
-		// Windows To Go same shit for ISO9660
 		if (IS_ERROR(ErrorStatus) && SCODE_CODE(ErrorStatus) == ERROR_CANCELLED) {
 			r = 0;
 			goto out;
@@ -1641,9 +1633,19 @@ try_iso:
 		}
 		file_length -= buf_size;
 		r += buf_size;
+		if (extract_show_progress &&
+			((r % (256 * KB) < ISO_BLOCKSIZE) || (file_length == 0))) {
+			int pos = (total_length > 0) ? (int)((r * MAX_PROGRESS) / total_length) : 0;
+			char pct[16];
+			static_sprintf(pct, "%0.1f%%", (100.0f * r) / (1.0f * total_length));
+			PrintInfo(0, MSG_231, pct);
+			SendMessage(hProgress, PBM_SETPOS, (WPARAM)pos, 0);
+			SetTaskbarProgressValue(pos, MAX_PROGRESS);
+		}
 	}
 
 out:
+	safe_free(buf);
 	safe_closehandle(file_handle);
 	if (r == 0)
 		DeleteFileU(dest_file);
@@ -1691,7 +1693,8 @@ uint32_t ReadISOFileToBuffer(const char* iso, const char* iso_file, uint8_t** bu
 		goto out;
 	}
 	nblocks = (uint32_t)((file_length + UDF_BLOCKSIZE - 1) / UDF_BLOCKSIZE);
-	*buf = malloc(nblocks * UDF_BLOCKSIZE + 1);
+	size_t alloc_size = (size_t)(nblocks * UDF_BLOCKSIZE) + 1;
+	*buf = malloc(alloc_size);
 	if (*buf == NULL) {
 		uprintf("Could not allocate buffer for file %s", iso_file);
 		goto out;
@@ -1702,7 +1705,8 @@ uint32_t ReadISOFileToBuffer(const char* iso, const char* iso_file, uint8_t** bu
 		goto out;
 	}
 	ret = (uint32_t)file_length;
-	(*buf)[ret] = 0;
+	if (ret < alloc_size)
+		(*buf)[ret] = 0;
 	goto out;
 
 try_iso:
@@ -1991,6 +1995,8 @@ static BOOL ReadCompressedWimXmlFromISO(const char* iso, const char* wim_path,
 			chunk_start = chunk_data_offset;
 			chunk_end = chunk_start + chunk_compressed_size;
 		} else {
+			if (chunk_table == NULL)
+				goto out;
 			chunk_start = (i == 0) ? 0 :
 				((entry_size == 4) ?
 					ReadLe32(&chunk_table[(i - 1) * entry_size]) :

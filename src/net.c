@@ -1558,7 +1558,7 @@ static int CheckPowerShellCandidate(const char* path, char* selected_path, size_
 	if (signature_status == ERROR_SUCCESS) {
 		safe_strcpy(selected_path, selected_path_size, path);
 		WriteRegistryKeyStr(REGKEY_HKCU, SETTING_POWERSHELL_PATH, selected_path);
-		uprintf("Using signed PowerShell 7 executable '%s'", selected_path);
+		uprintf("Using signed PowerShell executable '%s'", selected_path);
 		return 1;
 	}
 
@@ -1567,11 +1567,11 @@ static int CheckPowerShellCandidate(const char* path, char* selected_path, size_
 	if (selection == 1) {
 		safe_strcpy(selected_path, selected_path_size, path);
 		WriteRegistryKeyStr(REGKEY_HKCU, SETTING_POWERSHELL_PATH, selected_path);
-		uprintf("WARNING: Using PowerShell 7 with an invalid signature at '%s'", selected_path);
+		uprintf("WARNING: Using PowerShell with an invalid signature at '%s'", selected_path);
 		return 1;
 	}
 	if (selection == 2) {
-		uprintf("Ignoring PowerShell 7 with an invalid signature at '%s'", path);
+		uprintf("Ignoring PowerShell with an invalid signature at '%s'", path);
 		return 2;
 	}
 	return -1;
@@ -1767,7 +1767,7 @@ static DWORD WINAPI DownloadISOThread(LPVOID param)
 		goto out;
 	}
 
-	// External Powershell for Fido on 7 and Vista (port)
+	// External Powershell for Fido on 7 (port)
 	if (WindowsVersion.Version >= WINDOWS_8)
 		static_strcpy(selected_powershell, powershell_path);
 	if (selected_powershell[0] == 0) {

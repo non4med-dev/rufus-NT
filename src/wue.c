@@ -35,7 +35,7 @@
 #include "timezoneapi.h"
 #include "localization.h"
 
- /* Memory leaks detection - define _CRTDBG_MAP_ALLOC as preprocessor macro */
+// Memory leaks detection - define _CRTDBG_MAP_ALLOC as preprocessor macro
 #ifdef _CRTDBG_MAP_ALLOC
 #include <stdlib.h>
 #include <crtdbg.h>
@@ -53,6 +53,7 @@ BOOL is_bootloader_revoked = FALSE;
 static char legacy_wtg_dir[MAX_PATH], legacy_wtg_image[MAX_PATH];
 static char legacy_wtg_source[MAX_PATH], legacy_wtg_internal[MAX_PATH];
 static int64_t legacy_wtg_source_size = -1, legacy_wtg_source_time = -1;
+extern BOOL extract_show_progress;
 
 extern uint32_t wim_nb_files, wim_proc_files, wim_extra_files;
 extern BOOL validate_md5sum;
@@ -66,11 +67,11 @@ extern const char* efi_archname[ARCH_MAX];
 
 void CleanupWinToGoTemp(void)
 {
-	if ((legacy_wtg_dir[0] != 0) && PathFileExistsU(legacy_wtg_dir) &&
-		(SHDeleteDirectoryExU(NULL, legacy_wtg_dir, FOF_NO_UI) != 0)) {
-		uprintf("Could not remove Windows To Go temporary directory '%s'", legacy_wtg_dir);
-		return;
+	if ((legacy_wtg_dir[0] != 0) && PathFileExistsU(legacy_wtg_dir)) {
+		if (SHDeleteDirectoryExU(NULL, legacy_wtg_dir, FOF_NO_UI) != 0)
+			uprintf("Could not remove Windows To Go temporary directory '%s'", legacy_wtg_dir);
 	}
+	/* Always clear state so a stuck temp dir cannot block the next attempt */
 	legacy_wtg_dir[0] = 0;
 	legacy_wtg_image[0] = 0;
 	legacy_wtg_source[0] = 0;
@@ -172,17 +173,44 @@ static const char* PrepareLegacyWinToGoImage(int index)
 		return NULL;
 	}
 	static_sprintf(part_path, "%s\\install.%s", legacy_wtg_dir, extension);
+
+	// Check available storage before extracting
+	ULARGE_INTEGER free_space;
+	if (GetDiskFreeSpaceExA(temp_dir, &free_space, NULL, NULL)) {
+		if (free_space.QuadPart < img_report.projected_size) {
+			uprintf("Not enough space in temp directory to extract image "
+				"(need %s, have %s)",
+				SizeToHumanReadable(img_report.projected_size, FALSE, FALSE),
+				SizeToHumanReadable(free_space.QuadPart, FALSE, FALSE));
+			CleanupWinToGoTemp();
+			return NULL;
+		}
+	}
+
 	uprintf("Extracting Windows image to temporary storage...");
+	SendMessage(hProgress, PBM_SETSTATE, (WPARAM)PBST_NORMAL, 0);
+	SendMessage(hProgress, PBM_SETMARQUEE, FALSE, 0);
+	SendMessage(hProgress, PBM_SETPOS, 0, 0);
+	SetTaskbarProgressState(TASKBAR_NORMAL);
+
+	extract_show_progress = TRUE;
 	start_time = GetTickCount64();
 	extracted_size = ExtractISOFile(image_path, internal_path, part_path, FILE_ATTRIBUTE_NORMAL);
 	if (extracted_size <= 0) {
+		extract_show_progress = FALSE;
+		SendMessage(hProgress, PBM_SETPOS, 0, 0);
+		SetTaskbarProgressState(TASKBAR_NOPROGRESS);
 		uprintf("Could not extract %s from the ISO", internal_path);
 		CleanupWinToGoTemp();
 		return NULL;
 	}
+
 	if (is_split) {
 		part_count = GetSplitWimPartCount(part_path);
 		if (part_count == 0) {
+			extract_show_progress = FALSE;
+			SendMessage(hProgress, PBM_SETPOS, 0, 0);
+			SetTaskbarProgressState(TASKBAR_NOPROGRESS);
 			uprintf("Could not determine the split WIM part count");
 			CleanupWinToGoTemp();
 			return NULL;
@@ -198,12 +226,18 @@ static const char* PrepareLegacyWinToGoImage(int index)
 			extracted_size = ExtractISOFile(image_path, internal_part, part_path,
 				FILE_ATTRIBUTE_NORMAL);
 			if (extracted_size <= 0) {
+				extract_show_progress = FALSE;
+				SendMessage(hProgress, PBM_SETPOS, 0, 0);
+				SetTaskbarProgressState(TASKBAR_NOPROGRESS);
 				uprintf("Could not extract %s from the ISO", internal_part);
 				CleanupWinToGoTemp();
 				return NULL;
 			}
 		}
 		if (!WimJoinSplitImage(legacy_wtg_dir, "install.wim", "install", part_count)) {
+			extract_show_progress = FALSE;
+			SendMessage(hProgress, PBM_SETPOS, 0, 0);
+			SetTaskbarProgressState(TASKBAR_NOPROGRESS);
 			CleanupWinToGoTemp();
 			return NULL;
 		}
@@ -221,6 +255,12 @@ static const char* PrepareLegacyWinToGoImage(int index)
 	else {
 		static_strcpy(legacy_wtg_image, part_path);
 	}
+
+	extract_show_progress = FALSE;
+	SendMessage(hProgress, PBM_SETPOS, 0, 0);
+	SetTaskbarProgressState(TASKBAR_NOPROGRESS);
+	PrintInfo(0, MSG_210);
+
 	static_strcpy(legacy_wtg_source, image_path);
 	static_strcpy(legacy_wtg_internal, internal_path);
 	if (_stat64U(image_path, &source_info) == 0) {
@@ -277,7 +317,7 @@ out:
 char* GetUILanguage(void)
 {
 	static char ui_language[16];
-	char *mounted_iso = NULL, *lang = NULL;
+	char* mounted_iso = NULL, * lang = NULL;
 	char boot_wim[MAX_PATH], xml_file[MAX_PATH] = "";
 
 	static_strcpy(ui_language, "en-US");
@@ -553,7 +593,8 @@ char* CreateUnattendXml(int arch, int flags)
 				if ((GetTimeZoneInformation(&tz_info) == TIME_ZONE_ID_INVALID) ||
 					((tzstr = wchar_to_utf8(tz_info.StandardName)) == NULL)) {
 					uprintf("WARNING: Could not retrieve current timezone: %s", WindowsErrorString());
-				} else {
+				}
+				else {
 					fprintf(fd, "      <TimeZone>%s</TimeZone>\n", tzstr);
 					free(tzstr);
 				}
@@ -564,7 +605,8 @@ char* CreateUnattendXml(int arch, int flags)
 				for (i = 0; (i < ARRAYSIZE(unallowed_account_names)) && (stricmp(unattend_username, unallowed_account_names[i]) != 0); i++);
 				if (i < ARRAYSIZE(unallowed_account_names)) {
 					uprintf("WARNING: '%s' is not allowed as local account name - Option ignored", unattend_username);
-				} else if (unattend_username[0] != 0) {
+				}
+				else if (unattend_username[0] != 0) {
 					char* org_username = safe_strdup(unattend_username);
 					filter_chars(unattend_username, USERNAME_INVALID_CHARS, '_');
 					uprintf("• Use '%s' for local account name", unattend_username);
@@ -812,7 +854,8 @@ BOOL SetupWinPE(char drive_letter)
 		if (img_report.uses_minint) {
 			uprintf("Detected \\minint directory with /minint option: nothing to patch\n");
 			r = TRUE;
-		} else if (!(img_report.winpe & (WINPE_I386 | WINPE_AMD64))) {
+		}
+		else if (!(img_report.winpe & (WINPE_I386 | WINPE_AMD64))) {
 			uprintf("Detected \\minint directory only but no /minint option: not sure what to do\n");
 		}
 		goto out;
@@ -901,24 +944,30 @@ static void NormalizeWindowsVersion(void)
 		// Don't want to support XP or earlier
 		img_report.win_version.major = 0;
 		img_report.win_version.minor = 0;
-	} else if (img_report.win_version.major == 6) {
+	}
+	else if (img_report.win_version.major == 6) {
 		// Don't want to support Vista
 		if (img_report.win_version.minor == 0) {
 			img_report.win_version.major = 0;
-		} else if (img_report.win_version.minor == 1) {
+		}
+		else if (img_report.win_version.minor == 1) {
 			img_report.win_version.major = 7;
 			img_report.win_version.minor = 0;
-		} else if (img_report.win_version.minor == 2) {
+		}
+		else if (img_report.win_version.minor == 2) {
 			img_report.win_version.major = 8;
 			img_report.win_version.minor = 0;
-		} else if (img_report.win_version.minor == 3) {
+		}
+		else if (img_report.win_version.minor == 3) {
 			img_report.win_version.major = 8;
 			img_report.win_version.minor = 1;
-		} else if (img_report.win_version.minor == 4) {
+		}
+		else if (img_report.win_version.minor == 4) {
 			img_report.win_version.major = 10;
 			img_report.win_version.minor = 0;
 		}
-	} else if (img_report.win_version.major == 10) {
+	}
+	else if (img_report.win_version.major == 10) {
 		if (img_report.win_version.build > 20000)
 			img_report.win_version.major = 11;
 	}
@@ -1010,7 +1059,8 @@ BOOL PopulateWindowsVersion(void)
 
 	if (img_report.is_windows_img) {
 		r = WimExtractMetadata(image_path, xml_file, TRUE);
-	} else {
+	}
+	else {
 		/*
 		 * Preferred path: read only the WIM header, XML resource chunk table,
 		 * and XML resource bytes directly from inside the ISO. Compressed
@@ -1061,7 +1111,7 @@ int GetEditions(StrArray* version_name, StrArray* version_index)
 {
 	int i, n = -1;
 	const char* edition_suffix;
-	char *edition_name, *index;
+	char* edition_name, * index;
 	char* mounted_iso = NULL, mounted_image_path[128];
 	const char* selected_image = image_path;
 	char xml_file[MAX_PATH] = "";
@@ -1160,24 +1210,140 @@ BOOL CopySKUSiPolicy(const char* drive_name)
 /// <param name="">(none)</param>
 /// <returns>-2 on user cancel, -1 on other error, >=0 on success.</returns>
 
+
+// Parse XML from wimlib-imagex --xml 
+static int ParseWimXmlIndexes(const char* xml_file, StrArray* version_index, StrArray* version_name)
+{
+	HANDLE h;
+	DWORD size, read;
+	uint8_t* raw = NULL;
+	char* utf8 = NULL;
+	char* p, * q, idx_buf[16], name_buf[256];
+	int count = 0, n;
+	BOOL is_utf16 = FALSE;
+
+	h = CreateFileU(xml_file, GENERIC_READ, FILE_SHARE_READ, NULL, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, NULL);
+	if (h == INVALID_HANDLE_VALUE)
+		return 0;
+	size = GetFileSize(h, NULL);
+	if (size == 0 || size == INVALID_FILE_SIZE) {
+		CloseHandle(h);
+		return 0;
+	}
+	raw = (uint8_t*)malloc(size + 2);
+	if (raw == NULL) {
+		CloseHandle(h);
+		return 0;
+	}
+	if (!ReadFile(h, raw, size, &read, NULL) || read != size) {
+		CloseHandle(h);
+		free(raw);
+		return 0;
+	}
+	CloseHandle(h);
+	raw[size] = 0;
+	raw[size + 1] = 0;
+
+	if (size >= 2 && raw[0] == 0xFF && raw[1] == 0xFE)
+		is_utf16 = TRUE;
+	else if (size >= 2 && raw[0] == '<' && raw[1] == 0)
+		is_utf16 = TRUE;
+
+	if (is_utf16) {
+		wchar_t* w = (wchar_t*)(raw + ((raw[0] == 0xFF) ? 2 : 0));
+		int wlen = (int)((size - ((raw[0] == 0xFF) ? 2 : 0)) / 2);
+		n = WideCharToMultiByte(CP_UTF8, 0, w, wlen, NULL, 0, NULL, NULL);
+		if (n <= 0) {
+			free(raw);
+			return 0;
+		}
+		utf8 = (char*)malloc((size_t)n + 1);
+		if (utf8 == NULL) {
+			free(raw);
+			return 0;
+		}
+		WideCharToMultiByte(CP_UTF8, 0, w, wlen, utf8, n, NULL, NULL);
+		utf8[n] = 0;
+		free(raw);
+		raw = NULL;
+	}
+	else {
+		utf8 = (char*)raw;
+		raw = NULL;
+	}
+
+	for (p = utf8; (p = strstr(p, "INDEX=\"")) != NULL; ) {
+		p += 7;
+		q = p;
+		while (*q >= '0' && *q <= '9')
+			q++;
+		if (q == p || *q != '"')
+			continue;
+		n = (int)(q - p);
+		if (n >= (int)sizeof(idx_buf))
+			continue;
+		memcpy(idx_buf, p, n);
+		idx_buf[n] = 0;
+
+		char* block_end = strstr(q, "INDEX=\"");
+		char* name_tag = strstr(q, "<DISPLAYNAME>");
+		char* desc_tag = strstr(q, "<DESCRIPTION>");
+		char* name_src = NULL;
+		const char* open_tag = NULL;
+		const char* close_tag = NULL;
+		if (name_tag != NULL && (block_end == NULL || name_tag < block_end)) {
+			name_src = name_tag;
+			open_tag = "<DISPLAYNAME>";
+			close_tag = "</DISPLAYNAME>";
+		}
+		else if (desc_tag != NULL && (block_end == NULL || desc_tag < block_end)) {
+			name_src = desc_tag;
+			open_tag = "<DESCRIPTION>";
+			close_tag = "</DESCRIPTION>";
+		}
+		name_buf[0] = 0;
+		if (name_src != NULL) {
+			name_src += strlen(open_tag);
+			char* ne = strstr(name_src, close_tag);
+			if (ne != NULL) {
+				int nl = (int)(ne - name_src);
+				if (nl > 0 && nl < (int)sizeof(name_buf) - 1) {
+					memcpy(name_buf, name_src, nl);
+					name_buf[nl] = 0;
+				}
+			}
+		}
+		if (name_buf[0] == 0)
+			static_sprintf(name_buf, "Windows Image %s", idx_buf);
+
+		if (StrArrayAdd(version_index, idx_buf, TRUE) < 0)
+			break;
+		if (StrArrayAdd(version_name, name_buf, TRUE) < 0)
+			break;
+		count++;
+	}
+
+	free(utf8);
+	return count;
+}
+
 int SetWinToGoIndex(void)
 {
-	char* mounted_iso, mounted_image_path[128];
+	char* mounted_iso = NULL, mounted_image_path[128];
 	const char* selected_image = image_path;
 	char xml_file[MAX_PATH] = "";
 	char* install_names[MAX_WININST];
 	StrArray version_name, version_index;
 	int i;
 	BOOL bNonStandard = FALSE;
+	BOOL used_vhd = FALSE;
 
-	// Sanity checks
 	wintogo_index = -1;
 	wininst_index = 0;
 	if (!HasWinToGoApplyBackend() || (ComboBox_GetCurItemData(hFileSystem) != FS_NTFS)) {
 		return -1;
 	}
 
-	// If we have multiple windows install images, ask the user the one to use
 	if (img_report.wininst_index > 1) {
 		for (i = 0; i < img_report.wininst_index; i++)
 			install_names[i] = &img_report.wininst_path[i][2];
@@ -1188,83 +1354,72 @@ int SetWinToGoIndex(void)
 			wininst_index = 0;
 	}
 
-	// If we're not using a straight install.wim, we need to mount the ISO to access it
-	if (!img_report.is_windows_img) {
-		if (WindowsVersion.Version < WINDOWS_8) {
-			selected_image = PrepareLegacyWinToGoImage(wininst_index);
-			if (selected_image == NULL)
-				return -1;
-		}
-		else {
-			mounted_iso = VhdMountImage(image_path);
-			if (mounted_iso == NULL) {
-				uprintf("Could not mount ISO for Windows To Go selection");
-				return -1;
-			}
-			static_sprintf(mounted_image_path, "%s%s", mounted_iso, &img_report.wininst_path[wininst_index][2]);
-			selected_image = mounted_image_path;
-		}
-	}
-
-	// Now take a look at the XML file in install.wim to list our versions
-	if ((GetTempFileNameU(temp_dir, APPLICATION_NAME, 0, xml_file) == 0) || (xml_file[0] == 0)) {
-		// Last ditch effort to get a tmp file - just extract it to the current directory
+	if ((GetTempFileNameU(temp_dir, APPLICATION_NAME, 0, xml_file) == 0) || (xml_file[0] == 0))
 		static_strcpy(xml_file, ".\\RufVXml.tmp");
-	}
-	// GetTempFileName() may leave a file behind
 	DeleteFileU(xml_file);
 
-	// Must use the Windows WIM API as 7z messes up the XML
-	if (!WimExtractMetadata(selected_image, xml_file, FALSE)) {
-		uprintf("Could not acquire WIM index");
-		goto out;
+	if (img_report.is_windows_img) {
+		if (!WimExtractMetadata(selected_image, xml_file, FALSE)) {
+			uprintf("Could not acquire WIM index");
+			goto out;
+		}
+	}
+	else if (WindowsVersion.Version < WINDOWS_8) {
+		/* Pre-Win8 cannot mount ISOs/WIMs. Extract install.wim first, then read indexes. */
+		selected_image = PrepareLegacyWinToGoImage(wininst_index);
+		if (selected_image == NULL) {
+			uprintf("Could not extract Windows image for index selection");
+			goto out;
+		}
+		if (!WimExtractMetadata(selected_image, xml_file, FALSE)) {
+			uprintf("Could not acquire WIM index from extracted image");
+			goto out;
+		}
+	}
+	else {
+		mounted_iso = VhdMountImage(image_path);
+		if (mounted_iso == NULL) {
+			uprintf("Could not mount ISO for Windows To Go selection");
+			goto out;
+		}
+		used_vhd = TRUE;
+		static_sprintf(mounted_image_path, "%s%s", mounted_iso, &img_report.wininst_path[wininst_index][2]);
+		selected_image = mounted_image_path;
+		if (!WimExtractMetadata(selected_image, xml_file, FALSE)) {
+			uprintf("Could not acquire WIM index");
+			goto out;
+		}
 	}
 
 	StrArrayCreate(&version_name, 16);
 	StrArrayCreate(&version_index, 16);
-	for (i = 0; StrArrayAdd(&version_index, get_token_data_file_indexed("IMAGE INDEX", xml_file, i + 1), FALSE) >= 0; i++) {
-		// Some people are apparently creating *unofficial* Windows ISOs that don't have DISPLAYNAME elements.
-		// If we are parsing such an ISO, try to fall back to using DESCRIPTION. Of course, since we don't use
-		// a formal XML parser, if an ISO mixes entries with both DISPLAYNAME and DESCRIPTION and others with
-		// only DESCRIPTION, the version names we report will be wrong.
-		// But hey, there's only so far I'm willing to go to help people who, not content to have demonstrated
-		// their utter ignorance on development matters, are also trying to lecture experienced developers
-		// about specific "noob mistakes"... that don't exist in the code they are trying to criticize.
-		if (StrArrayAdd(&version_name, get_token_data_file_indexed("DISPLAYNAME", xml_file, i + 1), FALSE) < 0) {
-			bNonStandard = TRUE;
-			if (StrArrayAdd(&version_name, get_token_data_file_indexed("DESCRIPTION", xml_file, i + 1), FALSE) < 0) {
-				uprintf("Warning: Could not find a description for image index %d", i + 1);
-				StrArrayAdd(&version_name, "Unknown Windows Version", TRUE);
-			}
-		}
+	i = ParseWimXmlIndexes(xml_file, &version_index, &version_name);
+	if (i == 0) {
+		uprintf("Could not find any IMAGE INDEX entries in WIM XML");
+		StrArrayDestroy(&version_name);
+		StrArrayDestroy(&version_index);
+		goto out;
 	}
-	if (bNonStandard)
-		uprintf("Warning: Nonstandard Windows image (missing <DISPLAYNAME> entries)");
 
 	if (i > 1)
-		// NB: _log2 returns -2 if SelectionDialog() returns negative (user cancelled)
 		i = _log2(SelectionDialog(lmprintf(MSG_291), lmprintf(MSG_292), version_name.String, i)) + 1;
 	if (i < 0)
-		wintogo_index = -2;	// Cancelled by the user
+		wintogo_index = -2;
 	else if (i == 0)
 		wintogo_index = 1;
 	else
 		wintogo_index = atoi(version_index.String[i - 1]);
 	if (i > 0) {
-		// re-populate the version data from the selected XML index
 		PopulateWindowsVersionFromXml(xml_file, i);
-		// If we couldn't obtain the major and build, we have a problem
 		if (img_report.win_version.major == 0 || img_report.win_version.build == 0)
 			uprintf("Warning: Could not obtain version information from XML index (Nonstandard Windows image?)");
 		uprintf("Will use '%s' (Build: %d, Index %s) for Windows To Go",
 			version_name.String[i - 1], img_report.win_version.build, version_index.String[i - 1]);
-		// Need Windows 10 Creator Update or later for boot on REMOVABLE to work
 		if ((img_report.win_version.build < 15000) && (SelectedDrive.MediaType != FixedMedia)) {
 			if (MessageBoxExU(hMainDialog, lmprintf(MSG_098), lmprintf(MSG_190),
 				MB_YESNO | MB_ICONWARNING | MB_IS_RTL, selected_langid) != IDYES)
 				wintogo_index = -2;
 		}
-		// Display a notice about WppRecorder.sys for 1809 ISOs
 		if (img_report.win_version.build == 17763) {
 			notification_info more_info;
 			more_info.id = MORE_INFO_URL;
@@ -1277,21 +1432,11 @@ int SetWinToGoIndex(void)
 
 out:
 	DeleteFileU(xml_file);
-	if (!img_report.is_windows_img)
+	if (used_vhd)
 		VhdUnmountImage();
 	return wintogo_index;
-} 
+}
 
-/// <summary>
-/// Setup a Windows To Go drive according to the official Microsoft instructions detailed at:
-/// https://learn.microsoft.com/en-us/previous-versions/windows/it-pro/windows-10/deployment/windows-to-go/deploy-windows-to-go
-/// Note that as opposed to the technet guide above we use bcdedit rather than 'unattend.xml'
-/// to disable the recovery environment.
-/// </summary>
-/// <param name="DriveIndex">The Rufus drive index for the target media.</param>
-/// <param name="drive_name">The path of the target media.</param>
-/// <param name="use_esp">Whether to create an ESP on the target media.</param>
-/// <returns>TRUE on success, FALSE on error.</returns>
 BOOL SetupWinToGo(DWORD DriveIndex, const char* drive_name, BOOL use_esp)
 {
 	char* mounted_iso,
@@ -1408,8 +1553,8 @@ BOOL SetupWinToGo(DWORD DriveIndex, const char* drive_name, BOOL use_esp)
 					ms_efi, FALSE);
 			return FALSE;
 		}
-		static_strcpy(deployment_tool,bundled_bcdboot);
-		static_strcpy(deployment_dir,deployment_tool);
+		static_strcpy(deployment_tool, bundled_bcdboot);
+		static_strcpy(deployment_dir, deployment_tool);
 		path_separator = strrchr(deployment_dir, '\\');
 		if (path_separator != NULL)*path_separator = 0;
 		static_sprintf(cmd, "\"%s\" %s\\Windows /v /f %s /s %s", deployment_tool, drive_name,
@@ -1444,7 +1589,8 @@ BOOL SetupWinToGo(DWORD DriveIndex, const char* drive_name, BOOL use_esp)
 		uprintf("Setting the target's internal drives offline using command:");
 		// This applies the "offlineServicing" section of the unattend.xml (while ignoring the other sections)
 		static_sprintf(cmd, "dism /Image:%s\\ /Apply-Unattend:%s", drive_name, unattend_xml_path);
-		uprintf(cmd);
+		// Format string vulnerability fix
+		uprintf("%s", cmd);
 		RunCommand(cmd, NULL, usb_debug);
 	}
 
@@ -1453,7 +1599,8 @@ BOOL SetupWinToGo(DWORD DriveIndex, const char* drive_name, BOOL use_esp)
 	static_sprintf(cmd, "%s\\bcdedit.exe /store %s\\EFI\\Microsoft\\Boot\\BCD /set {default} recoveryenabled no",
 		sysnative_dir, (use_esp) ? ms_efi : drive_name);
 	assert(strchr(cmd, '%') == NULL);
-	uprintf(cmd);
+	// Format string vulnerability fix
+	uprintf("%s", cmd);
 	RunCommand(cmd, sysnative_dir, usb_debug);
 
 
@@ -1485,7 +1632,7 @@ BOOL ApplyWindowsCustomization(char drive_letter, int flags)
 	char setup_exe[] = "?:\\setup.exe";
 	char setup_dll[] = "?:\\setup.dll";
 	char md5sum_path[] = "?:\\md5sum.txt";
-	char *mount_path = NULL, path[MAX_PATH];
+	char* mount_path = NULL, path[MAX_PATH];
 	uint8_t* buf = NULL;
 	uint16_t setup_arch;
 	HKEY hKey = NULL, hSubKey = NULL;
@@ -1508,7 +1655,8 @@ BOOL ApplyWindowsCustomization(char drive_letter, int flags)
 			goto out;
 		}
 		uprintf("Added '%s'", path);
-	} else {
+	}
+	else {
 		boot_wim_path[0] = drive_letter;
 		if (flags & UNATTEND_WINPE_SETUP_MASK) {
 			// Create a backup of sources\appraiserres.dll and then create an empty file to
@@ -1519,7 +1667,8 @@ BOOL ApplyWindowsCustomization(char drive_letter, int flags)
 			if (!MoveFileExU(appraiserres_dll_src, appraiserres_dll_dst, MOVEFILE_REPLACE_EXISTING)
 				&& GetLastError() != ERROR_FILE_NOT_FOUND) {
 				uprintf("Could not rename '%s': %s", appraiserres_dll_src, WindowsErrorString());
-			} else {
+			}
+			else {
 				if (GetLastError() == ERROR_SUCCESS)
 					uprintf("Renamed '%s' → '%s'", appraiserres_dll_src, appraiserres_dll_dst);
 				CloseHandle(CreateFileU(appraiserres_dll_src, GENERIC_READ | GENERIC_WRITE, FILE_SHARE_READ,
@@ -1541,15 +1690,18 @@ BOOL ApplyWindowsCustomization(char drive_letter, int flags)
 					safe_free(buf);
 					if (setup_arch != IMAGE_FILE_MACHINE_AMD64 && setup_arch != IMAGE_FILE_MACHINE_ARM64) {
 						uprintf("WARNING: Unsupported arch 0x%x -- in-place upgrade wrapper will not be added", setup_arch);
-					} else if (!MoveFileExU(setup_exe, setup_dll, 0)) {
+					}
+					else if (!MoveFileExU(setup_exe, setup_dll, 0)) {
 						uprintf("Could not rename '%s': %s", setup_exe, WindowsErrorString());
-					} else {
+					}
+					else {
 						uprintf("Renamed '%s' → '%s'", setup_exe, setup_dll);
 						buf = GetResource(hMainInstance, MAKEINTRESOURCEA(setup_arch == IMAGE_FILE_MACHINE_AMD64 ? IDR_SETUP_X64 : IDR_SETUP_ARM64),
 							_RT_RCDATA, "setup.exe", &dwSize, FALSE);
 						if (buf == NULL) {
 							uprintf("Could not access embedded 'setup.exe'");
-						} else if (write_file(setup_exe, buf, dwSize) == dwSize) {
+						}
+						else if (write_file(setup_exe, buf, dwSize) == dwSize) {
 							uprintf("Created '%s' bypass wrapper (from embedded)", setup_exe);
 							if (validate_md5sum) {
 								if ((fd_md5sum = fopenU(md5sum_path, "ab")) != NULL) {
@@ -1560,7 +1712,8 @@ BOOL ApplyWindowsCustomization(char drive_letter, int flags)
 								StrArrayAdd(&modified_files, setup_dll, TRUE);
 								md5sum_totalbytes += dwSize;
 							}
-						} else {
+						}
+						else {
 							uprintf("Could not create '%s' bypass wrapper", setup_exe);
 						}
 					}
@@ -1633,7 +1786,8 @@ BOOL ApplyWindowsCustomization(char drive_letter, int flags)
 			if ((flags & UNATTEND_WINPE_SETUP_MASK) == UNATTEND_SECUREBOOT_TPM_MINRAM) {
 				if (replace_in_token_data(unattend_xml_path, "<settings", "windowsPE", "disabled", FALSE) == NULL)
 					uprintf("Warning: Could not disable 'windowsPE' pass from unattend.xml");
-			} else {
+			}
+			else {
 				// Otherwise, remove the relevant section from our temporary unattend.xml
 				dwSize = read_file(unattend_xml_path, &buf);
 				if (dwSize != 0 && removable_section[0] != 0 && removable_section[0] < dwSize && removable_section[1] < dwSize) {
@@ -1641,7 +1795,8 @@ BOOL ApplyWindowsCustomization(char drive_letter, int flags)
 					dwSize -= removable_section[1] - removable_section[0];
 					if (write_file(unattend_xml_path, buf, dwSize) != dwSize)
 						uprintf("Failed to remove 'WindowsPE' section from unattend.xml");
-				} else {
+				}
+				else {
 					uprintf("Failed to remove 'WindowsPE' section from unattend.xml");
 				}
 				safe_free(buf);
@@ -1664,7 +1819,8 @@ BOOL ApplyWindowsCustomization(char drive_letter, int flags)
 				goto out;
 			}
 			uprintf("Added 'Autounattend.xml' to '%s'", boot_wim_path);
-		} else {
+		}
+		else {
 			// If there is no windowsPE section in our unattend, then copying it as Autounattend.xml on
 			// the root of boot.wim will not work as Windows Setup does *NOT* carry Autounattend.xml into
 			// %WINDIR%\Panther\unattend.xml then (See: https://github.com/pbatard/rufus/issues/1981).
@@ -1693,8 +1849,9 @@ BOOL ApplyWindowsCustomization(char drive_letter, int flags)
 		static_sprintf(path, "%s\\Windows\\Boot\\EFI_EX\\bootmgfw_EX.efi", mount_path);
 		if (!PathFileExistsU(path)) {
 			uprintf("Could not find 2023 signed UEFI bootloader - Ignoring option");
-		} else {
-			char path2[MAX_PATH], *rep;
+		}
+		else {
+			char path2[MAX_PATH], * rep;
 			StrArray files, dirs;
 			// Replace /EFI/Boot/boot###.efi
 			for (i = 1; i < ARRAYSIZE(efi_archname); i++) {

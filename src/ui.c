@@ -882,8 +882,11 @@ void ToggleImageOptions(void)
 	*/
 
 	// Remove Windows To Go version check, add settings option (port)
+	/* has_wintogo = enable_windows_to_go && ((boot_type == BT_IMAGE) && (image_path != NULL) &&
+		(img_report.is_iso || img_report.is_windows_img) && HAS_WINTOGO(img_report)); */
 	has_wintogo = enable_windows_to_go && ((boot_type == BT_IMAGE) && (image_path != NULL) &&
-		(img_report.is_iso || img_report.is_windows_img) && HAS_WINTOGO(img_report));
+		(img_report.is_iso || img_report.is_windows_img) && HAS_WINTOGO(img_report) &&
+		(img_report.win_version.build >= 9200));
 	has_persistence = ((boot_type == BT_IMAGE) && (image_path != NULL) && (img_report.is_iso) && (HAS_PERSISTENCE(img_report)));
 
 	assert(popcnt8(image_options) <= 1);

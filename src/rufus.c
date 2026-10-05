@@ -1613,9 +1613,11 @@ static void UpdateImage(BOOL update_image_option_only)
 
 	ComboBox_ResetContent(hImageOption);
 
-	if (!img_report.is_windows_img)	// Straight install.wim/install.esd only have Windows To Go option
+	// Oh what the hell was even going on here before
+	if (!img_report.is_windows_img)
 		IGNORE_RETVAL(ComboBox_SetItemData(hImageOption, ComboBox_AddStringU(hImageOption, lmprintf(MSG_117)), IMOP_WIN_STANDARD));
-	IGNORE_RETVAL(ComboBox_SetItemData(hImageOption, ComboBox_AddStringU(hImageOption, lmprintf(MSG_118)), IMOP_WIN_TO_GO));
+	if (img_report.win_version.major >= 8)
+		IGNORE_RETVAL(ComboBox_SetItemData(hImageOption, ComboBox_AddStringU(hImageOption, lmprintf(MSG_118)), IMOP_WIN_TO_GO));
 	IGNORE_RETVAL(ComboBox_SetCurSel(hImageOption, imop_win_sel));
 }
 
@@ -1751,8 +1753,8 @@ DWORD WINAPI ImageScanThread(LPVOID param)
 		SendMessage(hMainDialog, UM_PROGRESS_EXIT, 0, 0);
 		UpdateImage(FALSE);
 		PopulateProperties();
-		PrintInfoDebug(0, MSG_203);
-		PrintStatus(0, MSG_203);
+		PrintInfoDebug(0, MSG_210);
+		PrintStatus(0, MSG_210);
 		EnableControls(TRUE, FALSE);
 		goto out;
 	}
@@ -3310,11 +3312,18 @@ INT_PTR CALLBACK MainCallback(HWND hDlg, UINT message, WPARAM wParam, LPARAM lPa
 					char* old_image_path = image_path;
 					char extensions[128] = "*.iso;*.img;*.vhd;*.vhdx;*.usb;*.bz2;*.bzip2;*.gz;*.lzma;*.xz;*.Z;*.zip;*.zst;*.wic;*.wim;*.esd;*.vtsi";
 					if (has_ffu_support)
-						strcat(extensions, ";*.ffu");
+						// Make it static
+						static_strcat(extensions, ";*.ffu");
 					// If declared globaly, lmprintf(MSG_280) would be called on each message...
 					EXT_DECL(img_ext, NULL, __VA_GROUP__(extensions),
 						__VA_GROUP__(lmprintf(MSG_280)));
+					// Reject ISO path if it contains quotes
 					image_path = FileDialog(FALSE, NULL, &img_ext, NULL);
+					if (image_path != NULL && strchr(image_path, '"') != NULL) {
+						uprintf("Error: image path contains invalid characters");
+						safe_free(image_path);
+						image_path = NULL;
+					}
 					if (image_path == NULL) {
 						if (old_image_path != NULL) {
 							// Reselect previous image
@@ -3720,8 +3729,15 @@ INT_PTR CALLBACK MainCallback(HWND hDlg, UINT message, WPARAM wParam, LPARAM lPa
 					DragFinish(droppedFileInfo);
 					break;
 				}
+				// Reject ISO path if it contains invalid characters
 				safe_free(image_path);
 				image_path = dropped_path;
+				if (image_path != NULL && strchr(image_path, '"') != NULL) {
+					uprintf("Error: image path contains invalid characters");
+					safe_free(image_path);
+					image_path = NULL;
+					break;
+				}
 				img_provided = TRUE;
 				// Simulate image selection click
 				SendMessage(hDlg, WM_COMMAND, IDC_SELECT, 0);

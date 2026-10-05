@@ -1326,6 +1326,8 @@ BOOL ValidateOpensslSignature(BYTE* pbBuffer, DWORD dwBufferLen, BYTE* pbSignatu
 		// If the signature is invalid, clear the buffer so that
 		// we don't keep potentially nasty stuff in memory.
 		memset(pbBuffer, 0, dwBufferLen);
+		// Zero signature buffer on verification failure
+		memset(pbSignature, 0, dwSigLen);
 		uprintf("Signature validation failed: %s", WinPKIErrorString());
 	}
 

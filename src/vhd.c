@@ -92,6 +92,54 @@ static wimlib_create_decompressor_t pfwimlib_create_decompressor = NULL;
 static wimlib_decompress_t pfwimlib_decompress = NULL;
 static wimlib_free_decompressor_t pfwimlib_free_decompressor = NULL;
 static int legacy_wimapi_state = 0, sevenzip_state = 0, legacy_wimlib_state = 0;
+
+// TOCTOU vulnerability fix for retro7zip, wimgapi, wimlib extraction
+static BOOL CreatePrivateTempDir(char* prefix, char* dir_path)
+{
+	HANDLE hToken = NULL;
+	DWORD dwSize = 0;
+	PTOKEN_USER pTokenUser = NULL;
+	PACL pDacl = NULL;
+	EXPLICIT_ACCESS ea = { 0 };
+	SECURITY_DESCRIPTOR sd;
+	SECURITY_ATTRIBUTES sa = { sizeof(sa), NULL, FALSE };
+	BOOL r = FALSE;
+
+	// Get the SID of whoever is running this process
+	OpenProcessToken(GetCurrentProcess(), TOKEN_QUERY, &hToken);
+	GetTokenInformation(hToken, TokenUser, NULL, 0, &dwSize);
+	pTokenUser = malloc(dwSize);
+	if (pTokenUser == NULL || !GetTokenInformation(hToken, TokenUser, pTokenUser, dwSize, &dwSize))
+		goto out;
+
+	// Build an ACL; current user gets full access, everyone else gets nothing
+	ea.grfAccessPermissions = GENERIC_ALL;
+	ea.grfAccessMode = SET_ACCESS;
+	ea.grfInheritance = SUB_CONTAINERS_AND_OBJECTS_INHERIT;
+	ea.Trustee.TrusteeForm = TRUSTEE_IS_SID;
+	ea.Trustee.TrusteeType = TRUSTEE_IS_USER;
+	ea.Trustee.ptstrName = (LPWSTR)pTokenUser->User.Sid;
+	if (SetEntriesInAcl(1, &ea, NULL, &pDacl) != ERROR_SUCCESS)
+		goto out;
+
+	// Attach that ACL to a security descriptor for the new directory
+	InitializeSecurityDescriptor(&sd, SECURITY_DESCRIPTOR_REVISION);
+	SetSecurityDescriptorDacl(&sd, TRUE, pDacl, FALSE);
+	sa.lpSecurityDescriptor = &sd;
+
+	// Create a unique temp dir name, then make the directory with the restricted ACL
+	if (GetTempFileNameU(temp_dir, prefix, 0, dir_path) == 0)
+		goto out;
+	DeleteFileU(dir_path);
+	r = CreateDirectoryU(dir_path, &sa);
+
+out:
+	safe_free(pTokenUser);
+	if (pDacl != NULL) LocalFree(pDacl);
+	if (hToken != NULL) CloseHandle(hToken);
+	return r;
+}
+
 static const char vhd_footer_cookie[] = VHD_FOOTER_COOKIE;
 static int progress_op = OP_FILE_COPY, progress_msg = MSG_267;
 static BOOL count_files, legacy_wim_apply;
@@ -104,14 +152,9 @@ static BOOL Get7ZipPath(void)
 		return FALSE;
 
 	if (sevenzip_dir[0] == 0) {
-		if (GetTempFileNameU(temp_dir, "R7Z", 0, sevenzip_dir) == 0)
+		// TOCTOU fix (1/3)
+		if (!CreatePrivateTempDir("R7Z", sevenzip_dir))
 			goto error;
-
-		DeleteFileU(sevenzip_dir);
-
-		if (!CreateDirectoryU(sevenzip_dir, NULL))
-			goto error;
-
 		static_sprintf(sevenzip_path, "%s\\7z.exe", sevenzip_dir);
 	}
 
@@ -177,13 +220,8 @@ static BOOL EnsureLegacyWinToGoRuntime(BOOL need_bcdboot)
 		return FALSE;
 
 	if (legacy_wimapi_dir[0] == 0) {
-		if (GetTempFileNameU(temp_dir, "RWA", 0,
-			legacy_wimapi_dir) == 0)
-			goto error;
-
-		DeleteFileU(legacy_wimapi_dir);
-
-		if (!CreateDirectoryU(legacy_wimapi_dir, NULL))
+		// TOCTOU fix (3/3)
+		if (!CreatePrivateTempDir("RWA", legacy_wimapi_dir))
 			goto error;
 
 		static_sprintf(legacy_wimapi7_path,
@@ -284,12 +322,8 @@ static BOOL EnsureLegacyWimlibRuntime(BOOL need_imagex)
 		return FALSE;
 
 	if (legacy_wimlib_dir[0] == 0) {
-		if (GetTempFileNameU(temp_dir, "RWL", 0, legacy_wimlib_dir) == 0)
-			goto error;
-
-		DeleteFileU(legacy_wimlib_dir);
-
-		if (!CreateDirectoryU(legacy_wimlib_dir, NULL))
+		// TOCTOU fix (2/3)
+		if (!CreatePrivateTempDir("RWL", legacy_wimlib_dir))
 			goto error;
 
 		static_sprintf(legacy_wimlib_path,
@@ -1838,6 +1872,13 @@ static DWORD WimlibApplyImage(const char* image, int index, const char* dst)
 	DWORD command_result;
 	char cmdline[4 * MAX_PATH], target[MAX_PATH];
 
+	if (image != NULL && dst != NULL && (strchr(image, '"') != NULL || strchr(dst, '"') != NULL)) {
+		// Reject ISO path if it contains quotes
+		uprintf("ISO path contains illegal characters");
+		return ERROR_INVALID_PARAMETER;
+	}
+	__analysis_assume(image != NULL);
+	__analysis_assume(dst != NULL);
 	static_sprintf(target, "%s%s", dst, (dst[safe_strlen(dst) - 1] == '\\') ? "." : "\\.");
 	static_sprintf(cmdline, "\"%s\" apply \"%s\" %d \"%s\"", legacy_wimlib_path, image, index, target);
 	uprintf("Applying Windows image using wimlib-imagex...");
