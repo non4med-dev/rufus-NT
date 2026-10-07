@@ -30,8 +30,8 @@
 
 /* List of the properties we are interested in */
 typedef struct usb_device_props {
-	uint32_t  vid;
-	uint32_t  pid;
+	int32_t  vid;
+	int32_t  pid;
 	uint32_t  speed;
 	uint32_t  lower_speed;
 	uint32_t  port;

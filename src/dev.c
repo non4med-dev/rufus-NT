@@ -641,7 +641,7 @@ BOOL GetDevices(DWORD devnum)
 	// Omit the "PRESENT" filter from NT5 storage device enumeration (port)
 	if (WindowsVersion.Version > WINDOWS_XP)
 		ulFlags |= CM_GETIDLIST_FILTER_PRESENT;
-	for (s=0; s<ARRAYSIZE(usbstor_name); s++) {
+	for (s = 0; s < ARRAYSIZE(usbstor_name); s++) {
 		// Get a list of device IDs for all USB storage devices
 		// This will be used to find if a device is UASP
 		// Also compute the uasp_start index
@@ -715,6 +715,8 @@ BOOL GetDevices(DWORD devnum)
 	for (i = 0; num_drives < MAX_DRIVES && SetupDiEnumDeviceInfo(dev_info, i, &dev_info_data); i++) {
 		memset(buffer, 0, sizeof(buffer));
 		memset(&props, 0, sizeof(props));
+		// commit [2476a92] "[dev] try to support non USB compliant devices that use VID 0000"
+		props.vid = -1; props.pid = -1;
 		method_str = "";
 		hub_path = NULL;
 		if (!SetupDiGetDeviceRegistryPropertyA(dev_info, &dev_info_data, SPDRP_ENUMERATOR_NAME,
@@ -834,12 +836,18 @@ BOOL GetDevices(DWORD devnum)
 					if (!post_backslash)
 						continue;
 					if (device_id[k] == '_') {
-						props.pid = (uint16_t)strtoul(&device_id[k + 1], NULL, 16);
+						// commit [2476a92] "[dev] try to support non USB compliant devices that use VID 0000"
+						props.pid = (uint16_t)strtoul(&device_id[k + 1], &p, 16);
+						if (p != &device_id[k + 5]) {
+							uuprintf("  WARNING: Could not read PID:VID from string");
+							break;
+						}
 						if (l++ == 0)
 							props.vid = props.pid;
 					}
 				}
-				if (props.vid != 0)
+				// commit [2476a92] "[dev] try to support non USB compliant devices that use VID 0000"
+				if (props.vid != -1 && props.pid != -1)
 					method_str = "[ID]";
 
 				// If the hash didn't match a populated string in dev_if_path[] (htab_devid.table[j].data > 0),
@@ -881,17 +889,16 @@ BOOL GetDevices(DWORD devnum)
 			else
 #endif
 */
-		// Version check is unnecessary. If it fails, it falls back quietly.
+		// Screw that, NT4 cant fetch those anywaysh
+#ifdef RUFUS_TARGET_NT4
+		if (WindowsVersion.Version > WINDOWS_NT4)
+#endif
 		if (props.is_USB && (props.vid == 0) && (props.pid == 0)) {
 			uint32_t legacy_vid = 0, legacy_pid = 0;
 			if (GetXpUsbVidPid(dev_info_data.DevInst, &legacy_vid, &legacy_pid)) {
 				props.vid = legacy_vid;
 				props.pid = legacy_pid;
 			}
-#ifdef RUFUS_TARGET_NT4
-			else if (WindowsVersion.Version <= WINDOWS_NT4)
-				ParseUsbVidPid(device_instance_id, &props.vid, &props.pid);
-#endif
 		}
 		// Windows has the bad habit of appending "SCSI Disk Device" to the description
 		// of UAS devices, which of course screws up detection of device that actually
@@ -916,7 +923,8 @@ BOOL GetDevices(DWORD devnum)
 			uprintf("Found non-USB removable device '%s'", buffer);
 		}
 		else {
-			if ((props.vid == 0) && (props.pid == 0)) {
+			// commit [2476a92] "[dev] try to support non USB compliant devices that use VID 0000"
+			if (props.vid == -1 || props.pid == -1) {
 				if (!props.is_USB) {
 					// If we have a non removable SCSI drive and couldn't get a VID:PID,
 					// we are most likely dealing with a system drive => eliminate it!
@@ -952,14 +960,20 @@ BOOL GetDevices(DWORD devnum)
 			if ((WindowsVersion.Version <= WINDOWS_NT4) && props.is_USB && !props.is_UASP &&
 				((safe_strlen(buffer) < 11) || (safe_stricmp(&buffer[safe_strlen(buffer) - 11], " USB Device") != 0)))
 				name_suffix = " USB Device";
+			// Clear VID:PID on NT4 just in case
+			if (WindowsVersion.Version <= WINDOWS_NT4) {
+				props.vid = 0;
+				props.pid = 0;
+				static_strcpy(str, "");
+			}
 		}
 		// Don't print (VID:PID) on NT4 as it can't supply it reliably
 		// Some modern systems use outdated USB drivers which can't supply 
 		// VID:PID on their own either and instead fall back to GetXpUsbVidPid as well
 		// But they definitely didn't do it silently. Now they do.
 #ifdef RUFUS_TARGET_NT4
-		if ((WindowsVersion.Version <= WINDOWS_NT4) &&
-			(props.vid == 0) && (props.pid == 0))
+		// Fuh naw
+		if (WindowsVersion.Version <= WINDOWS_NT4)
 			uprintf("Found %s%s%s device '%s%s'", props.is_UASP ? "UAS (" : "",
 				usb_speed_name[props.speed], props.is_UASP ? ")" : "", buffer, name_suffix);
 		else
