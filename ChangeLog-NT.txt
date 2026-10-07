@@ -1,4 +1,12 @@
-o Update 6 Fix (2027.10.03)
+o Update 7 (2026.10.07)
+  - Fixed Windows To Go index parsing and displaying
+  - Added an animation and progress bar to extracting ISO
+  - Patched security vulnerabilities
+  - Ported a bunch of commits from upstream
+  - Made Fido independent of Powershell 7, now using
+    system Windows Powershell 5.1
+
+o Update 6 Fix (2026.10.03)
   - Fixed ISO-9660 file information parsing
   - Fixed the main window length on Windows 2000 and XP
   - Implemented a simpler ISO writer for pre-Vista systems,
@@ -9,7 +17,7 @@ o Update 6 Fix (2027.10.03)
     and unupdated systems
   - Enabled ASCII log sanitizing for W2k and XP as well
 
-o Update 6 (2027.09.29)
+o Update 6 (2026.09.29)
   - Check out "Rufus Changelog", a few new pretty entries
     appeared there ;)
   - Fixed some little UI issues inconsistencies

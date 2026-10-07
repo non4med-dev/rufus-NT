@@ -94,6 +94,96 @@ Fido on Windows 7 uses the system `Windows PowerShell 5.1` and requires `.NET Fr
 
 The Fido availability thread also downloads current SBAT and Secure Boot certificate lists. If they are unavailable or invalid, the embedded lists from `db.h` are used.
 
+To visualize what's going on, when Rufus-NT is opened on Windows 7+
+
+Startup<br>
+  -><br>
+NetworkStartupPreflight() (net.c)<br>
+  -><br>
+InternetGetConnectedState() (WinINet Connectivity Check) (net.c)<br>
+  -><br>
+small HTTPS request to https://rufus.ie/ (net.c)<br>
+  -><br>
+result cached for 30 seconds<br>
+  -><br>
+Depending on the result, networking is enabled or disabled<br>
+
+
+### If this is the case, and the user starts Fido:<br>
+
+
+DownloadISO() (net.c)<br>
+  -><br>
+DownloadISOThread() (net.c)<br>
+  -><br>
+Windows 7 or later check <br>
+  -><br>
+EnsureTLS12Enabled() (net.c)<br>
+  -><br>
+If Windows 7 EXPLICITLY:<br>
+    .NET 4.5.2+ required<br>
+    -><br>
+    WMF 4.0+ required<br>
+    -><br>
+    ApplyWin7FidoProtocols() (net.c)<br>
+       -><br>
+       TEMPORARILY set WinINet SecureProtocols = TLS 1.2 ONLY<br>
+       -><br>
+       enable Schannel TLS 1.2<br>
+       -><br>
+       notify WinINet<br>
+  -><br>
+create random GUID / named pipe<br>
+  -><br>
+Download Fido script from fido_url<br>
+  -><br>
+DownloadToFileOrBuffer() (net.c)<br>
+  -><br>
+download detached .sig<br>
+  -><br>
+ValidateOpensslSignature() (pki.c) (unchanged)<br>
+  -><br>
+decompress Fido script<br>
+  -><br>
+write temporary GUID-named .ps1 with restricted ACL<br>
+  -><br>
+ValidateSignature() (pki.c) (unchanged)<br>
+  -><br>
+on Windows 7:<br>
+    patch "$winver =" -> "$winver = 10.0; #"<br>
+  -><br>
+launch system Windows PowerShell<br>
+  -><br>
+Fido runs<br>
+  -><br>
+Fido obtains the Microsoft ISO URL<br>
+  -><br>
+Fido writes ISO URL into the named pipe<br>
+  -><br>
+Rufus reads ISO URL<br>
+  -><br>
+FileDialog() asks where to save it<br>
+  -><br>
+DownloadToFileOrBuffer(ISO URL, destination)<br>
+  -><br>
+GetInternetSession()<br>
+  -><br>
+Win7: refresh WinINet settings<br>
+  -><br>
+Win8+: PinWinINetTls12() on session/request<br>
+  -><br>
+HttpSendRequest()<br>
+  -><br>
+InternetReadFile()<br>
+  -><br>
+WriteFile() to ISO<br>
+  -><br>
+Success / Cancellation<br>
+  -><br>
+Windows 7: RestoreWin7FidoProtocols()<br>
+  ->
+Cleanup
+
 </details>
 
 <details>
