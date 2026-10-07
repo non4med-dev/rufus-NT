@@ -47,7 +47,7 @@ Prerequisites for patching are either python3 (for automated) or a PE editor (fo
 
 You can read more about them specifically [here](https://github.com/non4med-dev/rufus-NT/blob/master/docs/bcdboot-wimgapi-ntapi.md)<br>
 
-If you'd like to understand the changes done in Rufus-NT in more detail, take a look at [this audit here](https://github.com/non4med-dev/rufus-NT/blob/master/docs/core-audit.md)
+If you'd like to understand the changes done in Rufus-NT in more detail, take a look at [this audit here](https://github.com/non4med-dev/rufus-NT/blob/master/docs/code-audit.md)
 
 Certain parts of this project (i.e. API-shims, patcher.py, localization) were AI assisted. It isn't slop though, don't worry. Anyone is free to read the code and suggest fixes, changes or different ways of handling things.
 

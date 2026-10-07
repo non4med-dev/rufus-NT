@@ -1,4 +1,7 @@
-# Update 5 Audit (to make up for the unclear commits)
+# Rufus-NT Code Audit
+
+This is written to let anyone understand what's actually happening behind the scenes. This project has drifted pretty far from upstream, and contains lots of uncommented code. I have tried my best at explaining everything to detail, and clearing up any confusion.
+
 Rufus-NT was originally based on Rufus 4.7.2231 and evolved from my previous project Rufus-Legacy, (source uploaded under "Update 1").<br>
 I decided to go with this exact version, as it's the last one to use a non-wimlib base and be compatible with old versions of VS2022.
 
