@@ -53,6 +53,7 @@ BOOL is_bootloader_revoked = FALSE;
 static char legacy_wtg_dir[MAX_PATH], legacy_wtg_image[MAX_PATH];
 static char legacy_wtg_source[MAX_PATH], legacy_wtg_internal[MAX_PATH];
 static int64_t legacy_wtg_source_size = -1, legacy_wtg_source_time = -1;
+static DWORD legacy_wtg_source_index_low = 0, legacy_wtg_source_index_high = 0;
 extern BOOL extract_show_progress;
 
 extern uint32_t wim_nb_files, wim_proc_files, wim_extra_files;
@@ -78,16 +79,28 @@ void CleanupWinToGoTemp(void)
 	legacy_wtg_internal[0] = 0;
 	legacy_wtg_source_size = -1;
 	legacy_wtg_source_time = -1;
+	legacy_wtg_source_index_low = 0;
+	legacy_wtg_source_index_high = 0;
 }
 
 BOOL IsWinToGoTempCurrent(const char* source)
 {
 	struct __stat64 source_info = { 0 };
 
+	// Check Windows' file index to make sure the same exact file is still being used
+	BY_HANDLE_FILE_INFORMATION fi = { 0 };
+	HANDLE h = CreateFileU(source, GENERIC_READ, FILE_SHARE_READ, NULL,
+		OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, NULL);
+	if (h == INVALID_HANDLE_VALUE) return FALSE;
+	GetFileInformationByHandle(h, &fi);
+	CloseHandle(h);
+
 	return (source != NULL) && (legacy_wtg_image[0] != 0) &&
 		(safe_strcmp(legacy_wtg_source, source) == 0) && PathFileExistsU(legacy_wtg_image) &&
 		(_stat64U(source, &source_info) == 0) && (source_info.st_size == legacy_wtg_source_size) &&
-		((int64_t)source_info.st_mtime == legacy_wtg_source_time);
+		((int64_t)source_info.st_mtime == legacy_wtg_source_time) &&
+		(fi.nFileIndexLow == legacy_wtg_source_index_low) &&
+		(fi.nFileIndexHigh == legacy_wtg_source_index_high);
 }
 
 static uint16_t GetSplitWimPartCount(const char* path)
@@ -161,13 +174,8 @@ static const char* PrepareLegacyWinToGoImage(int index)
 	CleanupWinToGoTemp();
 	if (legacy_wtg_dir[0] != 0)
 		return NULL;
-	// Unpredictable directory name, just as a precaution
-	if (GetTempFileNameU(temp_dir, "RWT", 0, legacy_wtg_dir) == 0) {
-		uprintf("Could not allocate a Windows To Go temporary directory: %s", WindowsErrorString());
-		return NULL;
-	}
-	DeleteFileU(legacy_wtg_dir);
-	if (!CreateDirectoryU(legacy_wtg_dir, NULL) && GetLastError() != ERROR_ALREADY_EXISTS) {
+	// TOCTOU patch
+	if (!CreatePrivateTempDir("RWT", legacy_wtg_dir)) {
 		uprintf("Could not create Windows To Go temporary directory: %s", WindowsErrorString());
 		CleanupWinToGoTemp();
 		return NULL;
@@ -266,6 +274,19 @@ static const char* PrepareLegacyWinToGoImage(int index)
 	if (_stat64U(image_path, &source_info) == 0) {
 		legacy_wtg_source_size = source_info.st_size;
 		legacy_wtg_source_time = (int64_t)source_info.st_mtime;
+	}
+	// File index store for cache validity checks
+	{
+		BY_HANDLE_FILE_INFORMATION fi = { 0 };
+		HANDLE h = CreateFileU(image_path, GENERIC_READ, FILE_SHARE_READ, NULL,
+			OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, NULL);
+		if (h != INVALID_HANDLE_VALUE) {
+			if (GetFileInformationByHandle(h, &fi)) {
+				legacy_wtg_source_index_low = fi.nFileIndexLow;
+				legacy_wtg_source_index_high = fi.nFileIndexHigh;
+			}
+			CloseHandle(h);
+		}
 	}
 	uprintf("Windows image prepared in %llu seconds", (GetTickCount64() - start_time + 999) / 1000);
 	return legacy_wtg_image;
@@ -896,7 +917,9 @@ BOOL SetupWinPE(char drive_letter)
 	for (i = 1; i < size - 32; i++) {
 		for (j = 0; j < ARRAYSIZE(patch_str_org); j++) {
 			if (safe_strnicmp(&buffer[i], patch_str_org[j], strlen(patch_str_org[j]) - 1) == 0) {
-				assert(index < 2);
+				// Runtime bounds check
+				if (index >= ARRAYSIZE(patch_str_rep))
+					continue;
 				uprintf("  0x%08X: '%s' -> '%s'\n", i, &buffer[i], patch_str_rep[index][j]);
 				strcpy(&buffer[i], patch_str_rep[index][j]);
 				i += (DWORD)max(strlen(patch_str_org[j]), strlen(patch_str_rep[index][j]));	// in case org is a substring of rep

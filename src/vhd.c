@@ -93,8 +93,8 @@ static wimlib_decompress_t pfwimlib_decompress = NULL;
 static wimlib_free_decompressor_t pfwimlib_free_decompressor = NULL;
 static int legacy_wimapi_state = 0, sevenzip_state = 0, legacy_wimlib_state = 0;
 
-// TOCTOU vulnerability fix for retro7zip, wimgapi, wimlib extraction
-static BOOL CreatePrivateTempDir(char* prefix, char* dir_path)
+// TOCTOU vulnerability fix for extracted wintogo dependencies
+BOOL CreatePrivateTempDir(char* prefix, char* dir_path)
 {
 	HANDLE hToken = NULL;
 	DWORD dwSize = 0;
@@ -1818,7 +1818,8 @@ BOOL WimJoinSplitImage(const char* directory, const char* output_name,
 	const size_t command_length = 32768;
 	BOOL r = FALSE;
 	DWORD command_result;
-	char* cmdline = NULL, part_name[32], output_path[MAX_PATH];
+	// Changed from [32] incase part_stem is ever longer than "install"
+	char* cmdline = NULL, part_name[MAX_PATH], output_path[MAX_PATH];
 	size_t i;
 	struct __stat64 stat64 = { 0 };
 

@@ -211,3 +211,4 @@ extern void VhdSaveImage(void);
 extern void IsoSaveImage(void);
 extern void WimApiCleanup(void);
 extern const char* GetLegacyBcdbootPath(void);
+extern BOOL CreatePrivateTempDir(char* prefix, char* dir_path);

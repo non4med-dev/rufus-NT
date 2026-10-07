@@ -2701,6 +2701,8 @@ DWORD WINAPI FormatThread(void* param)
 			ErrorStatus = RUFUS_ERROR(APPERR(ERROR_CANT_ASSIGN_LETTER));
 			goto out;
 		}
+		// How did I miss that... DD-mode fix
+		drive_name[0] = volume_name[0];
 	// IOCTL_DISK_SET_DRIVE_LAYOUT creates the partition on NT4, but NT4's mount manager
 	// does not necessarily publish a logical drive for the new still-unformatted partition 
 	// Waiting for a normal volume therefore times out even though the new MBR layout is already present
@@ -2937,8 +2939,10 @@ DWORD WINAPI FormatThread(void* param)
 	} else
 #endif
 	{
-	if (!RemountVolume(drive_name, FALSE))
+	if (!RemountVolume(drive_name, FALSE)) {
+		uprintf("Could not remount volume %s: %s", drive_name, WindowsErrorString());
 		goto out;
+	}
 	}
 	CHECK_FOR_USER_CANCEL;
 
@@ -3041,6 +3045,7 @@ DWORD WINAPI FormatThread(void* param)
 		PrintInfoDebug(0, MSG_233);
 		if ((boot_type == BT_IMAGE) && (image_path != NULL) && (img_report.is_iso) && (!windows_to_go))
 			UpdateMD5Sum(drive_name, md5sum_name[img_report.has_md5sum ? img_report.has_md5sum - 1 : 0]);
+		StrArrayClear(&modified_files);
 		if ((WindowsVersion.Version > WINDOWS_NT4) && IsChecked(IDC_EXTENDED_LABEL))
 			SetAutorun(drive_name);
 		// Issue another complete remount before we exit, to ensure we're clean
@@ -3124,6 +3129,7 @@ DWORD WINAPI FormatThread(void* param)
 	}
 
 out:
+	StrArrayClear(&modified_files);
 #ifdef RUFUS_TARGET_NT4
 	if ((WindowsVersion.Version <= WINDOWS_NT4) && !IS_ERROR(ErrorStatus) &&
 		nt4_forced_mount && (volume_name != NULL)) {
