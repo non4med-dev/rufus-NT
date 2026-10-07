@@ -60,12 +60,13 @@
 #define WININET_TLS11_FLAG 0x00000200
 #define WININET_TLS12_FLAG 0x00000800
 #define WININET_TLS13_FLAG 0x00002000
+// Not always in older SDKs; forces TLS version selection on a WinINet session/request
+#ifndef INTERNET_OPTION_SECURE_PROTOCOLS
+#define INTERNET_OPTION_SECURE_PROTOCOLS 84
+#endif
 
 
-static BOOL tls_restart_required;
 static BOOL tls_startup_notice_logged;
-static WORD vista_update_notice_langid = 0xffff;
-static int vista_tls_update = -1;
 static int internet_access = -1;
 static ULONGLONG internet_probe_time;
 
@@ -173,232 +174,6 @@ static BOOL DeleteRegistryValue(HKEY root, const char* path, const char* name, R
 	return (status == ERROR_SUCCESS) || (status == ERROR_FILE_NOT_FOUND);
 }
 
-static BOOL HasVistaTls12Update(void)
-// This list contains all Server 2008 R1 updates which added
-// proper and official TLS 1.2 support required for networking
-// features on Windows Vista
-// The previous list was incorrect and shittily formatted
-{
-	static const char* valid_kbs[] = {
-		// 2018-05
-		"KB4056564",
-		// 2018-06
-		"KB4093227", "KB4130956", "KB4230467", "KB4234459",
-		"KB4294413",
-		// 2018-07
-		"KB4291391", "KB4293756", "KB4295656", "KB4339291",
-		"KB4339503", "KB4339854", "KB4340583",
-		// 2018-08
-		"KB4338380", "KB4340937", "KB4340939", "KB4341832",
-		"KB4343674", "KB4344104",
-		// 2018-09
-		"KB4458010", "KB4457984",
-		// 2018-10
-		"KB4463097", "KB4463104",
-		// 2018-11
-		"KB4467706", "KB4467700",
-		// 2018-12
-		"KB4471325", "KB4471319",
-		// 2019-01
-		"KB4480968", "KB4480957",
-		// 2019-02
-		"KB4487023", "KB4487019",
-		// 2019-03
-		"KB4489880", "KB4489876",
-		// 2019-04
-		"KB4493471", "KB4493458",
-		// 2019-05
-		"KB4499149", "KB4499180",
-		// 2019-06
-		"KB4503273", "KB4503287",
-		// 2019-07
-		"KB4507452", "KB4507461",
-		// 2019-08
-		"KB4512476", "KB4512491",
-		// 2019-09
-		"KB4516026", "KB4516051",
-		// 2019-10
-		"KB4520002", "KB4520009",
-		// 2019-11
-		"KB4525234", "KB4525239",
-		// 2019-12
-		"KB4530695", "KB4530719",
-		// 2020-01
-		"KB4534303", "KB4534312",
-		// 2020-02
-		"KB4537810", "KB4537822",
-		// 2020-03
-		"KB4541506", "KB4541504",
-		// 2020-04
-		"KB4550951", "KB4550957",
-		// 2020-05
-		"KB4556860", "KB4556854",
-		// 2020-06
-		"KB4561670", "KB4561645",
-		// 2020-07
-		"KB4565536", "KB4565529",
-		// 2020-08
-		"KB4571730", "KB4571746",
-		// 2020-09
-		"KB4577064", "KB4577070",
-		// 2020-10
-		"KB4580378", "KB4580385",
-		// 2020-11
-		"KB4586807", "KB4586817",
-		// 2020-12
-		"KB4592498", "KB4592504",
-		// 2021-01
-		"KB4598288", "KB4598287",
-		// 2021-02
-		"KB4601360", "KB4601366",
-		// 2021-03
-		"KB5000844", "KB5000856",
-		// 2021-04
-		"KB5001389", "KB5001332",
-		// 2021-05
-		"KB5003210", "KB5003225",
-		// 2021-06
-		"KB5003661", "KB5003695",
-		// 2021-07
-		"KB5004305", "KB5004299",
-		// 2021-08
-		"KB5005090", "KB5005095",
-		// 2021-09
-		"KB5005606", "KB5005618",
-		// 2021-10
-		"KB5006736", "KB5006715",
-		// 2021-11
-		"KB5007263", "KB5007246",
-		// 2021-12
-		"KB5008274", "KB5008271",
-		// 2022-01
-		"KB5009627", "KB5009601",
-		// 2022-02
-		"KB5010384", "KB5010403",
-		// 2022-03
-		"KB5011534", "KB5011525",
-		// 2022-04
-		"KB5012658", "KB5012632",
-		// 2022-05
-		"KB5014010", "KB5014006",
-		// 2022-06
-		"KB5014752", "KB5014743",
-		// 2022-07
-		"KB5015866", "KB5015870",
-		// 2022-08
-		"KB5016669", "KB5016686",
-		// 2022-09
-		"KB5017358", "KB5017371",
-		// 2022-10
-		"KB5018450", "KB5018446",
-		// 2022-11
-		"KB5020019", "KB5020005",
-		// 2022-12
-		"KB5021289", "KB5021293",
-		// 2023-01 
-		"KB5022340", "KB5022353",
-	};
-	static const REGSAM views[] = { KEY_WOW64_64KEY, KEY_WOW64_32KEY };
-	const char* packages = "SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Component Based Servicing\\Packages";
-	char hotfix_path[256], pkg_name[MAX_PATH];
-	DWORD pkg_index, pkg_len;
-	HKEY hKey;
-
-	if (vista_tls_update >= 0)
-		return vista_tls_update != 0;
-
-	for (size_t view = 0; view < ARRAYSIZE(views); view++) {
-		if (RegOpenKeyExA(HKEY_LOCAL_MACHINE, packages, 0, KEY_READ | views[view], &hKey) != ERROR_SUCCESS)
-			continue;
-		pkg_index = 0;
-		while (pkg_len = ARRAYSIZE(pkg_name),
-			RegEnumKeyExA(hKey, pkg_index++, pkg_name, &pkg_len, NULL, NULL, NULL, NULL) == ERROR_SUCCESS) {
-			for (size_t i = 0; i < ARRAYSIZE(valid_kbs); i++) {
-				if (strstr(pkg_name, valid_kbs[i]) != NULL) {
-					RegCloseKey(hKey);
-					vista_tls_update = 1;
-					return TRUE;
-				}
-			}
-		}
-		RegCloseKey(hKey);
-	}
-
-	for (size_t i = 0; i < ARRAYSIZE(valid_kbs); i++) {
-		static_sprintf(hotfix_path, "SOFTWARE\\Microsoft\\Windows NT\\CurrentVersion\\Hotfix\\%s", valid_kbs[i]);
-		if (RegOpenKeyExA(HKEY_LOCAL_MACHINE, hotfix_path, 0, KEY_READ, &hKey) == ERROR_SUCCESS) {
-			RegCloseKey(hKey);
-			vista_tls_update = 1;
-			return TRUE;
-		}
-	}
-	vista_tls_update = 0;
-	return FALSE;
-}
-
-static BOOL HasVistaTlsOsVersionRestriction(void)
-{
-	static const char* paths[] = {
-		"SOFTWARE\\Microsoft\\Internet Explorer\\AdvancedOptions\\CRYPTO\\TLS1.1",
-		"SOFTWARE\\Microsoft\\Internet Explorer\\AdvancedOptions\\CRYPTO\\TLS1.2"
-	};
-	static const REGSAM views[] = { KEY_WOW64_64KEY, KEY_WOW64_32KEY };
-
-	for (size_t view = 0; view < ARRAYSIZE(views); view++)
-		for (size_t i = 0; i < ARRAYSIZE(paths); i++)
-			if (HasRegistryValue(HKEY_LOCAL_MACHINE, paths[i], "OSVersion", views[view]))
-				return TRUE;
-	return FALSE;
-}
-
-static BOOL RemoveVistaTlsOsVersionRestrictions(void)
-{
-	static const char* paths[] = {
-		"SOFTWARE\\Microsoft\\Internet Explorer\\AdvancedOptions\\CRYPTO\\TLS1.1",
-		"SOFTWARE\\Microsoft\\Internet Explorer\\AdvancedOptions\\CRYPTO\\TLS1.2"
-	};
-	static const REGSAM views[] = { KEY_WOW64_64KEY, KEY_WOW64_32KEY };
-	BOOL success = TRUE;
-
-	for (size_t view = 0; view < ARRAYSIZE(views); view++)
-		for (size_t i = 0; i < ARRAYSIZE(paths); i++)
-			success = DeleteRegistryValue(HKEY_LOCAL_MACHINE, paths[i], "OSVersion", views[view]) && success;
-	return success && !HasVistaTlsOsVersionRestriction();
-}
-
-static void LogVistaTlsUpdateWarning(void)
-{
-	if (vista_update_notice_langid == selected_langid)
-		return;
-	uprintf("%s", lmprintf(MSG_547));
-	vista_update_notice_langid = selected_langid;
-}
-
-static BOOL EnsureVistaTlsPrerequisites(HWND hWnd, BOOL prompt)
-{
-	int response;
-	DWORD protocols;
-
-	if (!HasVistaTls12Update()) {
-		LogVistaTlsUpdateWarning();
-		if (prompt && !ReadRegistryKeyBool(REGKEY_HKCU, SETTING_TLS_UPDATES_CHECK)) {
-			response = MessageBoxExU(hWnd, lmprintf(MSG_544), lmprintf(MSG_545),
-				MB_YESNO | MB_ICONWARNING | MB_IS_RTL, selected_langid);
-			IGNORE_RETVAL(WriteRegistryKeyBool(REGKEY_HKCU, SETTING_TLS_UPDATES_CHECK, TRUE));
-			if (response == IDYES)
-				ShellExecuteA(NULL, "open", "https://www.catalog.update.microsoft.com/Search.aspx?q=KB4056564",
-					NULL, NULL, SW_SHOWNORMAL);
-		}
-		return FALSE;
-	}
-
-	protocols = GetConfiguredSecureProtocols();
-	if (!prompt &&
-		(!(protocols & WININET_TLS12_FLAG) || HasVistaTlsOsVersionRestriction()))
-		return FALSE;
-	return EnsureTLS12Enabled(hWnd);
-}
-
 static DWORD GetConfiguredSecureProtocols(void)
 {
 	BOOL has_disabled_by_default;
@@ -456,20 +231,12 @@ BOOL NetworkStartupPreflight(BOOL log_tls_warning)
 	DWORD protocols;
 	ULONGLONG now;
 
-	if (WindowsVersion.Version <= WINDOWS_VISTA)
+	if (WindowsVersion.Version < WINDOWS_7)
 		return FALSE;
 	now = GetTickCount64();
-	if ((WindowsVersion.Version == WINDOWS_VISTA) && !HasVistaTls12Update())
-		LogVistaTlsUpdateWarning();
 	if ((internet_access >= 0) && ((now - internet_probe_time) < 30000))
 		return internet_access != 0;
 	if (!InternetGetConnectedState(&flags, 0)) {
-		internet_access = 0;
-		internet_probe_time = now;
-		return FALSE;
-	}
-	if ((WindowsVersion.Version == WINDOWS_VISTA) &&
-		!EnsureVistaTlsPrerequisites(hMainDialog, log_tls_warning)) {
 		internet_access = 0;
 		internet_probe_time = now;
 		return FALSE;
@@ -507,6 +274,37 @@ BOOL IsInternetAvailable(void)
 	return NetworkStartupPreflight(FALSE);
 }
 
+static void EnsureSchannelTls12Client(void)
+{
+	const char* tls12_client =
+		"SYSTEM\\CurrentControlSet\\Control\\SecurityProviders\\SCHANNEL\\Protocols\\TLS 1.2\\Client";
+	DWORD enabled = 0, disabled_by_default = 1;
+	BOOL wrote = FALSE;
+
+	if (ReadTlsDword(HKEY_LOCAL_MACHINE, tls12_client, "Enabled", &enabled) &&
+		ReadTlsDword(HKEY_LOCAL_MACHINE, tls12_client, "DisabledByDefault", &disabled_by_default) &&
+		(enabled == 1) && (disabled_by_default == 0))
+		return;
+
+	if (WriteTlsDword(HKEY_LOCAL_MACHINE, tls12_client, "Enabled", 1))
+		wrote = TRUE;
+	if (WriteTlsDword(HKEY_LOCAL_MACHINE, tls12_client, "DisabledByDefault", 0))
+		wrote = TRUE;
+	/*
+	if (wrote)
+		uprintf("Enabled Schannel TLS 1.2 for WinINet");
+		*/
+}
+
+// INTERNET_OPTION_SECURE_PROTOCOLS requires Win8 or PS7
+static BOOL PinWinINetTls12(HINTERNET h)
+{
+	DWORD protocols = WININET_TLS12_FLAG;
+	if ((h == NULL) || (WindowsVersion.Version <= WINDOWS_7))
+		return FALSE;
+	return InternetSetOptionA(h, INTERNET_OPTION_SECURE_PROTOCOLS, &protocols, sizeof(protocols));
+}
+
 static BOOL ApplyWin7FidoProtocols(DWORD* previous_protocols, BOOL* had_previous_protocols)
 {
 	const char* internet_settings =
@@ -514,9 +312,11 @@ static BOOL ApplyWin7FidoProtocols(DWORD* previous_protocols, BOOL* had_previous
 
 	*had_previous_protocols = ReadTlsDword(HKEY_CURRENT_USER, internet_settings,
 		"SecureProtocols", previous_protocols);
+	// TLS 1.2 ONLY (anything else triggers 0x2F7D in WinINet)
 	if (!WriteTlsDword(HKEY_CURRENT_USER, internet_settings, "SecureProtocols",
 		WININET_TLS12_FLAG))
 		return FALSE;
+	EnsureSchannelTls12Client();
 	IGNORE_RETVAL(InternetSetOptionA(NULL, INTERNET_OPTION_SETTINGS_CHANGED, NULL, 0));
 	uprintf("Temporarily forcing TLS 1.2 for WinINet");
 	return TRUE;
@@ -537,7 +337,7 @@ static void RestoreWin7FidoProtocols(DWORD previous_protocols, BOOL had_previous
 
 static BOOL EnsureTLS12Enabled(HWND hWnd)
 {
-	BOOL is_vista, tls_enabled, vista_restricted;
+	BOOL tls_enabled;
 	DWORD value = 0, protocols;
 	int response;
 	const char* internet_settings =
@@ -549,19 +349,10 @@ static BOOL EnsureTLS12Enabled(HWND hWnd)
 	const char* tls12_client =
 		"SYSTEM\\CurrentControlSet\\Control\\SecurityProviders\\SCHANNEL\\Protocols\\TLS 1.2\\Client";
 
-	if (WindowsVersion.Version <= WINDOWS_VISTA)
-		return FALSE;
-
-	is_vista = WindowsVersion.Version == WINDOWS_VISTA;
-	if (is_vista && !HasVistaTls12Update()) {
-		LogVistaTlsUpdateWarning();
-		return FALSE;
-	}
 	protocols = GetConfiguredSecureProtocols() &
 		(WININET_TLS10_FLAG | WININET_TLS11_FLAG | WININET_TLS12_FLAG | WININET_TLS13_FLAG);
 	tls_enabled = (protocols & WININET_TLS12_FLAG) != 0;
-	vista_restricted = is_vista && HasVistaTlsOsVersionRestriction();
-	if (tls_enabled && !vista_restricted)
+	if (tls_enabled)
 		return TRUE;
 
 	if (!tls_enabled &&
@@ -601,16 +392,13 @@ static BOOL EnsureTLS12Enabled(HWND hWnd)
 			goto error;
 	}
 
-	if (is_vista && !RemoveVistaTlsOsVersionRestrictions())
-		goto error;
 
 	if (!InternetSetOptionA(NULL, INTERNET_OPTION_SETTINGS_CHANGED, NULL, 0))
 		uprintf("Could not notify WinINet of TLS settings change: %s", WindowsErrorString());
 
 	protocols = GetConfiguredSecureProtocols() &
 		(WININET_TLS10_FLAG | WININET_TLS11_FLAG | WININET_TLS12_FLAG | WININET_TLS13_FLAG);
-	if (!(protocols & WININET_TLS12_FLAG) ||
-		(is_vista && HasVistaTlsOsVersionRestriction())) {
+	if (!(protocols & WININET_TLS12_FLAG)) {
 		SetLastError(ERROR_INTERNET_SECURITY_CHANNEL_ERROR);
 		goto error;
 	}
@@ -623,10 +411,9 @@ error:
 	return FALSE;
 }
 
-// Fido support and checks for Windows 7 and (experimentally) Vista
-// Vista is allowed to run fido under specific circumstances, AND...
-// Support is purely based on me injecting myself with hopium that
-// someone will bother looking into the SSL connection errors
+// Fuuuuuuck that shit
+// Windows 7 support is back
+// Vista is too old
 
 static BOOL IsDotNet45OrNewerInstalled(void)
 {
@@ -639,7 +426,7 @@ static BOOL IsDotNet45OrNewerInstalled(void)
 		0, KEY_READ, &hKey) == ERROR_SUCCESS)
 	{
 		if (RegQueryValueExA(hKey, "Release", NULL, NULL, (LPBYTE)&dwRelease, &dwSize) == ERROR_SUCCESS) {
-			if (dwRelease >= 378389)
+			if (dwRelease >= 379893)
 				bInstalled = TRUE;
 		}
 		RegCloseKey(hKey);
@@ -668,6 +455,43 @@ static BOOL IsWMF4OrNewerInstalled(void)
 	}
 
 	return bInstalled;
+}
+
+static void LogFidoPowerShellDiagnostics(const char* powershell_exe)
+{
+	HKEY hKey;
+	DWORD dwRelease = 0, dwSize, protocols = 0;
+	char version_str[64] = { 0 };
+
+	uprintf("Download Info:");
+	if ((powershell_exe == NULL) || (powershell_exe[0] == 0) ||
+		(GetFileAttributesU(powershell_exe) == INVALID_FILE_ATTRIBUTES)) {
+		uprintf("  PowerShell missing");
+		return;
+	}
+	uprintf("  PowerShell = '%s'", powershell_exe);
+	dwSize = sizeof(dwRelease);
+	if (RegOpenKeyExA(HKEY_LOCAL_MACHINE,
+		"SOFTWARE\\Microsoft\\NET Framework Setup\\NDP\\v4\\Full",
+		0, KEY_READ, &hKey) == ERROR_SUCCESS) {
+		if (RegQueryValueExA(hKey, "Release", NULL, NULL, (LPBYTE)&dwRelease, &dwSize) == ERROR_SUCCESS)
+			uprintf("  .NET4 Version = %lu", dwRelease);
+		RegCloseKey(hKey);
+	}
+	dwSize = sizeof(version_str);
+	if (RegOpenKeyExA(HKEY_LOCAL_MACHINE,
+		"SOFTWARE\\Microsoft\\PowerShell\\3\\PowerShellEngine",
+		0, KEY_READ, &hKey) == ERROR_SUCCESS) {
+		if (RegQueryValueExA(hKey, "PowerShellVersion", NULL, NULL,
+			(LPBYTE)version_str, &dwSize) == ERROR_SUCCESS)
+			uprintf("  Powershell Version = %s", version_str);
+		RegCloseKey(hKey);
+	}
+	if (ReadTlsDword(HKEY_CURRENT_USER,
+		"SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Internet Settings",
+		"SecureProtocols", &protocols))
+		uprintf("  SecureProtocols = 0x%08lx (TLS1.2 %s)",
+			protocols, (protocols & WININET_TLS12_FLAG) ? "Enabled" : "Disabled");
 }
 
 DWORD DownloadStatus;
@@ -728,7 +552,6 @@ static __inline BOOL is_WOW64(void)
 // Open an Internet session
 // Lots of bullshit
 // My testing shows that without TLS 1.2, networking fails
-// But let's keep TLS 1.0 enabled, just to see how it goes
 static HINTERNET GetInternetSession(const char* user_agent, BOOL bRetry)
 {
 	DWORD dwProtocols;
@@ -741,16 +564,13 @@ static HINTERNET GetInternetSession(const char* user_agent, BOOL bRetry)
 	HRESULT hr = S_FALSE;
 	INetworkListManager* pNetworkListManager;
 	// Disable networking on Windows Vista and older
-	if (WindowsVersion.Version <= WINDOWS_VISTA) {
+	if (WindowsVersion.Version < WINDOWS_7) {
 		SetLastError(ERROR_NOT_SUPPORTED);
 		return NULL;
 	}
 	dwProtocols = GetConfiguredSecureProtocols() &
 		(WININET_TLS10_FLAG | WININET_TLS11_FLAG | WININET_TLS12_FLAG | WININET_TLS13_FLAG);
-	if (tls_restart_required ||
-		((WindowsVersion.Version == WINDOWS_7) && !(dwProtocols & WININET_TLS12_FLAG)) ||
-		((WindowsVersion.Version != WINDOWS_7) &&
-			!(dwProtocols & (WININET_TLS10_FLAG | WININET_TLS12_FLAG)))) {
+	if ((WindowsVersion.Version == WINDOWS_7) && !(dwProtocols & WININET_TLS12_FLAG)) {
 		SetLastError(ERROR_INTERNET_SECURITY_CHANNEL_ERROR);
 		return NULL;
 	}
@@ -789,14 +609,18 @@ static HINTERNET GetInternetSession(const char* user_agent, BOOL bRetry)
 		return NULL;
 	if (WindowsVersion.Version == WINDOWS_7)
 		IGNORE_RETVAL(InternetSetOptionA(hSession, INTERNET_OPTION_REFRESH, NULL, 0));
+	else
+		// Win8+ can pin TLS 1.2 on the session handle
+		PinWinINetTls12(hSession);
 	// Set the timeouts
 	InternetSetOptionA(hSession, INTERNET_OPTION_CONNECT_TIMEOUT, (LPVOID)&dwTimeout, sizeof(dwTimeout));
 	InternetSetOptionA(hSession, INTERNET_OPTION_SEND_TIMEOUT, (LPVOID)&dwTimeout, sizeof(dwTimeout));
 	InternetSetOptionA(hSession, INTERNET_OPTION_RECEIVE_TIMEOUT, (LPVOID)&dwTimeout, sizeof(dwTimeout));
 	// Enable gzip and deflate decoding schemes
 	InternetSetOptionA(hSession, INTERNET_OPTION_HTTP_DECODING, (LPVOID)&decodingSupport, sizeof(decodingSupport));
-	// Enable HTTP/2 protocol support
-	InternetSetOptionA(hSession, INTERNET_OPTION_ENABLE_HTTP_PROTOCOL, (LPVOID)&dwProtocolSupport, sizeof(dwProtocolSupport));
+	// HTTP/2 only on Win8+
+	if (WindowsVersion.Version >= WINDOWS_8)
+		InternetSetOptionA(hSession, INTERNET_OPTION_ENABLE_HTTP_PROTOCOL, (LPVOID)&dwProtocolSupport, sizeof(dwProtocolSupport));
 	return hSession;
 }
 
@@ -831,7 +655,7 @@ uint64_t DownloadToFileOrBufferEx(const char* url, const char* file, const char*
 	ErrorStatus = 0;
 	DownloadStatus = 404;
 	// Force-fail networking and use local dbx instead (port)
-	if (WindowsVersion.Version <= WINDOWS_VISTA) {
+	if (WindowsVersion.Version < WINDOWS_7) {
 		if (buffer != NULL)
 			*buffer = NULL;
 		SetLastError(ERROR_NOT_SUPPORTED);
@@ -868,8 +692,6 @@ uint64_t DownloadToFileOrBufferEx(const char* url, const char* file, const char*
 		hSession = GetInternetSession(user_agent, TRUE);
 		if (hSession == NULL) {
 			uprintf("Could not open Internet session: %s", WindowsErrorString());
-			if (WindowsVersion.Version == WINDOWS_VISTA)
-				uprintf("%s", lmprintf(MSG_547));
 			if (WindowsVersion.Version >= WINDOWS_7)
 				uprintf("Make sure TLS 1.2 is enabled in Internet Options.");
 			goto out;
@@ -892,6 +714,8 @@ uint64_t DownloadToFileOrBufferEx(const char* url, const char* file, const char*
 			uprintf("Could not open URL %s: %s", url, WindowsErrorString());
 			goto out;
 		}
+		if (WindowsVersion.Version > WINDOWS_7)
+			PinWinINetTls12(hRequest);
 
 		if (use_github_api && !HttpAddRequestHeadersA(hRequest,
 			"Accept: application/vnd.github.v3.raw", (DWORD)-1, HTTP_ADDREQ_FLAG_ADD)) {
@@ -909,13 +733,21 @@ uint64_t DownloadToFileOrBufferEx(const char* url, const char* file, const char*
 			goto out;
 		}
 
-		uprintf("Secure channel failed; retrying with a new WinINet session...");
+		// Give me one more day, Im not asking for a year Im not asking for a month
+		// JUST ONE MORE DAY, ONE MORE GAME, ONE LAST TRY
+		uprintf("Secure channel failed; re-forcing TLS 1.2 only and retrying WinINet...");
 		InternetCloseHandle(hRequest);
 		InternetCloseHandle(hConnection);
 		InternetCloseHandle(hSession);
 		hRequest = NULL;
 		hConnection = NULL;
 		hSession = NULL;
+		{
+			DWORD prev = 0;
+			BOOL had = FALSE;
+			// Re-apply TLS for the retry
+			IGNORE_RETVAL(ApplyWin7FidoProtocols(&prev, &had));
+		}
 		IGNORE_RETVAL(InternetSetOptionA(NULL, INTERNET_OPTION_SETTINGS_CHANGED, NULL, 0));
 	}
 
@@ -1081,7 +913,7 @@ DWORD DownloadSignedFile(const char* url, const char* file, HWND hProgressDialog
 	DWORD ret = 0;
 	HANDLE hFile = INVALID_HANDLE_VALUE;
 
-	if (WindowsVersion.Version <= WINDOWS_VISTA) {
+	if (WindowsVersion.Version < WINDOWS_7) {
 		SetLastError(ERROR_NOT_SUPPORTED);
 		return 0;
 	}
@@ -1163,7 +995,7 @@ static DWORD WINAPI DownloadSignedFileThread(LPVOID param)
 HANDLE DownloadSignedFileThreaded(const char* url, const char* file, HWND hProgressDialog, BOOL bPromptOnError)
 {
 	static DownloadSignedFileThreadArgs args;
-	if (WindowsVersion.Version <= WINDOWS_VISTA) {
+	if (WindowsVersion.Version < WINDOWS_7) {
 		SetLastError(ERROR_NOT_SUPPORTED);
 		return NULL;
 	}
@@ -1188,7 +1020,7 @@ BOOL UseLocalDbx(int arch)
 	static_sprintf(path, "%s\\%s\\dbx_%s.bin", app_data_dir, FILES_DIR, efi_archname[arch]);
 	if (_accessU(path, 0) == -1)
 		return FALSE;
-	if (WindowsVersion.Version <= WINDOWS_VISTA)
+	if (WindowsVersion.Version < WINDOWS_7)
 		return TRUE;
 	static_sprintf(reg_name, "DBXTimestamp_%s", efi_archname[arch]);
 	return (uint64_t)ReadSetting64(reg_name) > dbx_info[arch - 1].timestamp;
@@ -1522,7 +1354,7 @@ out:
 BOOL CheckForUpdates(BOOL force)
 {
 	// Disable networking on Windows Vista and older (port)
-	if (WindowsVersion.Version <= WINDOWS_VISTA)
+	if (WindowsVersion.Version < WINDOWS_7)
 		return FALSE;
 	force_update_check = force;
 	if (update_check_thread != NULL)
@@ -1536,66 +1368,15 @@ BOOL CheckForUpdates(BOOL force)
 	return TRUE;
 }
 
-static int CheckPowerShellCandidate(const char* path, char* selected_path, size_t selected_path_size)
-{
-	int selection;
-	LONG signature_status;
-	version_t* version;
-	char* choices[] = {
-		lmprintf(MSG_537),
-		lmprintf(MSG_538),
-		lmprintf(MSG_539)
-	};
-
-	if ((path == NULL) || !PathFileExistsU((char*)path))
-		return 0;
-	version = GetExecutableVersion(path);
-	if ((version == NULL) || (version->Major < 7)) {
-		uprintf("Ignoring incompatible PowerShell executable '%s'", path);
-		return 0;
-	}
-	signature_status = ValidateMicrosoftSignature(path);
-	if (signature_status == ERROR_SUCCESS) {
-		safe_strcpy(selected_path, selected_path_size, path);
-		WriteRegistryKeyStr(REGKEY_HKCU, SETTING_POWERSHELL_PATH, selected_path);
-		uprintf("Using signed PowerShell executable '%s'", selected_path);
-		return 1;
-	}
-
-	selection = CustomSelectionDialog(BS_AUTORADIOBUTTON, lmprintf(MSG_535),
-		lmprintf(MSG_536, path), choices, ARRAYSIZE(choices), 2, -1);
-	if (selection == 1) {
-		safe_strcpy(selected_path, selected_path_size, path);
-		WriteRegistryKeyStr(REGKEY_HKCU, SETTING_POWERSHELL_PATH, selected_path);
-		uprintf("WARNING: Using PowerShell with an invalid signature at '%s'", selected_path);
-		return 1;
-	}
-	if (selection == 2) {
-		uprintf("Ignoring PowerShell with an invalid signature at '%s'", path);
-		return 2;
-	}
-	return -1;
-}
-
-static BOOL IsIgnoredPowerShellPath(const char* path, char ignored_paths[][MAX_PATH], size_t ignored_count)
-{
-	for (size_t i = 0; i < ignored_count; i++) {
-		if (strcmpi(path, ignored_paths[i]) == 0)
-			return TRUE;
-	}
-	return FALSE;
-}
-
 /*
  * Download an ISO through Fido
  */
 static DWORD WINAPI DownloadISOThread(LPVOID param)
 {
-	BOOL is_vista = (WindowsVersion.Version == WINDOWS_VISTA);
 	BOOL is_seven = (WindowsVersion.Version == WINDOWS_7);
 	char locale_str[1024], cmdline[sizeof(locale_str) + 512], pipe[MAX_GUID_STRING_LENGTH + 16] = "\\\\.\\pipe\\";
 	char powershell_path[MAX_PATH], icon_path[MAX_PATH] = { 0 }, script_path[MAX_PATH] = { 0 };
-	char found_pwsh[MAX_PATH] = { 0 }, selected_powershell[MAX_PATH] = { 0 };
+	char selected_powershell[MAX_PATH] = { 0 };
 	char* url = NULL, sig_url[128];
 	uint64_t uncompressed_size;
 	int64_t size = -1;
@@ -1605,17 +1386,41 @@ static DWORD WINAPI DownloadISOThread(LPVOID param)
 	DWORD previous_secure_protocols = 0;
 	BOOL had_previous_secure_protocols = FALSE, win7_protocol_override = FALSE;
 	LARGE_INTEGER patch_pos;
-	char* version_line, * version_eol, * add_type_line, * show_window_line;
+	char* version_line, * version_eol;
 	GUID guid;
 
 	dialog_showing++;
 	IGNORE_RETVAL(CoInitializeEx(NULL, COINIT_APARTMENTTHREADED | COINIT_DISABLE_OLE1DDE));
 	// Disable Fido on Windows Vista and older
-	if (WindowsVersion.Version <= WINDOWS_VISTA)
+	if (WindowsVersion.Version < WINDOWS_7)
 		goto out;
 	if (!EnsureTLS12Enabled(hMainDialog))
 		goto out;
 	if (is_seven) {
+		if (!IsDotNet45OrNewerInstalled()) {
+			int response = MessageBoxA(NULL,
+				".NET Framework 4.5.2 or newer is required on Windows 7 to run Fido.\n\n"
+				"Would you like to open your browser to download .NET Framework 4.8?",
+				".NET Framework Required",
+				MB_YESNO | MB_ICONEXCLAMATION);
+			if (response == IDYES)
+				ShellExecuteA(NULL, "open",
+					"https://dotnet.microsoft.com/en-us/download/dotnet-framework/net48",
+					NULL, NULL, SW_SHOWNORMAL);
+			goto out;
+		}
+		if (!IsWMF4OrNewerInstalled()) {
+			int response = MessageBoxA(NULL,
+				"PowerShell needs Windows Management Framework (WMF) 4.0 or newer to run, but your system version is out of date.\n\n"
+				"Would you like to open your browser to download WMF 5.1?",
+				"WMF 4.0+ Required",
+				MB_YESNO | MB_ICONEXCLAMATION);
+			if (response == IDYES)
+				ShellExecuteA(NULL, "open",
+					"https://www.microsoft.com/en-us/download/details.aspx?id=54616",
+					NULL, NULL, SW_SHOWNORMAL);
+			goto out;
+		}
 		if (!ApplyWin7FidoProtocols(&previous_secure_protocols, &had_previous_secure_protocols)) {
 			uprintf("Could not apply the Windows 7 TLS settings: %s", WindowsErrorString());
 			goto out;
@@ -1715,39 +1520,20 @@ static DWORD WINAPI DownloadISOThread(LPVOID param)
 	uprintf("Script signature is valid ✓");
 
 	// FIDO PATCH (port)
-	if (is_vista || is_seven) {
+	if (is_seven) {
 		version_line = strstr((char*)fido_script, "$winver =");
 		version_eol = (version_line == NULL) ? NULL : strchr(version_line, '\n');
-		add_type_line = strstr((char*)fido_script, "Add-Type @Signature");
-		show_window_line = strstr((char*)fido_script, "[WinAPI.Utils]::ShowWindow");
 		if ((version_eol != NULL) && (version_eol - version_line >= 17)) {
 			hFile = CreateFileU(script_path, GENERIC_WRITE, FILE_SHARE_READ, NULL,
 				OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, NULL);
 			patch_pos.QuadPart = version_line - (char*)fido_script;
 			if ((hFile == INVALID_HANDLE_VALUE) || !SetFilePointerEx(hFile, patch_pos, NULL, FILE_BEGIN) ||
 				!WriteFile(hFile, "$winver = 10.0; #", 17, &dwSize, NULL) || (dwSize != 17)) {
-				uprintf("Could not prepare Fido for PowerShell 7: %s", WindowsErrorString());
+				uprintf("Could not prepare Fido for Windows 7: %s", WindowsErrorString());
 				safe_closehandle(hFile);
 				goto out;
 			}
-			if ((add_type_line != NULL) && (show_window_line != NULL)) {
-				patch_pos.QuadPart = add_type_line - (char*)fido_script;
-				if (!SetFilePointerEx(hFile, patch_pos, NULL, FILE_BEGIN) ||
-					!WriteFile(hFile, "#", 1, &dwSize, NULL) || (dwSize != 1)) {
-					uprintf("Could not prepare the Fido window: %s", WindowsErrorString());
-					safe_closehandle(hFile);
-					goto out;
-				}
-				patch_pos.QuadPart = show_window_line - (char*)fido_script;
-				if (!SetFilePointerEx(hFile, patch_pos, NULL, FILE_BEGIN) ||
-					!WriteFile(hFile, "#", 1, &dwSize, NULL) || (dwSize != 1)) {
-					uprintf("Could not prepare the Fido window: %s", WindowsErrorString());
-					safe_closehandle(hFile);
-					goto out;
-				}
-			}
 			safe_closehandle(hFile);
-			duprintf("Adjusted Fido version check for PowerShell 7");
 		}
 	}
 	SetFileAttributesU(script_path, FILE_ATTRIBUTE_READONLY);
@@ -1767,199 +1553,70 @@ static DWORD WINAPI DownloadISOThread(LPVOID param)
 		goto out;
 	}
 
-	// External Powershell for Fido on 7 (port)
-	if (WindowsVersion.Version >= WINDOWS_8)
-		static_strcpy(selected_powershell, powershell_path);
-	if (selected_powershell[0] == 0) {
-		const char* pwsh_candidates[] = {
-			"C:\\Program Files\\PowerShell\\7\\pwsh.exe",
-			"C:\\Program Files (x86)\\PowerShell\\7\\pwsh.exe",
-			"C:\\Program Files\\PowerShell\\7-preview\\pwsh.exe",
-		};
-
-		int candidate_status;
-		char cached_pwsh[MAX_PATH] = { 0 }, checked_locations[3 * MAX_PATH] = { 0 };
-		char expanded_pwsh[MAX_PATH] = { 0 }, powershell_prompt[1024] = { 0 };
-		char ignored_pwsh[4][MAX_PATH] = { 0 };
-		char reg_subkey[MAX_PATH] = { 0 };
-		HKEY hParentKey, hSubKey;
-		DWORD reg_type, subkey_index, subkey_len, val_size;
-		REGSAM reg_views[] = { KEY_READ | KEY_WOW64_64KEY, KEY_READ | KEY_WOW64_32KEY };
-		size_t ignored_pwsh_count = 0;
-
-		safe_strcpy(cached_pwsh, sizeof(cached_pwsh), ReadRegistryKeyStr(REGKEY_HKCU, SETTING_POWERSHELL_PATH));
-		if (cached_pwsh[0] != 0) {
-			candidate_status = CheckPowerShellCandidate(cached_pwsh, selected_powershell, sizeof(selected_powershell));
-			if (candidate_status < 0)
-				goto out;
-			if (candidate_status != 1)
-				WriteRegistryKeyStr(REGKEY_HKCU, SETTING_POWERSHELL_PATH, "");
-			if (candidate_status == 2)
-				safe_strcpy(ignored_pwsh[ignored_pwsh_count++], MAX_PATH, cached_pwsh);
-		}
-
-		for (size_t k = 0; (selected_powershell[0] == 0) && (k < ARRAYSIZE(pwsh_candidates)); k++) {
-			if (IsIgnoredPowerShellPath(pwsh_candidates[k], ignored_pwsh, ignored_pwsh_count) ||
-				((cached_pwsh[0] != 0) && (strcmpi(cached_pwsh, pwsh_candidates[k]) == 0)))
-				continue;
-			candidate_status = CheckPowerShellCandidate(pwsh_candidates[k], selected_powershell, sizeof(selected_powershell));
-			if (candidate_status < 0)
-				goto out;
-			if ((candidate_status == 2) && (ignored_pwsh_count < ARRAYSIZE(ignored_pwsh)))
-				safe_strcpy(ignored_pwsh[ignored_pwsh_count++], MAX_PATH, pwsh_candidates[k]);
-			if (candidate_status == 1)
-				break;
-		}
-
-		if (selected_powershell[0] == 0) {
-			for (size_t view = 0; (selected_powershell[0] == 0) && (view < ARRAYSIZE(reg_views)); view++) {
-				subkey_index = 0;
-				if (RegOpenKeyExA(HKEY_LOCAL_MACHINE, "SOFTWARE\\Microsoft\\PowerShellCore\\InstalledVersions",
-					0, reg_views[view], &hParentKey) != ERROR_SUCCESS)
-					continue;
-				while (subkey_len = sizeof(reg_subkey),
-					RegEnumKeyExA(hParentKey, subkey_index++, reg_subkey, &subkey_len, NULL, NULL, NULL, NULL) == ERROR_SUCCESS) {
-					char full_subkey_path[MAX_PATH];
-					static_sprintf(full_subkey_path, "SOFTWARE\\Microsoft\\PowerShellCore\\InstalledVersions\\%s", reg_subkey);
-					if (RegOpenKeyExA(HKEY_LOCAL_MACHINE, full_subkey_path, 0, reg_views[view], &hSubKey) != ERROR_SUCCESS)
-						continue;
-					val_size = sizeof(found_pwsh);
-					reg_type = 0;
-					found_pwsh[0] = 0;
-					if ((RegQueryValueExA(hSubKey, "InstallLocation", NULL, &reg_type,
-						(LPBYTE)found_pwsh, &val_size) != ERROR_SUCCESS) || (found_pwsh[0] == 0)) {
-						val_size = sizeof(found_pwsh);
-						reg_type = 0;
-						found_pwsh[0] = 0;
-						RegQueryValueExA(hSubKey, "InstallDir", NULL, &reg_type, (LPBYTE)found_pwsh, &val_size);
-					}
-					if (((reg_type == REG_SZ) || (reg_type == REG_EXPAND_SZ)) && (found_pwsh[0] != 0)) {
-						found_pwsh[sizeof(found_pwsh) - 1] = 0;
-						if (reg_type == REG_EXPAND_SZ) {
-							DWORD expanded_len;
-							expanded_pwsh[0] = 0;
-							expanded_len = ExpandEnvironmentStringsA(found_pwsh, expanded_pwsh, ARRAYSIZE(expanded_pwsh));
-							if ((expanded_len != 0) && (expanded_len <= ARRAYSIZE(expanded_pwsh)))
-								safe_strcpy(found_pwsh, sizeof(found_pwsh), expanded_pwsh);
-						}
-						PathCombineA(found_pwsh, found_pwsh, "pwsh.exe");
-						if (!IsIgnoredPowerShellPath(found_pwsh, ignored_pwsh, ignored_pwsh_count) &&
-							((cached_pwsh[0] == 0) || (strcmpi(cached_pwsh, found_pwsh) != 0))) {
-							candidate_status = CheckPowerShellCandidate(found_pwsh, selected_powershell, sizeof(selected_powershell));
-							if (candidate_status < 0) {
-								RegCloseKey(hSubKey);
-								RegCloseKey(hParentKey);
-								goto out;
-							}
-							if ((candidate_status == 2) && (ignored_pwsh_count < ARRAYSIZE(ignored_pwsh)))
-								safe_strcpy(ignored_pwsh[ignored_pwsh_count++], MAX_PATH, found_pwsh);
-						}
-					}
-					RegCloseKey(hSubKey);
-					if (selected_powershell[0] != 0)
-						break;
-				}
-				RegCloseKey(hParentKey);
-			}
-		}
-
-		if (selected_powershell[0] == 0) {
-			safe_sprintf(checked_locations, sizeof(checked_locations), "%s\n%s\n%s",
-				pwsh_candidates[0], pwsh_candidates[1], pwsh_candidates[2]);
-			MessageBoxExU(hMainDialog, lmprintf(MSG_534, checked_locations), lmprintf(MSG_533),
-				MB_OK | MB_ICONINFORMATION | MB_IS_RTL, selected_langid);
-			if (!IsDotNet45OrNewerInstalled()) {
-				int response;
-				if (is_vista) {
-					response = MessageBoxA(NULL,
-						"Powershell 7 requires .NET Framework 4.6 or newer to run, but it isn't detected on your system.\n\n"
-						"Would you like to open your browser to download .NET Framework 4.6?",
-						".NET Framework 4.6 Required",
-						MB_YESNO | MB_ICONEXCLAMATION);
-
-					if (response == IDYES) {
-						ShellExecuteA(NULL, "open",
-							"https://www.microsoft.com/en-us/download/details.aspx?id=48130",
-							NULL, NULL, SW_SHOWNORMAL);
-					}
-				}
-				else {
-					response = MessageBoxA(NULL,
-						"Windows Management Framework (WMF) requires .NET Framework 4.5.2 or newer to be installed, but it isn't detected on your system.\n\n"
-						"Would you like to open your browser to download .NET Framework 4.8?",
-						".NET Framework 4.5.2+ Required",
-						MB_YESNO | MB_ICONEXCLAMATION);
-
-					if (response == IDYES) {
-						ShellExecuteA(NULL, "open",
-							"https://dotnet.microsoft.com/en-us/download/dotnet-framework/net48",
-							NULL, NULL, SW_SHOWNORMAL);
-					}
-				}
-				goto out;
-			}
-
-			if (!is_vista && !IsWMF4OrNewerInstalled()) {
-				int response = MessageBoxA(NULL,
-					"PowerShell needs Windows Management Framework (WMF) 4.0 or newer to run, but your system version is out of date.\n\n"
-					"Would you like to open your browser to download WMF 5.1?",
-					"WMF 4.0+ Required",
-					MB_YESNO | MB_ICONEXCLAMATION);
-
-				if (response == IDYES) {
-					ShellExecuteA(NULL, "open",
-						"https://www.microsoft.com/en-us/download/details.aspx?id=54616",
-						NULL, NULL, SW_SHOWNORMAL);
-				}
-				goto out;
-			}
-
-			int response;
-			if (is_vista) {
-				safe_sprintf(powershell_prompt, sizeof(powershell_prompt), "%s\n\n%s", lmprintf(MSG_540), lmprintf(MSG_541));
-			}
-			else if (is_seven) {
-				safe_sprintf(powershell_prompt, sizeof(powershell_prompt), "%s\n\n%s", lmprintf(MSG_540), lmprintf(MSG_542));
-			}
-			else {
-				safe_sprintf(powershell_prompt, sizeof(powershell_prompt), "%s\n\n%s", lmprintf(MSG_540), lmprintf(MSG_543));
-			}
-			response = MessageBoxExU(hMainDialog, powershell_prompt, lmprintf(MSG_533),
-				MB_YESNO | MB_ICONEXCLAMATION | MB_IS_RTL, selected_langid);
-
-			if (response == IDYES) {
-				if (is_vista) {
-					ShellExecuteA(NULL, "open",
-						"https://forum.legacydev.org/viewtopic.php?t=231",
-						NULL, NULL, SW_SHOWNORMAL);
-				}
-				else if (is_seven) {
-					ShellExecuteA(NULL, "open",
-						"https://github.com/PowerShell/PowerShell/releases/download/v7.2.24/PowerShell-7.2.24-win-x64.msi",
-						NULL, NULL, SW_SHOWNORMAL);
-				}
-				else {
-					ShellExecuteA(NULL, "open",
-						"https://github.com/PowerShell/powershell/releases/latest",
-						NULL, NULL, SW_SHOWNORMAL);
-				}
-			}
-
-			goto out;
-		}
+	// Lets keep that shit for now
+	static_strcpy(selected_powershell, powershell_path);
+	if (!PathFileExistsU(selected_powershell)) {
+		uprintf("System PowerShell executable not found: '%s'", selected_powershell);
+		goto out;
 	}
 
-	if (is_vista) {
-		// Written with Powershell 7.2.2 running through the extended kernel in mind
-		// Credits go to TSNH https://forum.legacydev.org/viewtopic.php?t=231
+	LogFidoPowerShellDiagnostics(selected_powershell);
+
+	if (is_seven) {
+		// Capture errors to a separate log
+		char fido_err_log[MAX_PATH];
+		static_sprintf(fido_err_log, "%s\\rufus_fido_error.txt", temp_dir);
+		DeleteFileA(fido_err_log);
 		static_sprintf(cmdline,
-			"\"%s\" -NonInteractive -Sta -NoLogo -NoProfile -WindowStyle Hidden -ExecutionPolicy Bypass -Command \""
-			"$host.UI.RawUI.WindowTitle = 'PowerShell 7'; "
-			"[Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12; "
-			"if ((Get-ExecutionPolicy) -ne 'AllSigned') { Set-ExecutionPolicy -Scope Process Bypass }; "
-			"& '%s' -PipeName '%s' -LocData '%s' -Icon '%s' -AppTitle '%s' -PlatformArch '%s'\"",
-			selected_powershell, script_path, &pipe[9], locale_str, icon_path, lmprintf(MSG_149), GetArchName(NativeMachine)
-		);
+			"\"%s\" -NonInteractive -Sta -NoLogo -NoProfile -ExecutionPolicy Bypass "
+			"-Command \"try { "
+			"$ErrorActionPreference='Stop'; "
+			"try { [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12 } "
+			"catch { $_ | Out-String | Out-File -FilePath '%s' -Encoding ASCII; throw }; "
+			"& '%s' -PipeName '%s' -LocData '%s' -Icon '%s' -AppTitle '%s' -PlatformArch '%s' "
+			"} catch { $_ | Format-List * -Force | Out-String | Out-File -FilePath '%s' -Encoding ASCII; exit 1 }\"",
+			selected_powershell, fido_err_log, script_path, &pipe[9], locale_str, icon_path,
+			lmprintf(MSG_149), GetArchName(NativeMachine), fido_err_log);
+		ErrorStatus = 0;
+		dwExitCode = RunCommand(cmdline, app_data_dir, TRUE);
+		uprintf("Exited download script with code: %d", dwExitCode);
+		if (dwExitCode != 0) {
+			HANDLE hErr = CreateFileA(fido_err_log, GENERIC_READ, FILE_SHARE_READ, NULL,
+				OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, NULL);
+			if (hErr != INVALID_HANDLE_VALUE) {
+				char err_body[8192];
+				DWORD err_got = 0;
+				memset(err_body, 0, sizeof(err_body));
+				if (ReadFile(hErr, err_body, sizeof(err_body) - 1, &err_got, NULL) && err_got > 0) {
+					char* line = err_body;
+					char* nl;
+					err_body[err_got] = 0;
+					uprintf("—— Download error log ——");
+					while (line && *line) {
+						nl = strchr(line, '\n');
+						if (nl) {
+							if (nl > line && nl[-1] == '\r')
+								nl[-1] = 0;
+							*nl = 0;
+						}
+						if (line[0])
+							uprintf("  %s", line);
+						line = nl ? nl + 1 : NULL;
+					}
+					uprintf("—— end Download error log ——");
+				}
+				CloseHandle(hErr);
+			}
+			else {
+				uprintf("No download error log produced (exit %d) — failure may be outside the script", dwExitCode);
+			}
+			DeleteFileA(fido_err_log);
+		}
+		else {
+			DeleteFileA(fido_err_log);
+		}
+		// Skip the generic launch below; we already ran
+		goto win7_fido_launched;
 	}
 	else {
 		static_sprintf(cmdline, "\"%s\" -NonInteractive -Sta -NoLogo -NoProfile -WindowStyle Hidden -ExecutionPolicy Bypass "
@@ -1969,6 +1626,7 @@ static DWORD WINAPI DownloadISOThread(LPVOID param)
 	ErrorStatus = 0;
 	dwExitCode = RunCommand(cmdline, app_data_dir, TRUE);
 	uprintf("Exited download script with code: %d", dwExitCode);
+win7_fido_launched:
 	if ((dwExitCode == 0) && PeekNamedPipe(hPipe, NULL, dwPipeSize, NULL, &dwAvail, NULL) && (dwAvail != 0)) {
 		url = malloc(dwAvail + 1);
 		dwSize = 0;
@@ -2040,7 +1698,7 @@ static DWORD WINAPI DownloadISOThread(LPVOID param)
 BOOL DownloadISO()
 {
 	// Do not expose network-backed ISO downloads on Windows Vista and older. (port)
-	if (WindowsVersion.Version <= WINDOWS_VISTA)
+	if (WindowsVersion.Version < WINDOWS_7)
 		return FALSE;
 	if (CreateThread(NULL, 0, DownloadISOThread, NULL, 0, NULL) == NULL) {
 		uprintf("Unable to start Windows ISO download thread");
@@ -2062,7 +1720,7 @@ BOOL IsDownloadable(const char* url)
 		hostname, sizeof(hostname), 0, NULL, 1, urlpath, sizeof(urlpath), NULL, 1 };
 
 	// Do not probe remote URLs on Windows Vista and older. (port)
-	if ((WindowsVersion.Version <= WINDOWS_VISTA) || (url == NULL))
+	if ((WindowsVersion.Version < WINDOWS_7) || (url == NULL))
 		return FALSE;
 
 	ErrorStatus = 0;

@@ -77,21 +77,17 @@ The updates are sourced from [here.](https://archive.org/download/winxp-exfat-dr
 <summary><strong>4. Networking, TLS and Fido</strong></summary>
 <br>
 
-The 4.7 connection check was not enough for this project. Windows can report an active connection while Rufus itself is blocked by a firewall, proxy or broken TLS configuration. Windows even reports an inactive connection when in reality it's just connected to a VPN.
+When Rufus-NT first runs on Windows 7 or later, it checks for three things: Is there an active internet connection, do I have access to it, can I access the internet (makes a small request to https://rufus.ie/).
 
-`NetworkStartupPreflight()` checks the WinINet connection state, the effective TLS 1.2 configuration and finally performs a small request to `https://rufus.ie/`. The result is cached for 30 seconds. If Windows claims to be online but the request fails, Rufus treats networking as unavailable and logs a short firewall warning. GRUB, Syslinux and diskcopy.dll then use their offline paths instead of showing the regular download prompt for something Rufus cannot actually reach.
+This is all necessary as in some niche cases Windows can report an active connection, but Rufus-NT can be blocked through a firewall, or it can report an inactive connection, but it might just be a VPN.
 
-Networking is disabled on XP and older at the public entry points, not only in the UI. `GetInternetSession()`, downloads, update checks, Fido and `IsDownloadable()` all reject these systems. Windows 7 and newer continue to use the system WinINet proxy configuration.
+NetworkStartupPreflight() checks the WinINet connection state, the effective TLS 1.2 configuration and performs that https://rufus.ie/ request. The result is cached for 30 seconds. If that request fails, Rufus-NT treats the system as offline. GRUB, Syslinux and diskcopy.dll then use their offline paths and dialogues (the offline mode that's mentioned in the changelogs) instead of showing the regular download prompt.
 
-When TLS 1.2 is missing, `EnsureTLS12Enabled()` checks Group Policy and offers to enable the relevant HKCU, HKLM, Wow6432Node and SCHANNEL values. These changes are persistent. When Fido is ran on Windows 7, Rufus-NT temporarily selects "TLS 1.2 only" and restores the old value when it's closed.
+Networking is fully disabled on anything older than Windows 7. For some time I considered Vista to be an adequate floor, but lots of unsuccessful attempts and extremely confusing configurations and update combinations have shown that it's too much work for too little benefit. Most network connections fail at either HTTPS, or the SSL handshake.
 
-The downloader itself was also updated. Long Microsoft URLs no longer overflow the old 128-character URL-path buffer, chunked responses work without `Content-Length`, in-memory downloads grow with overflow checks, and two terminating zero bytes are reserved for text callers. There was some work done with the taskbar progress bug, but it still isn't finished.
+The downloader supports long Microsoft URLs, chunked responses without Content-Length, dynamically growing in-memory downloads with overflow checks, and two terminating zero bytes for text callers.
 
-Fido is available on Windows 7 through PowerShell 7.2. The compressed script and detached signature are checked, the decompressed PowerShell script receives its Authenticode check, and the temporary-script replacement fix from newer Rufus was backported. The script gets a GUID filename and an ACL which prevents ordinary users from replacing it.
-
-For Windows 7, Rufus-NT patches Fido's Windows-version line after validating the original script. This is intentional, but it also means the final executed bytes are no longer the exact Authenticode-signed bytes. The selected ISO URL comes back through a named pipe and the actual ISO is downloaded by Rufus.
-
-Networking has been disabled for Windows Vista as well due to requiring too many things for too little benefit. Some changes and failed attempts can still be found in `net.c`.
+Fido on Windows 7 uses the system `Windows PowerShell 5.1` and requires `.NET Framework 4.5.2+` and `WMF 4.0+` (although these are old values, only WMF 5.1 was ever tested). The compressed script and detached signature are validated, the decompressed script is checked with Authenticode, and the temporary script uses a GUID-based filename and restricted ACL to prevent replacement (TOCTOU). After the original signature is validated, Rufus-NT inserts a line into Fido's script `$winver = 10.0` to bypass Fido's unsupported version check.
 
 The Fido availability thread also downloads current SBAT and Secure Boot certificate lists. If they are unavailable or invalid, the embedded lists from `db.h` are used.
 

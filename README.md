@@ -13,8 +13,7 @@ The main targets are Windows NT 4.0 - Windows 7, and each have their own set of 
 ## Features
   
 - **Everything** that Rufus already has to offer<br>
-- One executable for all systems due to the way its written
-- ISO downloading (Fido) fixed for Windows 7
+- ISO downloading fully functional on Windows 7 again
 - Fixes for VPNs, outdated drivers, unupdated systems
 - GRUB and Syslinux embedded for offline systems
 - Experimental GPT partitioning (for pre-Vista systems)
@@ -22,7 +21,7 @@ The main targets are Windows NT 4.0 - Windows 7, and each have their own set of 
 - Improved error messages to understand whats going on
 - Drag-and-drop installation of diskcopy.dll (MS-DOS)
 - Increased performance over last-supported versions<br>
-  (mostly due to buffer optimizations and wimlib)
+  (buffer optimizations, simpler write mechanisms, wimlib)
 - Written with security and transparency in mind as well
 - Actively maintained with upstream commits,<br>
   selectively ones that actually benefit older systems
